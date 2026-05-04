@@ -14,6 +14,7 @@ import json
 import logging
 import os
 import re
+import shutil
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional, Tuple
 from urllib.parse import urlparse
@@ -571,7 +572,29 @@ def setup_env(override: bool = False):
         env_path = Path(env_file)
     else:
         env_path = REPO_ROOT / '.env'
+        ensure_local_env_file(env_path=env_path)
     load_dotenv(dotenv_path=env_path, override=override)
+
+
+def ensure_local_env_file(
+    *,
+    env_path: Path | None = None,
+    example_path: Path | None = None,
+    force: bool = False,
+) -> tuple[bool, Path]:
+    """Ensure a local env file exists by copying from the example file when needed."""
+    resolved_env_path = Path(env_path) if env_path else (REPO_ROOT / ".env")
+    resolved_example_path = Path(example_path) if example_path else (REPO_ROOT / ".env.example")
+
+    if resolved_env_path.exists() and not force:
+        return False, resolved_env_path
+
+    if not resolved_example_path.exists():
+        raise FileNotFoundError(f"示例配置文件不存在: {resolved_example_path}")
+
+    resolved_env_path.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(resolved_example_path, resolved_env_path)
+    return True, resolved_env_path
 
 
 @dataclass

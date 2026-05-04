@@ -32,6 +32,9 @@ dev = [
   "pytest>=8.3",
 ]
 
+[project.scripts]
+theme-picker = "theme_picker.cli:main"
+
 [tool.setuptools]
 package-dir = {theme_picker = "src"}
 include-package-data = true

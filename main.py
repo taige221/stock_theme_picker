@@ -17,6 +17,8 @@ PARENT_DIR = CURRENT_DIR.parent
 if str(PARENT_DIR) not in sys.path:
     sys.path.insert(0, str(PARENT_DIR))
 
+from theme_picker.config import ensure_local_env_file
+
 DEFAULT_BACKEND_HOST = "127.0.0.1"
 DEFAULT_BACKEND_PORT = 8765
 DEFAULT_WEB_HOST = "127.0.0.1"
@@ -114,6 +116,7 @@ def _run_all(host: str, port: int, *, web_host: str, web_port: int) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Theme Picker standalone launcher")
+    parser.add_argument("--init-env", action="store_true", help="从 .env.example 初始化本地 .env")
     parser.add_argument("--serve", action="store_true", help="启动 FastAPI 服务")
     parser.add_argument("--serve-web", action="store_true", help="启动前端开发服务")
     parser.add_argument("--serve-all", action="store_true", help="同时启动前后端")
@@ -122,6 +125,14 @@ def main() -> None:
     parser.add_argument("--web-host", default=DEFAULT_WEB_HOST, help="前端监听地址")
     parser.add_argument("--web-port", type=int, default=DEFAULT_WEB_PORT, help="前端监听端口")
     args = parser.parse_args()
+
+    if args.init_env:
+        created, env_path = ensure_local_env_file()
+        if created:
+            print(f"[theme_picker] 已生成本地配置文件: {env_path}")
+        else:
+            print(f"[theme_picker] 本地配置文件已存在，无需生成: {env_path}")
+        return
 
     if args.serve:
         _run_backend(args.host, args.port)

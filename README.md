@@ -45,23 +45,7 @@
 
 ## 快速开始
 
-### 1. 配置环境变量
-
-复制示例配置：
-
-```bash
-cp .env.example .env
-```
-
-至少建议先确认这些配置：
-
-- `DATABASE_PATH`：本地 SQLite 路径，默认 `./data/stock_analysis.db`
-- `THEME_PICKER_TASK_HISTORY_RETENTION_DAYS`：历史保留天数
-- `ENABLE_REALTIME_QUOTE`：是否启用实时行情增强
-- `TUSHARE_TOKEN`：如果要使用 Tushare 能力，需要填写
-- `ANSPIRE_API_KEYS` / `TAVILY_API_KEYS` / `BRAVE_API_KEYS` 等：如果要启用对应新闻检索源，需要填写
-
-### 2. 安装依赖
+### 1. 安装依赖
 
 后端：
 
@@ -82,7 +66,80 @@ cd web
 npm install
 ```
 
-### 3. 启动服务
+### 2. 初始化本地配置
+
+安装完成后，执行：
+
+```bash
+theme-picker init
+```
+
+如果你是在源码目录里直接使用，也可以执行：
+
+```bash
+python main.py --init-env
+```
+
+这个命令会在根目录生成本地 `.env`：
+
+- 如果 `.env` 不存在，会从 `.env.example` 复制生成
+- 如果 `.env` 已存在，不会覆盖
+- 如需强制重建，可执行 `theme-picker init --force`
+
+你也可以手动复制：
+
+```bash
+cp .env.example .env
+```
+
+作为兜底机制，如果根目录没有 `.env`，后端首次加载配置时也会自动从 `.env.example` 生成一份本地 `.env`。
+
+### 3. 核心配置项
+
+这些配置建议优先确认：
+
+- `DATABASE_PATH`：本地 SQLite 路径，默认 `./data/stock_analysis.db`
+- `THEME_PICKER_TASK_HISTORY_RETENTION_DAYS`：历史保留天数
+- `ENABLE_REALTIME_QUOTE`：是否启用实时行情增强
+
+### 4. 可选配置项
+
+#### 行情与板块数据
+
+- `TUSHARE_TOKEN`：启用 Tushare 数据能力时填写
+- `PYTDX_HOST` / `PYTDX_PORT` / `PYTDX_SERVERS`：需要自定义 Pytdx 连接时填写
+- `LONGBRIDGE_APP_KEY` / `LONGBRIDGE_APP_SECRET` / `LONGBRIDGE_ACCESS_TOKEN`：接入 Longbridge 时填写
+
+#### 新闻检索与搜索源
+
+- `ANSPIRE_API_KEYS`
+- `BOCHA_API_KEYS`
+- `MINIMAX_API_KEYS`
+- `TAVILY_API_KEYS`
+- `BRAVE_API_KEYS`
+- `SERPAPI_API_KEYS`
+- `SEARXNG_BASE_URLS`
+- `SEARXNG_PUBLIC_INSTANCES_ENABLED`
+
+只有在你希望启用对应搜索源时，才需要填写这些配置。
+
+#### 实时行情与筛选行为
+
+- `REALTIME_SOURCE_PRIORITY`：实时行情主优先级
+- `THEME_REALTIME_SOURCE_PRIORITY`：主题选股使用的实时行情优先级
+- `THEME_REALTIME_QUOTE_TIMEOUT`：主题行情超时秒数
+- `THEME_TENCENT_QUOTE_TIMEOUT`：腾讯行情超时秒数
+- `PREFETCH_REALTIME_QUOTES`：是否预取实时行情
+- `ENABLE_EASTMONEY_PATCH`：是否启用 Eastmoney 兼容 patch
+- `THEME_BOARD_CACHE_TTL_SECONDS`：板块缓存时长
+- `THEME_EXPANSION_QUERY_TIMEOUT`：扩池查询超时
+- `NEWS_MAX_AGE_DAYS`：新闻时间窗口
+- `NEWS_STRATEGY_PROFILE`：新闻策略窗口档位
+- `BIAS_THRESHOLD`：技术分析偏离阈值
+- `SQLITE_WAL_ENABLED` / `SQLITE_BUSY_TIMEOUT_MS`：SQLite 运行参数
+- `THEME_PICKER_TASK_HISTORY_CLEANUP_BATCH_SIZE`：历史清理批量大小
+
+### 5. 启动服务
 
 只启动后端：
 
