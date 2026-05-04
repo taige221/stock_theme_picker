@@ -6,3 +6,5 @@ logs/
 data/*.db
 data/*.sqlite
 
+
+.env
