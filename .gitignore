@@ -2,9 +2,7 @@ __pycache__/
 *.pyc
 .pytest_cache/
 .venv/
+.env
 logs/
 data/*.db
 data/*.sqlite
-
-
-.env
