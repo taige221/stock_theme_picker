@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "theme-picker-standalone"
+version = "0.1.0"
+description = "Standalone theme-based stock picker extracted from daily_stock_analysis"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.115",
+  "uvicorn>=0.30",
+  "pydantic>=2.7",
+  "pandas>=2.2",
+  "numpy>=1.26",
+  "requests>=2.32",
+  "SQLAlchemy>=2.0",
+  "tenacity>=9.0",
+  "python-dotenv>=1.0",
+  "newspaper3k>=0.2.8",
+  "fake-useragent>=1.5",
+  "akshare>=1.16",
+  "efinance>=0.5.5",
+  "yfinance>=0.2.50",
+  "baostock>=0.8.9",
+  "pytdx>=1.72",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.3",
+]
+
+[tool.setuptools]
+package-dir = {theme_picker = "src"}
+include-package-data = true
+packages = [
+  "theme_picker",
+  "theme_picker.api",
+  "theme_picker.application",
+  "theme_picker.core",
+  "theme_picker.data",
+  "theme_picker.data_provider",
+  "theme_picker.domain",
+  "theme_picker.infrastructure",
+  "theme_picker.patch",
+]
+
+[tool.setuptools.package-data]
+"theme_picker.data" = ["*.json"]
