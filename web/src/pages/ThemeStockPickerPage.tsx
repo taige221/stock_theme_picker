@@ -28,6 +28,7 @@ import {
 import type { ParsedApiError } from '../api/error';
 import { createParsedApiError, getParsedApiError } from '../api/error';
 import { ApiErrorAlert, AppPage, Badge, Button, Card, Drawer, EmptyState, InlineAlert, Input, Select } from '../components/common';
+import { ThemeToggle } from '../components/theme/ThemeToggle';
 
 const STRATEGY_OPTIONS: Array<{ value: ThemePickerStrategyMode; label: string }> = [
   { value: 'holding', label: '趋势持有' },
@@ -629,7 +630,7 @@ const ThemeStockPickerPage: React.FC = () => {
 
   return (
     <AppPage className="space-y-6 !max-w-[1640px] px-3 md:px-5 lg:px-6">
-      <section className="overflow-hidden rounded-[32px] border border-border/60 bg-[radial-gradient(circle_at_top_left,_rgba(6,182,212,0.14),_transparent_32%),linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,250,252,0.95))] shadow-soft-card">
+      <section className="overflow-hidden rounded-[32px] border border-border/60 bg-[radial-gradient(circle_at_top_left,_rgba(6,182,212,0.14),_transparent_32%),linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,250,252,0.95))] shadow-soft-card dark:bg-[radial-gradient(circle_at_top_left,_rgba(34,211,238,0.18),_transparent_28%),radial-gradient(circle_at_top_right,_rgba(129,140,248,0.12),_transparent_30%),linear-gradient(180deg,rgba(10,15,26,0.98),rgba(14,20,32,0.95))]">
         <div className="grid gap-6 px-5 py-5 lg:grid-cols-[1.15fr_0.85fr] lg:px-7 lg:py-7">
           <div className="space-y-5">
             <div className="flex items-start justify-between gap-4">
@@ -642,6 +643,7 @@ const ThemeStockPickerPage: React.FC = () => {
                   <p className="mt-1 text-sm text-secondary-text">围绕主题、板块与新闻热度，收敛出更值得继续看的优质股票。</p>
                 </div>
               </div>
+              <ThemeToggle />
             </div>
 
             <div className="grid gap-3 sm:grid-cols-3">
@@ -670,18 +672,18 @@ const ThemeStockPickerPage: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setHistoryOpen(true)}
-                className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-background/80 px-4 py-2 text-sm text-foreground transition-colors hover:bg-hover/40"
+                className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-background/80 px-4 py-2 text-sm text-foreground transition-colors hover:bg-hover/40 dark:bg-background/60"
               >
                 <Clock3 className="h-4 w-4 text-cyan" />
                 <span>历史记录</span>
               </button>
-              <div className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-background/80 px-4 py-2 text-sm text-secondary-text">
+              <div className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-background/80 px-4 py-2 text-sm text-secondary-text dark:bg-background/60">
                 <Newspaper className="h-4 w-4" />
                 <span>交易日 04-29</span>
               </div>
               <button
                 type="button"
-                className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-background/80 px-4 py-2 text-sm text-secondary-text transition-colors hover:text-foreground"
+                className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-background/80 px-4 py-2 text-sm text-secondary-text transition-colors hover:text-foreground dark:bg-background/60"
                 aria-label="收藏主题选股"
               >
                 <Bookmark className="h-4 w-4" />

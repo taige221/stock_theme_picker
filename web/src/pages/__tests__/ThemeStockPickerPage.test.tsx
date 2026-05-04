@@ -31,6 +31,13 @@ vi.mock('../../api/themePicker', () => ({
   },
 }));
 
+vi.mock('next-themes', () => ({
+  useTheme: () => ({
+    resolvedTheme: 'dark',
+    setTheme: vi.fn(),
+  }),
+}));
+
 describe('ThemeStockPickerPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
