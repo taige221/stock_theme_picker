@@ -7,7 +7,7 @@
 
 from __future__ import annotations
 
-from typing import List, Optional, Dict
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -180,3 +180,200 @@ class ThemePickerThemeListItemSchema(BaseModel):
 
 class ThemePickerThemeListResponse(BaseModel):
     items: List[ThemePickerThemeListItemSchema] = Field(default_factory=list)
+
+
+class StockQueryAnalyzeRequest(BaseModel):
+    query: Optional[str] = Field(None, description="股票代码或股票名称")
+    stock_code: Optional[str] = Field(None, description="显式股票代码")
+    stock_name: Optional[str] = Field(None, description="显式股票名称")
+
+    @model_validator(mode="after")
+    def validate_input_presence(self):
+        if not any(
+            [
+                (self.query or "").strip(),
+                (self.stock_code or "").strip(),
+                (self.stock_name or "").strip(),
+            ]
+        ):
+            raise ValueError("query、stock_code、stock_name 至少需要提供一个")
+        return self
+
+
+class StockQueryThemeAttributionSchema(BaseModel):
+    theme_id: str
+    theme_name: str
+    relation_type: str
+    confidence: str
+    reason: str
+
+
+class StockQueryNewsSummarySchema(BaseModel):
+    summary: Optional[str] = None
+    provider: Optional[str] = None
+    headlines: List[str] = Field(default_factory=list)
+    catalysts: List[str] = Field(default_factory=list)
+    risk_events: List[str] = Field(default_factory=list)
+    sentiment: Optional[str] = None
+
+
+class StockQueryAnalyzeResponse(BaseModel):
+    query_id: Optional[str] = None
+    stock_code: str
+    stock_name: str
+    current_price: Optional[float] = None
+    pct_chg: Optional[float] = None
+    turnover_rate: Optional[float] = None
+    volume_ratio: Optional[float] = None
+    pe_ratio: Optional[float] = None
+    pb_ratio: Optional[float] = None
+    total_mv: Optional[float] = None
+    circ_mv: Optional[float] = None
+    trend_score: Optional[float] = None
+    signal: str
+    pattern: Optional[str] = None
+    support: Optional[float] = None
+    pressure: Optional[float] = None
+    ma10: Optional[float] = None
+    ma20: Optional[float] = None
+    bias_ma10: Optional[float] = None
+    trend_status: Optional[str] = None
+    buy_signal: Optional[str] = None
+    selected_reasons: List[str] = Field(default_factory=list)
+    excluded_reasons: List[str] = Field(default_factory=list)
+    theme_attributions: List[StockQueryThemeAttributionSchema] = Field(default_factory=list)
+    themes: List[StockQueryThemeAttributionSchema] = Field(default_factory=list)
+    stock_news_summary: Optional[StockQueryNewsSummarySchema] = None
+    fundamental_coverage: Dict[str, str] = Field(default_factory=dict)
+    fundamental_errors: List[str] = Field(default_factory=list)
+    fundamental_details: Dict[str, Any] = Field(default_factory=dict)
+    data_sources: Dict[str, Optional[str]] = Field(default_factory=dict)
+
+
+class StockQueryHistoryItemSchema(BaseModel):
+    query_id: str
+    status: str
+    query_text: Optional[str] = None
+    stock_code: Optional[str] = None
+    stock_name: Optional[str] = None
+    signal: Optional[str] = None
+    error: Optional[str] = None
+    created_at: str
+    completed_at: Optional[str] = None
+    result: Optional[StockQueryAnalyzeResponse] = None
+
+
+class StockQueryHistoryListResponse(BaseModel):
+    items: List[StockQueryHistoryItemSchema] = Field(default_factory=list)
+
+
+class StockWatchlistUpsertRequest(BaseModel):
+    stock_code: str = Field(description="股票代码")
+    stock_name: str = Field(description="股票名称")
+    group_name: Optional[str] = Field(default="核心跟踪", description="观察池分组")
+    note: Optional[str] = Field(default=None, description="备注")
+    latest_signal: Optional[str] = Field(default=None, description="最近一次信号")
+    latest_theme: Optional[str] = Field(default=None, description="最近一次辅助题材")
+    alert_enabled: bool = Field(default=False, description="是否启用提醒")
+    source_query_id: Optional[str] = Field(default=None, description="来源单股查询 ID")
+
+
+class StockWatchlistItemSchema(BaseModel):
+    stock_code: str
+    stock_name: str
+    group_name: Optional[str] = None
+    note: Optional[str] = None
+    latest_signal: Optional[str] = None
+    latest_theme: Optional[str] = None
+    alert_enabled: bool = False
+    source_query_id: Optional[str] = None
+    created_at: str
+    updated_at: str
+
+
+class StockWatchlistListResponse(BaseModel):
+    items: List[StockWatchlistItemSchema] = Field(default_factory=list)
+
+
+class StockAlertRuleUpsertRequest(BaseModel):
+    stock_code: str
+    stock_name: str
+    rule_type: str
+    threshold_value: Optional[float] = None
+    scan_interval_minutes: int = Field(default=5, ge=5, description="扫描间隔，单位分钟，最小 5 分钟")
+    enabled: bool = True
+    note: Optional[str] = None
+    source_query_id: Optional[str] = None
+
+
+class StockAlertRuleUpdateRequest(BaseModel):
+    threshold_value: Optional[float] = None
+    scan_interval_minutes: Optional[int] = Field(default=None, ge=5, description="扫描间隔，单位分钟，最小 5 分钟")
+    enabled: Optional[bool] = None
+    note: Optional[str] = None
+
+
+class StockAlertRuleDefaultsRequest(BaseModel):
+    stock_code: str
+    stock_name: str
+    support_price: Optional[float] = None
+    breakout_price: Optional[float] = None
+    scan_interval_minutes: int = Field(default=5, ge=5, description="默认规则扫描间隔，单位分钟，最小 5 分钟")
+    source_query_id: Optional[str] = None
+
+
+class StockAlertRuleItemSchema(BaseModel):
+    id: int
+    stock_code: str
+    stock_name: str
+    rule_type: str
+    threshold_value: Optional[float] = None
+    scan_interval_minutes: int = Field(default=5, ge=5)
+    enabled: bool = True
+    note: Optional[str] = None
+    source_query_id: Optional[str] = None
+    created_at: str
+    updated_at: str
+
+
+class StockAlertRuleListResponse(BaseModel):
+    items: List[StockAlertRuleItemSchema] = Field(default_factory=list)
+
+
+class StockAlertEventItemSchema(BaseModel):
+    id: int
+    stock_code: str
+    stock_name: str
+    rule_id: int
+    rule_type: str
+    event_type: str
+    title: str
+    message: str
+    dedupe_key: Optional[str] = None
+    created_at: str
+    read_at: Optional[str] = None
+
+
+class StockAlertEventListResponse(BaseModel):
+    items: List[StockAlertEventItemSchema] = Field(default_factory=list)
+
+
+class StockAlertEventMarkAllReadRequest(BaseModel):
+    stock_code: Optional[str] = Field(default=None, description="可选股票代码；为空时标记全部为已读")
+
+
+class StockAlertScanSummarySchema(BaseModel):
+    scanned_rules: int = 0
+    due_rules: int = 0
+    triggered_events: int = 0
+    skipped_rules: int = 0
+
+
+class StockAlertLoopStatusSchema(BaseModel):
+    enabled: bool = False
+    running: bool = False
+    base_tick_seconds: int = 60
+    last_started_at: Optional[str] = None
+    last_finished_at: Optional[str] = None
+    last_error: Optional[str] = None
+    last_summary: Optional[StockAlertScanSummarySchema] = None

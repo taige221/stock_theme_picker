@@ -413,6 +413,157 @@ class AkshareFundamentalAdapter:
         result["status"] = "partial" if has_content else "not_supported"
         return result
 
+    def get_growth_snapshot(self, stock_code: str) -> Dict[str, Any]:
+        result: Dict[str, Any] = {
+            "status": "not_supported",
+            "growth": {},
+            "source_chain": [],
+            "errors": [],
+        }
+
+        fin_df, fin_source, fin_errors = self._call_df_candidates([
+            ("stock_financial_abstract", {"symbol": stock_code}),
+            ("stock_financial_analysis_indicator", {"symbol": stock_code}),
+            ("stock_financial_analysis_indicator", {}),
+        ])
+        result["errors"].extend(fin_errors)
+        if fin_df is None:
+            return result
+
+        row = _extract_latest_row(fin_df, stock_code)
+        if row is None:
+            return result
+
+        growth_payload = {
+            "revenue_yoy": _safe_float(_pick_by_keywords(row, ["营业收入同比", "营收同比", "收入同比", "同比增长"])),
+            "net_profit_yoy": _safe_float(_pick_by_keywords(row, ["净利润同比", "净利同比", "归母净利润同比"])),
+            "roe": _safe_float(_pick_by_keywords(row, ["净资产收益率", "ROE", "净资产收益"])),
+            "gross_margin": _safe_float(_pick_by_keywords(row, ["毛利率"])),
+        }
+        if any(value is not None for value in growth_payload.values()):
+            result["growth"] = growth_payload
+            result["status"] = "ok"
+            result["source_chain"].append(f"growth:{fin_source}")
+        return result
+
+    def get_earnings_snapshot(self, stock_code: str) -> Dict[str, Any]:
+        result: Dict[str, Any] = {
+            "status": "not_supported",
+            "earnings": {},
+            "source_chain": [],
+            "errors": [],
+        }
+
+        fin_df, fin_source, fin_errors = self._call_df_candidates([
+            ("stock_financial_abstract", {"symbol": stock_code}),
+            ("stock_financial_analysis_indicator", {"symbol": stock_code}),
+            ("stock_financial_analysis_indicator", {}),
+        ])
+        result["errors"].extend(fin_errors)
+        if fin_df is not None:
+            row = _extract_latest_row(fin_df, stock_code)
+            if row is not None:
+                financial_report_payload = {
+                    "report_date": _normalize_report_date(_pick_by_keywords(row, _DIVIDEND_KEYWORD_MAP["report_date"])),
+                    "revenue": _safe_float(_pick_by_keywords(row, ["营业总收入", "营业收入", "营收"])),
+                    "net_profit_parent": _safe_float(_pick_by_keywords(row, ["归母净利润", "母公司股东净利润", "净利润"])),
+                    "operating_cash_flow": _safe_float(
+                        _pick_by_keywords(row, ["经营活动产生的现金流量净额", "经营现金流", "经营活动现金流"])
+                    ),
+                    "roe": _safe_float(_pick_by_keywords(row, ["净资产收益率", "ROE", "净资产收益"])),
+                }
+                if any(v is not None for v in financial_report_payload.values()):
+                    result["earnings"]["financial_report"] = financial_report_payload
+                    result["source_chain"].append(f"earnings_financial:{fin_source}")
+
+        forecast_df, forecast_source, forecast_errors = self._call_df_candidates([
+            ("stock_yjyg_em", {"symbol": stock_code}),
+            ("stock_yjyg_em", {}),
+            ("stock_yjbb_em", {"symbol": stock_code}),
+            ("stock_yjbb_em", {}),
+        ])
+        result["errors"].extend(forecast_errors)
+        if forecast_df is not None:
+            row = _extract_latest_row(forecast_df, stock_code)
+            if row is not None:
+                forecast_summary = _safe_str(
+                    _pick_by_keywords(row, ["预告", "业绩变动", "内容", "摘要", "公告"])
+                )[:200]
+                if forecast_summary:
+                    result["earnings"]["forecast_summary"] = forecast_summary
+                    result["source_chain"].append(f"earnings_forecast:{forecast_source}")
+
+        quick_df, quick_source, quick_errors = self._call_df_candidates([
+            ("stock_yjkb_em", {"symbol": stock_code}),
+            ("stock_yjkb_em", {}),
+        ])
+        result["errors"].extend(quick_errors)
+        if quick_df is not None:
+            row = _extract_latest_row(quick_df, stock_code)
+            if row is not None:
+                quick_summary = _safe_str(
+                    _pick_by_keywords(row, ["快报", "摘要", "公告", "说明"])
+                )[:200]
+                if quick_summary:
+                    result["earnings"]["quick_report_summary"] = quick_summary
+                    result["source_chain"].append(f"earnings_quick:{quick_source}")
+
+        dividend_df, dividend_source, dividend_errors = self._call_df_candidates([
+            ("stock_fhps_detail_em", {"symbol": stock_code}),
+            ("stock_history_dividend_detail", {"symbol": stock_code, "indicator": "分红", "date": ""}),
+            ("stock_dividend_cninfo", {"symbol": stock_code}),
+        ])
+        result["errors"].extend(dividend_errors)
+        if dividend_df is not None:
+            dividend_payload = _build_dividend_payload(dividend_df, stock_code, max_events=5)
+            if dividend_payload:
+                result["earnings"]["dividend"] = dividend_payload
+                result["source_chain"].append(f"dividend:{dividend_source}")
+
+        if result["earnings"]:
+            result["status"] = "ok"
+        return result
+
+    def get_institution_snapshot(self, stock_code: str) -> Dict[str, Any]:
+        result: Dict[str, Any] = {
+            "status": "not_supported",
+            "institution": {},
+            "source_chain": [],
+            "errors": [],
+        }
+
+        inst_df, inst_source, inst_errors = self._call_df_candidates([
+            ("stock_institute_hold", {}),
+            ("stock_institute_recommend", {}),
+        ])
+        result["errors"].extend(inst_errors)
+        if inst_df is not None:
+            row = _extract_latest_row(inst_df, stock_code)
+            if row is not None:
+                inst_change = _safe_float(_pick_by_keywords(row, ["增减", "变化", "变动", "持股变化"]))
+                if inst_change is not None:
+                    result["institution"]["institution_holding_change"] = inst_change
+                    result["source_chain"].append(f"institution:{inst_source}")
+
+        top10_df, top10_source, top10_errors = self._call_df_candidates([
+            ("stock_gdfx_top_10_em", {"symbol": stock_code}),
+            ("stock_gdfx_top_10_em", {}),
+            ("stock_zh_a_gdhs_detail_em", {"symbol": stock_code}),
+            ("stock_zh_a_gdhs_detail_em", {}),
+        ])
+        result["errors"].extend(top10_errors)
+        if top10_df is not None:
+            row = _extract_latest_row(top10_df, stock_code)
+            if row is not None:
+                holder_change = _safe_float(_pick_by_keywords(row, ["增减", "变化", "持股变化", "变动"]))
+                if holder_change is not None:
+                    result["institution"]["top10_holder_change"] = holder_change
+                    result["source_chain"].append(f"top10:{top10_source}")
+
+        if result["institution"]:
+            result["status"] = "ok"
+        return result
+
     def get_capital_flow(self, stock_code: str, top_n: int = 5) -> Dict[str, Any]:
         """
         Return stock + sector capital flow.

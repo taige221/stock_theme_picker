@@ -28,7 +28,6 @@ import {
 import type { ParsedApiError } from '../api/error';
 import { createParsedApiError, getParsedApiError } from '../api/error';
 import { ApiErrorAlert, AppPage, Badge, Button, Card, Drawer, EmptyState, InlineAlert, Input, Select } from '../components/common';
-import { ThemeToggle } from '../components/theme/ThemeToggle';
 
 const STRATEGY_OPTIONS: Array<{ value: ThemePickerStrategyMode; label: string }> = [
   { value: 'holding', label: '趋势持有' },
@@ -643,7 +642,6 @@ const ThemeStockPickerPage: React.FC = () => {
                   <p className="mt-1 text-sm text-secondary-text">围绕主题、板块与新闻热度，收敛出更值得继续看的优质股票。</p>
                 </div>
               </div>
-              <ThemeToggle />
             </div>
 
             <div className="grid gap-3 sm:grid-cols-3">

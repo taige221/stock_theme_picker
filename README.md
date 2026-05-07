@@ -120,6 +120,7 @@ cp .env.example .env
 - `SERPAPI_API_KEYS`
 - `SEARXNG_BASE_URLS`
 - `SEARXNG_PUBLIC_INSTANCES_ENABLED`
+- `TICKFLOW_API_KEY`：TickFlow API Key，用于单股查询优先日 K 数据源
 
 只有在你希望启用对应搜索源时，才需要填写这些配置。
 
@@ -127,8 +128,19 @@ cp .env.example .env
 
 - `REALTIME_SOURCE_PRIORITY`：实时行情主优先级
 - `THEME_REALTIME_SOURCE_PRIORITY`：主题选股使用的实时行情优先级
+- `CHIP_DISTRIBUTION_SOURCE_PRIORITY`：筹码分布数据源优先级，当前支持 `akshare`、`tushare`
 - `THEME_REALTIME_QUOTE_TIMEOUT`：主题行情超时秒数
 - `THEME_TENCENT_QUOTE_TIMEOUT`：腾讯行情超时秒数
+- `STOCK_QUERY_DAILY_FETCH_TIMEOUT_SECONDS`：单股查询日线单源超时秒数
+- `STOCK_QUERY_DAILY_UNPROXY_ENABLED`：单股查询在线日线抓取时是否临时禁用代理
+- `STOCK_QUERY_ALLOW_DAILY_CACHE_FALLBACK`：单股查询在线日线失败后是否允许退回本地缓存
+- `STOCK_QUERY_CHIP_TIMEOUT_SECONDS`：单股查询筹码分布超时秒数
+- `STOCK_QUERY_TEXT_TIMEOUT_SECONDS`：单股查询文本情报补充的超时秒数
+- `STOCK_QUERY_NEWS_TIMEOUT_SECONDS`：单股查询新闻摘要补充的超时秒数
+- `STOCK_ALERT_LOOP_ENABLED`：是否启用进程内单股告警后台循环
+- `STOCK_ALERT_LOOP_BASE_TICK_SECONDS`：后台循环基础 tick，单位秒；它只决定统一心跳频率，规则是否真正执行仍取决于每条规则自己的扫描间隔
+- `FUNDAMENTAL_STAGE_TIMEOUT_SECONDS`：单股查询基本面聚合总预算秒数
+- `FUNDAMENTAL_FETCH_TIMEOUT_SECONDS`：单个基本面块的抓取预算秒数
 - `PREFETCH_REALTIME_QUOTES`：是否预取实时行情
 - `ENABLE_EASTMONEY_PATCH`：是否启用 Eastmoney 兼容 patch
 - `THEME_BOARD_CACHE_TTL_SECONDS`：板块缓存时长

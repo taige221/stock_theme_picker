@@ -2,7 +2,6 @@ import type React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { ArrowLeft, BrainCircuit } from 'lucide-react';
 import { AppPage, Button, Card } from '../components/common';
-import { ThemeToggle } from '../components/theme/ThemeToggle';
 
 const ChatPlaceholderPage: React.FC = () => {
   const location = useLocation();
@@ -15,17 +14,14 @@ const ChatPlaceholderPage: React.FC = () => {
       <div className="mx-auto max-w-4xl">
         <Card variant="bordered" padding="lg" className="rounded-[28px] border-border/60 bg-card/95">
           <div className="flex flex-col gap-6">
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex items-center gap-4">
-                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-cyan/12 text-cyan">
-                  <BrainCircuit className="h-7 w-7" />
-                </div>
-                <div>
-                  <p className="text-xs uppercase tracking-[0.18em] text-secondary-text">Deep Analysis Placeholder</p>
-                  <h1 className="mt-2 text-3xl font-semibold text-foreground">独立前端模式下的问股占位页</h1>
-                </div>
+            <div className="flex items-center gap-4">
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-cyan/12 text-cyan">
+                <BrainCircuit className="h-7 w-7" />
               </div>
-              <ThemeToggle />
+              <div>
+                <p className="text-xs uppercase tracking-[0.18em] text-secondary-text">Deep Analysis Placeholder</p>
+                <h1 className="mt-2 text-3xl font-semibold text-foreground">独立前端模式下的问股占位页</h1>
+              </div>
             </div>
 
             <div className="rounded-2xl border border-border/60 bg-background/70 p-5">

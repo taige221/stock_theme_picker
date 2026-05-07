@@ -39,6 +39,7 @@ from theme_picker.config import get_config
 logger = logging.getLogger(__name__)
 
 Base = declarative_base()
+_UNSET = object()
 
 
 class StockDaily(Base):
@@ -104,6 +105,108 @@ class ThemePickerTaskHistory(Base):
     __table_args__ = (Index("ix_theme_picker_task_created", "created_at"),)
 
 
+class StockQueryHistory(Base):
+    __tablename__ = "stock_query_history"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    query_id = Column(String(64), nullable=False, unique=True, index=True)
+    status = Column(String(20), nullable=False, index=True, default="completed")
+    query_text = Column(String(128), nullable=True, index=True)
+    stock_code = Column(String(16), nullable=True, index=True)
+    stock_name = Column(String(64), nullable=True)
+    signal = Column(String(32), nullable=True)
+    error = Column(Text)
+    request_payload = Column(Text, nullable=False)
+    result_payload = Column(Text)
+    created_at = Column(DateTime, default=datetime.now, index=True)
+    completed_at = Column(DateTime, nullable=True, index=True)
+
+    __table_args__ = (
+        Index("ix_stock_query_history_created", "created_at"),
+        Index("ix_stock_query_history_stock_created", "stock_code", "created_at"),
+    )
+
+
+class StockBelongBoardsCache(Base):
+    __tablename__ = "stock_belong_boards_cache"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    stock_code = Column(String(16), nullable=False, unique=True, index=True)
+    boards_payload = Column(Text, nullable=False)
+    source = Column(String(64), nullable=True)
+    updated_at = Column(DateTime, default=datetime.now, index=True)
+
+    __table_args__ = (
+        Index("ix_stock_belong_boards_cache_updated", "updated_at"),
+    )
+
+
+class StockWatchlist(Base):
+    __tablename__ = "stock_watchlist"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    stock_code = Column(String(16), nullable=False, unique=True, index=True)
+    stock_name = Column(String(64), nullable=False)
+    group_name = Column(String(64), nullable=True, index=True)
+    note = Column(Text, nullable=True)
+    latest_signal = Column(String(32), nullable=True)
+    latest_theme = Column(String(64), nullable=True)
+    alert_enabled = Column(Integer, nullable=False, default=0)
+    source_query_id = Column(String(64), nullable=True)
+    created_at = Column(DateTime, default=datetime.now, index=True)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, index=True)
+
+    __table_args__ = (
+        Index("ix_stock_watchlist_group_updated", "group_name", "updated_at"),
+    )
+
+
+class StockAlertRule(Base):
+    __tablename__ = "stock_alert_rule"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    stock_code = Column(String(16), nullable=False, index=True)
+    stock_name = Column(String(64), nullable=False)
+    rule_type = Column(String(32), nullable=False, index=True)
+    threshold_value = Column(Float, nullable=True)
+    scan_interval_minutes = Column(Integer, nullable=False, default=5)
+    enabled = Column(Integer, nullable=False, default=1)
+    note = Column(Text, nullable=True)
+    source_query_id = Column(String(64), nullable=True)
+    last_evaluated_at = Column(DateTime, nullable=True, index=True)
+    last_triggered_at = Column(DateTime, nullable=True, index=True)
+    last_trigger_key = Column(String(128), nullable=True)
+    created_at = Column(DateTime, default=datetime.now, index=True)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, index=True)
+
+    __table_args__ = (
+        UniqueConstraint("stock_code", "rule_type", name="uix_stock_alert_rule_code_type"),
+        Index("ix_stock_alert_rule_code_updated", "stock_code", "updated_at"),
+    )
+
+
+class StockAlertEvent(Base):
+    __tablename__ = "stock_alert_event"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    stock_code = Column(String(16), nullable=False, index=True)
+    stock_name = Column(String(64), nullable=False)
+    rule_id = Column(Integer, nullable=False, index=True)
+    rule_type = Column(String(32), nullable=False, index=True)
+    event_type = Column(String(32), nullable=False, index=True)
+    title = Column(String(128), nullable=False)
+    message = Column(Text, nullable=False)
+    dedupe_key = Column(String(160), nullable=True, index=True)
+    payload_json = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.now, index=True)
+    read_at = Column(DateTime, nullable=True, index=True)
+
+    __table_args__ = (
+        Index("ix_stock_alert_event_stock_created", "stock_code", "created_at"),
+        Index("ix_stock_alert_event_rule_created", "rule_id", "created_at"),
+    )
+
+
 @dataclass
 class _SqliteSettings:
     database_path: Path
@@ -152,10 +255,40 @@ class DatabaseManager:
 
     def _init_database(self) -> None:
         Base.metadata.create_all(bind=self.engine)
+        self._run_post_create_migrations()
         if self._settings.wal_enabled:
             with self.engine.begin() as conn:
                 conn.exec_driver_sql("PRAGMA journal_mode=WAL;")
                 conn.exec_driver_sql(f"PRAGMA busy_timeout={self._settings.busy_timeout_ms};")
+
+    def _run_post_create_migrations(self) -> None:
+        self._ensure_sqlite_column(
+            table_name="stock_alert_rule",
+            column_name="scan_interval_minutes",
+            alter_sql="ALTER TABLE stock_alert_rule ADD COLUMN scan_interval_minutes INTEGER NOT NULL DEFAULT 5",
+        )
+        self._ensure_sqlite_column(
+            table_name="stock_alert_rule",
+            column_name="last_evaluated_at",
+            alter_sql="ALTER TABLE stock_alert_rule ADD COLUMN last_evaluated_at DATETIME NULL",
+        )
+        self._ensure_sqlite_column(
+            table_name="stock_alert_rule",
+            column_name="last_triggered_at",
+            alter_sql="ALTER TABLE stock_alert_rule ADD COLUMN last_triggered_at DATETIME NULL",
+        )
+        self._ensure_sqlite_column(
+            table_name="stock_alert_rule",
+            column_name="last_trigger_key",
+            alter_sql="ALTER TABLE stock_alert_rule ADD COLUMN last_trigger_key VARCHAR(128) NULL",
+        )
+
+    def _ensure_sqlite_column(self, *, table_name: str, column_name: str, alter_sql: str) -> None:
+        with self.engine.begin() as conn:
+            rows = conn.exec_driver_sql(f"PRAGMA table_info({table_name});").fetchall()
+            existing = {str(row[1]) for row in rows if len(row) > 1}
+            if column_name not in existing:
+                conn.exec_driver_sql(alter_sql)
 
     def close(self) -> None:
         try:
@@ -395,7 +528,380 @@ class DatabaseManager:
             session.execute(delete(ThemePickerTaskHistory).where(ThemePickerTaskHistory.id.in_(stale_ids)))
             return len(stale_ids)
 
+    def save_stock_query_history(
+        self,
+        *,
+        query_id: str,
+        status: str,
+        request_payload: Dict[str, Any],
+        query_text: Optional[str] = None,
+        stock_code: Optional[str] = None,
+        stock_name: Optional[str] = None,
+        signal: Optional[str] = None,
+        result_payload: Optional[Dict[str, Any]] = None,
+        error: Optional[str] = None,
+        created_at: Optional[datetime] = None,
+        completed_at: Optional[datetime] = None,
+    ) -> int:
+        values = {
+            "query_id": query_id,
+            "status": status,
+            "query_text": query_text,
+            "stock_code": stock_code,
+            "stock_name": stock_name,
+            "signal": signal,
+            "error": error,
+            "request_payload": self._safe_json_dumps(request_payload or {}),
+            "result_payload": self._safe_json_dumps(result_payload) if result_payload is not None else None,
+            "created_at": created_at or datetime.now(),
+            "completed_at": completed_at,
+        }
+        with self.session_scope() as session:
+            stmt = sqlite_insert(StockQueryHistory).values(values)
+            excluded = stmt.excluded
+            session.execute(
+                stmt.on_conflict_do_update(
+                    index_elements=["query_id"],
+                    set_={
+                        "status": excluded.status,
+                        "query_text": excluded.query_text,
+                        "stock_code": excluded.stock_code,
+                        "stock_name": excluded.stock_name,
+                        "signal": excluded.signal,
+                        "error": excluded.error,
+                        "request_payload": excluded.request_payload,
+                        "result_payload": excluded.result_payload,
+                        "created_at": excluded.created_at,
+                        "completed_at": excluded.completed_at,
+                    },
+                )
+            )
+        return 1
+
+    def get_stock_query_history(self, query_id: str) -> Optional[StockQueryHistory]:
+        with self.session_scope() as session:
+            return session.execute(
+                select(StockQueryHistory)
+                .where(StockQueryHistory.query_id == query_id)
+                .limit(1)
+            ).scalars().first()
+
+    def list_stock_query_history(
+        self,
+        *,
+        limit: int = 20,
+        stock_code: Optional[str] = None,
+    ) -> List[StockQueryHistory]:
+        stmt = select(StockQueryHistory)
+        if stock_code:
+            stmt = stmt.where(StockQueryHistory.stock_code == stock_code)
+        stmt = stmt.order_by(desc(StockQueryHistory.created_at)).limit(max(1, limit))
+        with self.session_scope() as session:
+            return list(session.execute(stmt).scalars().all())
+
+    def save_stock_belong_boards_cache(
+        self,
+        *,
+        stock_code: str,
+        boards: List[Dict[str, Any]],
+        source: Optional[str] = None,
+        updated_at: Optional[datetime] = None,
+    ) -> int:
+        values = {
+            "stock_code": stock_code,
+            "boards_payload": self._safe_json_dumps(boards or []),
+            "source": source,
+            "updated_at": updated_at or datetime.now(),
+        }
+        with self.session_scope() as session:
+            stmt = sqlite_insert(StockBelongBoardsCache).values(values)
+            excluded = stmt.excluded
+            session.execute(
+                stmt.on_conflict_do_update(
+                    index_elements=["stock_code"],
+                    set_={
+                        "boards_payload": excluded.boards_payload,
+                        "source": excluded.source,
+                        "updated_at": excluded.updated_at,
+                    },
+                )
+            )
+        return 1
+
+    def get_stock_belong_boards_cache(self, stock_code: str) -> Optional[StockBelongBoardsCache]:
+        with self.session_scope() as session:
+            return session.execute(
+                select(StockBelongBoardsCache)
+                .where(StockBelongBoardsCache.stock_code == stock_code)
+                .limit(1)
+            ).scalars().first()
+
+    def upsert_stock_watchlist_item(
+        self,
+        *,
+        stock_code: str,
+        stock_name: str,
+        group_name: Optional[str] = None,
+        note: Optional[str] = None,
+        latest_signal: Optional[str] = None,
+        latest_theme: Optional[str] = None,
+        alert_enabled: bool = False,
+        source_query_id: Optional[str] = None,
+    ) -> StockWatchlist:
+        values = {
+            "stock_code": stock_code,
+            "stock_name": stock_name,
+            "group_name": group_name,
+            "note": note,
+            "latest_signal": latest_signal,
+            "latest_theme": latest_theme,
+            "alert_enabled": 1 if alert_enabled else 0,
+            "source_query_id": source_query_id,
+            "updated_at": datetime.now(),
+        }
+        with self.session_scope() as session:
+            stmt = sqlite_insert(StockWatchlist).values(
+                {
+                    **values,
+                    "created_at": datetime.now(),
+                }
+            )
+            excluded = stmt.excluded
+            session.execute(
+                stmt.on_conflict_do_update(
+                    index_elements=["stock_code"],
+                    set_={
+                        "stock_name": excluded.stock_name,
+                        "group_name": excluded.group_name,
+                        "note": func.coalesce(excluded.note, StockWatchlist.note),
+                        "latest_signal": excluded.latest_signal,
+                        "latest_theme": excluded.latest_theme,
+                        "alert_enabled": excluded.alert_enabled,
+                        "source_query_id": excluded.source_query_id,
+                        "updated_at": excluded.updated_at,
+                    },
+                )
+            )
+            return session.execute(
+                select(StockWatchlist)
+                .where(StockWatchlist.stock_code == stock_code)
+                .limit(1)
+            ).scalars().first()
+
+    def list_stock_watchlist_items(self) -> List[StockWatchlist]:
+        with self.session_scope() as session:
+            return list(
+                session.execute(
+                    select(StockWatchlist)
+                    .order_by(desc(StockWatchlist.updated_at), desc(StockWatchlist.created_at))
+                ).scalars().all()
+            )
+
+    def get_stock_watchlist_item(self, stock_code: str) -> Optional[StockWatchlist]:
+        with self.session_scope() as session:
+            return session.execute(
+                select(StockWatchlist)
+                .where(StockWatchlist.stock_code == stock_code)
+                .limit(1)
+            ).scalars().first()
+
+    def delete_stock_watchlist_item(self, stock_code: str) -> bool:
+        with self.session_scope() as session:
+            result = session.execute(
+                delete(StockWatchlist).where(StockWatchlist.stock_code == stock_code)
+            )
+            return bool(result.rowcount)
+
+    def upsert_stock_alert_rule(
+        self,
+        *,
+        stock_code: str,
+        stock_name: str,
+        rule_type: str,
+        threshold_value: Optional[float] = None,
+        scan_interval_minutes: int = 5,
+        enabled: bool = True,
+        note: Optional[str] = None,
+        source_query_id: Optional[str] = None,
+    ) -> StockAlertRule:
+        normalized_scan_interval = max(5, int(scan_interval_minutes or 5))
+        now = datetime.now()
+        with self.session_scope() as session:
+            stmt = sqlite_insert(StockAlertRule).values(
+                {
+                    "stock_code": stock_code,
+                    "stock_name": stock_name,
+                    "rule_type": rule_type,
+                    "threshold_value": threshold_value,
+                    "scan_interval_minutes": normalized_scan_interval,
+                    "enabled": 1 if enabled else 0,
+                    "note": note,
+                    "source_query_id": source_query_id,
+                    "created_at": now,
+                    "updated_at": now,
+                }
+            )
+            excluded = stmt.excluded
+            session.execute(
+                stmt.on_conflict_do_update(
+                    index_elements=["stock_code", "rule_type"],
+                    set_={
+                        "stock_name": excluded.stock_name,
+                        "threshold_value": excluded.threshold_value,
+                        "scan_interval_minutes": excluded.scan_interval_minutes,
+                        "enabled": excluded.enabled,
+                        "note": func.coalesce(excluded.note, StockAlertRule.note),
+                        "source_query_id": excluded.source_query_id,
+                        "updated_at": excluded.updated_at,
+                    },
+                )
+            )
+            return session.execute(
+                select(StockAlertRule)
+                .where(
+                    and_(
+                        StockAlertRule.stock_code == stock_code,
+                        StockAlertRule.rule_type == rule_type,
+                    )
+                )
+                .limit(1)
+            ).scalars().first()
+
+    def list_stock_alert_rules(self, *, stock_code: Optional[str] = None) -> List[StockAlertRule]:
+        stmt = select(StockAlertRule)
+        if stock_code:
+            stmt = stmt.where(StockAlertRule.stock_code == stock_code)
+        stmt = stmt.order_by(desc(StockAlertRule.updated_at), desc(StockAlertRule.created_at))
+        with self.session_scope() as session:
+            return list(session.execute(stmt).scalars().all())
+
+    def get_stock_alert_rule(self, rule_id: int) -> Optional[StockAlertRule]:
+        with self.session_scope() as session:
+            return session.execute(
+                select(StockAlertRule)
+                .where(StockAlertRule.id == rule_id)
+                .limit(1)
+            ).scalars().first()
+
+    def update_stock_alert_rule(
+        self,
+        *,
+        rule_id: int,
+        threshold_value: Optional[float] = None,
+        scan_interval_minutes: Optional[int] = None,
+        enabled: Optional[bool] = None,
+        note: Optional[str] = None,
+        last_evaluated_at: Optional[datetime] = None,
+        last_triggered_at: Optional[datetime] = None,
+        last_trigger_key: Any = _UNSET,
+    ) -> Optional[StockAlertRule]:
+        with self.session_scope() as session:
+            record = session.execute(
+                select(StockAlertRule)
+                .where(StockAlertRule.id == rule_id)
+                .limit(1)
+            ).scalars().first()
+            if record is None:
+                return None
+
+            if enabled is not None:
+                record.enabled = 1 if enabled else 0
+            if threshold_value is not None or record.rule_type != "risk_event":
+                record.threshold_value = threshold_value
+            if scan_interval_minutes is not None:
+                record.scan_interval_minutes = max(5, int(scan_interval_minutes))
+            if note is not None:
+                record.note = note
+            if last_evaluated_at is not None:
+                record.last_evaluated_at = last_evaluated_at
+            if last_triggered_at is not None:
+                record.last_triggered_at = last_triggered_at
+            if last_trigger_key is not _UNSET:
+                record.last_trigger_key = last_trigger_key
+            record.updated_at = datetime.now()
+            session.flush()
+            return record
+
+    def delete_stock_alert_rule(self, rule_id: int) -> bool:
+        with self.session_scope() as session:
+            result = session.execute(
+                delete(StockAlertRule).where(StockAlertRule.id == rule_id)
+            )
+            return bool(result.rowcount)
+
+    def create_stock_alert_event(
+        self,
+        *,
+        stock_code: str,
+        stock_name: str,
+        rule_id: int,
+        rule_type: str,
+        event_type: str,
+        title: str,
+        message: str,
+        dedupe_key: Optional[str] = None,
+        payload: Optional[Dict[str, Any]] = None,
+    ) -> StockAlertEvent:
+        now = datetime.now()
+        with self.session_scope() as session:
+            record = StockAlertEvent(
+                stock_code=stock_code,
+                stock_name=stock_name,
+                rule_id=rule_id,
+                rule_type=rule_type,
+                event_type=event_type,
+                title=title,
+                message=message,
+                dedupe_key=dedupe_key,
+                payload_json=self._safe_json_dumps(payload) if payload is not None else None,
+                created_at=now,
+            )
+            session.add(record)
+            session.flush()
+            return record
+
+    def list_stock_alert_events(
+        self,
+        *,
+        limit: int = 50,
+        stock_code: Optional[str] = None,
+        unread_only: bool = False,
+    ) -> List[StockAlertEvent]:
+        stmt = select(StockAlertEvent)
+        if stock_code:
+            stmt = stmt.where(StockAlertEvent.stock_code == stock_code)
+        if unread_only:
+            stmt = stmt.where(StockAlertEvent.read_at.is_(None))
+        stmt = stmt.order_by(desc(StockAlertEvent.created_at), desc(StockAlertEvent.id)).limit(max(1, int(limit)))
+        with self.session_scope() as session:
+            return list(session.execute(stmt).scalars().all())
+
+    def mark_stock_alert_event_read(self, event_id: int) -> Optional[StockAlertEvent]:
+        with self.session_scope() as session:
+            record = session.execute(
+                select(StockAlertEvent).where(StockAlertEvent.id == event_id).limit(1)
+            ).scalars().first()
+            if record is None:
+                return None
+            if record.read_at is None:
+                record.read_at = datetime.now()
+                session.flush()
+            return record
+
+    def mark_all_stock_alert_events_read(self, *, stock_code: Optional[str] = None) -> int:
+        with self.session_scope() as session:
+            stmt = select(StockAlertEvent).where(StockAlertEvent.read_at.is_(None))
+            if stock_code:
+                stmt = stmt.where(StockAlertEvent.stock_code == stock_code)
+            records = list(session.execute(stmt).scalars().all())
+            if not records:
+                return 0
+            now = datetime.now()
+            for record in records:
+                record.read_at = now
+            session.flush()
+            return len(records)
+
 
 def get_db() -> DatabaseManager:
     return DatabaseManager.get_instance()
-

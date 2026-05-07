@@ -18,6 +18,7 @@ import logging
 import math
 from threading import RLock
 from time import monotonic
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
@@ -99,14 +100,69 @@ class TickFlowFetcher(BaseFetcher):
     def _fetch_raw_data(
         self, stock_code: str, start_date: str, end_date: str
     ) -> pd.DataFrame:
-        raise DataFetchError(
-            "TickFlowFetcher P0 only supports market review endpoints"
-        )
+        client = self._get_client()
+        if client is None:
+            raise DataFetchError("TickFlow API key 未配置")
+
+        symbol = self._to_tickflow_symbol(stock_code)
+        start_dt = pd.to_datetime(start_date)
+        end_dt = pd.to_datetime(end_date) + timedelta(days=1) - timedelta(milliseconds=1)
+        start_ms = int(start_dt.timestamp() * 1000)
+        end_ms = int(end_dt.timestamp() * 1000)
+
+        try:
+            return client.klines.get(
+                symbol,
+                period="1d",
+                start_time=start_ms,
+                end_time=end_ms,
+                adjust="forward",
+                as_dataframe=True,
+            )
+        except Exception as exc:
+            raise DataFetchError(f"TickFlow 获取 {symbol} 日K失败: {exc}") from exc
 
     def _normalize_data(self, df: pd.DataFrame, stock_code: str) -> pd.DataFrame:
-        raise DataFetchError(
-            "TickFlowFetcher P0 only supports market review endpoints"
-        )
+        if df is None or df.empty:
+            return pd.DataFrame(columns=["date", "open", "high", "low", "close", "volume", "amount", "pct_chg"])
+
+        normalized = df.copy()
+
+        if isinstance(normalized.index, pd.DatetimeIndex):
+            normalized = normalized.reset_index()
+
+        if "index" in normalized.columns and "date" not in normalized.columns:
+            normalized = normalized.rename(columns={"index": "date"})
+        if "datetime" in normalized.columns and "date" not in normalized.columns:
+            normalized = normalized.rename(columns={"datetime": "date"})
+        if "timestamp" in normalized.columns and "date" not in normalized.columns:
+            normalized["date"] = pd.to_datetime(normalized["timestamp"], unit="ms")
+
+        required = ["date", "open", "high", "low", "close", "volume", "amount"]
+        for column in required:
+            if column not in normalized.columns:
+                normalized[column] = None
+
+        normalized["pct_chg"] = pd.to_numeric(normalized["close"], errors="coerce").pct_change() * 100
+        normalized["pct_chg"] = normalized["pct_chg"].fillna(0.0)
+
+        return normalized[["date", "open", "high", "low", "close", "volume", "amount", "pct_chg"]]
+
+    @staticmethod
+    def _to_tickflow_symbol(stock_code: str) -> str:
+        raw = (stock_code or "").strip().upper()
+        if raw.endswith((".SH", ".SZ", ".BJ")):
+            return raw
+
+        normalized = normalize_stock_code(raw)
+        if normalized.isdigit() and len(normalized) == 6:
+            if normalized.startswith(("43", "83", "87", "88", "92")):
+                return f"{normalized}.BJ"
+            if normalized.startswith(("5", "6", "9")):
+                return f"{normalized}.SH"
+            return f"{normalized}.SZ"
+
+        return raw
 
     @staticmethod
     def _safe_float(value: Any) -> Optional[float]:

@@ -14,7 +14,9 @@
 3. 指数退避重试机制
 """
 
+import json
 import logging
+import os
 import random
 import time
 from threading import BoundedSemaphore, RLock, Thread
@@ -26,6 +28,11 @@ import pandas as pd
 import numpy as np
 from theme_picker.data.stock_index_loader import get_index_stock_name
 from theme_picker.data.stock_mapping import STOCK_NAME_MAP, is_meaningful_stock_name
+from theme_picker.infrastructure.persistence import (
+    get_stock_belong_boards_cache,
+    get_theme_picker_db,
+    save_stock_belong_boards_cache,
+)
 from .fundamental_adapter import AkshareFundamentalAdapter
 
 # 配置日志
@@ -34,6 +41,16 @@ logger = logging.getLogger(__name__)
 
 # === 标准化列名定义 ===
 STANDARD_COLUMNS = ['date', 'open', 'high', 'low', 'close', 'volume', 'amount', 'pct_chg']
+_PROXY_ENV_KEYS = (
+    "HTTP_PROXY",
+    "HTTPS_PROXY",
+    "ALL_PROXY",
+    "http_proxy",
+    "https_proxy",
+    "all_proxy",
+)
+_NO_PROXY_ENV_KEYS = ("NO_PROXY", "no_proxy")
+_CHIP_UNPROXY_LOCK = RLock()
 
 
 def unwrap_exception(exc: Exception) -> Exception:
@@ -61,6 +78,25 @@ def summarize_exception(exc: Exception) -> Tuple[str, str]:
     error_type = type(root).__name__
     message = str(exc).strip() or str(root).strip() or error_type
     return error_type, " ".join(message.split())
+
+
+def _disable_proxy_env_for_attempt() -> Dict[str, Optional[str]]:
+    snapshot: Dict[str, Optional[str]] = {}
+    for key in (*_PROXY_ENV_KEYS, *_NO_PROXY_ENV_KEYS):
+        snapshot[key] = os.environ.get(key)
+    for key in _PROXY_ENV_KEYS:
+        os.environ.pop(key, None)
+    os.environ["NO_PROXY"] = "*"
+    os.environ["no_proxy"] = "*"
+    return snapshot
+
+
+def _restore_proxy_env_after_attempt(snapshot: Dict[str, Optional[str]]) -> None:
+    for key, value in snapshot.items():
+        if value is None:
+            os.environ.pop(key, None)
+        else:
+            os.environ[key] = value
 
 
 def normalize_stock_code(stock_code: str) -> str:
@@ -511,6 +547,7 @@ class DataFetcherManager:
         self._fundamental_cache_lock = RLock()
         self._fundamental_timeout_worker_limit = 8
         self._fundamental_timeout_slots = BoundedSemaphore(self._fundamental_timeout_worker_limit)
+        self._theme_picker_db = None
 
     def _ensure_concurrency_guards(self) -> None:
         """Lazily initialize thread-safety primitives for test scaffolds using __new__."""
@@ -529,6 +566,11 @@ class DataFetcherManager:
         self._ensure_concurrency_guards()
         with self._fetchers_lock:
             return list(getattr(self, "_fetchers", []))
+
+    def _get_theme_picker_db(self):
+        if self._theme_picker_db is None:
+            self._theme_picker_db = get_theme_picker_db()
+        return self._theme_picker_db
 
     def _get_fetcher_call_lock(self, fetcher: BaseFetcher) -> RLock:
         self._ensure_concurrency_guards()
@@ -1401,13 +1443,26 @@ class DataFetcherManager:
             return None
 
         circuit_breaker = get_chip_circuit_breaker()
+        source_priority = [
+            item.strip().lower()
+            for item in str(getattr(config, "chip_distribution_source_priority", "akshare") or "akshare").split(",")
+            if item.strip()
+        ]
+        fetchers_by_name = {fetcher.name: fetcher for fetcher in self._get_fetchers_snapshot()}
+        route_map = {
+            "akshare": "AkshareFetcher",
+            "tushare": "TushareFetcher",
+        }
 
-        # 直接遍历管理器已经按 priority 排好序的数据源列表
-        for fetcher in self._get_fetchers_snapshot():
-            # 只处理实现了筹码分布逻辑的数据源
-            if not hasattr(fetcher, 'get_chip_distribution'):
+        for source in source_priority:
+            fetcher_name = route_map.get(source)
+            if not fetcher_name:
+                logger.debug("[筹码分布] 忽略未知数据源配置: %s", source)
                 continue
-            
+            fetcher = fetchers_by_name.get(fetcher_name)
+            if fetcher is None or not hasattr(fetcher, "get_chip_distribution"):
+                continue
+
             fetcher_name = fetcher.name
             # 动态生成熔断器的 key，例如 "TushareFetcher" -> "tushare_chip"
             source_key = f"{fetcher_name.replace('Fetcher', '').lower()}_chip"
@@ -1418,7 +1473,15 @@ class DataFetcherManager:
                 continue
 
             try:
-                chip = self._call_fetcher_method(fetcher, 'get_chip_distribution', stock_code)
+                if fetcher_name == "AkshareFetcher":
+                    with _CHIP_UNPROXY_LOCK:
+                        env_snapshot = _disable_proxy_env_for_attempt()
+                        try:
+                            chip = self._call_fetcher_method(fetcher, 'get_chip_distribution', stock_code)
+                        finally:
+                            _restore_proxy_env_after_attempt(env_snapshot)
+                else:
+                    chip = self._call_fetcher_method(fetcher, 'get_chip_distribution', stock_code)
                 if chip is not None:
                     circuit_breaker.record_success(source_key)
                     logger.info(f"[筹码分布] {stock_code} 成功获取 (来源: {fetcher_name})")
@@ -1524,6 +1587,61 @@ class DataFetcherManager:
                 logger.debug(f"[{fetcher.name}] 获取所属板块失败: {e}")
                 continue
         return []
+
+    def get_belong_boards_with_source(self, stock_code: str) -> Tuple[List[Dict[str, Any]], Optional[str]]:
+        stock_code = normalize_stock_code(stock_code)
+        if _market_tag(stock_code) != "cn":
+            return [], None
+
+        for fetcher in self._fetchers:
+            if not hasattr(fetcher, "get_belong_board"):
+                continue
+            try:
+                raw_data = fetcher.get_belong_board(stock_code)
+                boards = self._normalize_belong_boards(raw_data)
+                if boards:
+                    logger.info(f"[{fetcher.name}] 获取所属板块成功: {stock_code}, count={len(boards)}")
+                    return boards, fetcher.name
+            except Exception as e:
+                logger.debug(f"[{fetcher.name}] 获取所属板块失败: {e}")
+                continue
+        return [], None
+
+    def load_cached_belong_boards(self, stock_code: str, *, ttl_seconds: Optional[int] = None) -> Tuple[List[Dict[str, Any]], Optional[str]]:
+        stock_code = normalize_stock_code(stock_code)
+        ttl = int(ttl_seconds if ttl_seconds is not None else self._get_fundamental_config().theme_board_cache_ttl_seconds)
+        if ttl <= 0:
+            return [], None
+        try:
+            record = get_stock_belong_boards_cache(self._get_theme_picker_db(), stock_code)
+        except Exception as exc:
+            logger.debug("读取所属板块缓存失败: code=%s error=%s", stock_code, exc)
+            return [], None
+        if record is None or not getattr(record, "boards_payload", None):
+            return [], None
+        updated_at = getattr(record, "updated_at", None)
+        if updated_at is None or (datetime.now() - updated_at).total_seconds() > ttl:
+            return [], None
+        try:
+            boards = json.loads(record.boards_payload)
+        except Exception:
+            boards = None
+        normalized = self._normalize_belong_boards(boards)
+        if not normalized:
+            return [], None
+        return normalized, str(getattr(record, "source", None) or "cache")
+
+    def save_cached_belong_boards(self, stock_code: str, boards: List[Dict[str, Any]], *, source: Optional[str] = None) -> None:
+        stock_code = normalize_stock_code(stock_code)
+        try:
+            save_stock_belong_boards_cache(
+                self._get_theme_picker_db(),
+                stock_code=stock_code,
+                boards=boards,
+                source=source,
+            )
+        except Exception as exc:
+            logger.debug("写入所属板块缓存失败: code=%s error=%s", stock_code, exc)
 
     def prefetch_stock_names(self, stock_codes: List[str], use_bulk: bool = False) -> None:
         """
@@ -1959,7 +2077,8 @@ class DataFetcherManager:
     def get_fundamental_context(
         self,
         stock_code: str,
-        budget_seconds: Optional[float] = None
+        budget_seconds: Optional[float] = None,
+        quote_payload: Optional[Any] = None,
     ) -> Dict[str, Any]:
         """
         Aggregate fundamental blocks with fail-open semantics.
@@ -2022,26 +2141,40 @@ class DataFetcherManager:
             nonlocal remaining_seconds
             remaining_seconds = max(0.0, remaining_seconds - consumed_ms / 1000.0)
 
-        valuation_timeout = min(fetch_timeout, remaining_seconds)
-        if valuation_timeout > 0:
-            quote_payload, valuation_err, valuation_ms = self._run_with_retry(
-                lambda: self.get_realtime_quote(stock_code),
-                valuation_timeout,
-                "fundamental_valuation",
-            )
-            _consume_budget(valuation_ms)
+        quote_for_valuation = quote_payload
+        preloaded_valuation_payload = {
+            "pe_ratio": getattr(quote_for_valuation, "pe_ratio", None) if quote_for_valuation else None,
+            "pb_ratio": getattr(quote_for_valuation, "pb_ratio", None) if quote_for_valuation else None,
+            "total_mv": getattr(quote_for_valuation, "total_mv", None) if quote_for_valuation else None,
+            "circ_mv": getattr(quote_for_valuation, "circ_mv", None) if quote_for_valuation else None,
+        }
+        quote_source = getattr(getattr(quote_for_valuation, "source", None), "value", None)
+
+        if self._has_meaningful_payload(preloaded_valuation_payload):
+            valuation_err, valuation_ms = None, 0
+            valuation_provider = quote_source or "realtime_quote"
         else:
-            quote_payload, valuation_err, valuation_ms = None, "fundamental stage timeout", 0
+            valuation_timeout = min(fetch_timeout, remaining_seconds)
+            if valuation_timeout > 0:
+                quote_for_valuation, valuation_err, valuation_ms = self._run_with_retry(
+                    lambda: self.get_realtime_quote(stock_code),
+                    valuation_timeout,
+                    "fundamental_valuation",
+                )
+                _consume_budget(valuation_ms)
+            else:
+                quote_for_valuation, valuation_err, valuation_ms = None, "fundamental stage timeout", 0
+            valuation_provider = "realtime_quote"
 
         valuation_payload = {
-            "pe_ratio": getattr(quote_payload, "pe_ratio", None) if quote_payload else None,
-            "pb_ratio": getattr(quote_payload, "pb_ratio", None) if quote_payload else None,
-            "total_mv": getattr(quote_payload, "total_mv", None) if quote_payload else None,
-            "circ_mv": getattr(quote_payload, "circ_mv", None) if quote_payload else None,
+            "pe_ratio": getattr(quote_for_valuation, "pe_ratio", None) if quote_for_valuation else None,
+            "pb_ratio": getattr(quote_for_valuation, "pb_ratio", None) if quote_for_valuation else None,
+            "total_mv": getattr(quote_for_valuation, "total_mv", None) if quote_for_valuation else None,
+            "circ_mv": getattr(quote_for_valuation, "circ_mv", None) if quote_for_valuation else None,
         }
         valuation_status = self._infer_block_status(
             valuation_payload,
-            "partial" if quote_payload is not None else "not_supported",
+            "partial" if quote_for_valuation is not None else "not_supported",
         )
         if valuation_status == "partial" and valuation_err and not self._has_meaningful_payload(valuation_payload):
             valuation_status = "failed"
@@ -2049,131 +2182,33 @@ class DataFetcherManager:
             valuation_status,
             valuation_payload,
             self._normalize_source_chain(
-                [{"provider": "realtime_quote", "result": valuation_status, "duration_ms": valuation_ms}],
-                "realtime_quote",
+                [{"provider": valuation_provider, "result": valuation_status, "duration_ms": valuation_ms}],
+                valuation_provider,
                 valuation_status,
                 valuation_ms,
             ),
             [valuation_err] if valuation_err else [],
         )
 
-        # growth / earnings / institution (one AkShare call)
-        if remaining_seconds <= 0:
-            bundle_status = "failed"
-            bundle_payload: Dict[str, Any] = {}
-            bundle_errors = ["fundamental stage timeout"]
-            bundle_ms = 0
-        else:
-            bundle_timeout = min(fetch_timeout, remaining_seconds)
-            bundle_payload, bundle_err_msg, bundle_ms = self._run_with_retry(
-                lambda: self._fundamental_adapter.get_fundamental_bundle(stock_code),
-                bundle_timeout,
-                "fundamental_bundle",
-            )
-            _consume_budget(bundle_ms)
-            if not isinstance(bundle_payload, dict):
-                bundle_status = "failed"
-                bundle_payload = {}
-                bundle_errors = ["fundamental_bundle failed"]
-                if bundle_err_msg:
-                    bundle_errors.append(bundle_err_msg)
-            else:
-                bundle_status = str(bundle_payload.get("status", "not_supported"))
-                bundle_errors = [bundle_err_msg] if bundle_err_msg else []
-
-        bundle_chain = self._normalize_source_chain(
-            bundle_payload.get("source_chain", []),
-            "fundamental_bundle",
-            bundle_status,
-            bundle_ms,
-        ) if isinstance(bundle_payload, dict) else self._normalize_source_chain(
-            None,
-            "fundamental_bundle",
-            bundle_status,
-            bundle_ms,
-        )
-        growth_payload = bundle_payload.get("growth", {}) if isinstance(bundle_payload, dict) else {}
-        earnings_payload = bundle_payload.get("earnings", {}) if isinstance(bundle_payload, dict) else {}
-        institution_payload = bundle_payload.get("institution", {}) if isinstance(bundle_payload, dict) else {}
-        if not isinstance(growth_payload, dict):
-            growth_payload = {}
-        else:
-            growth_payload = dict(growth_payload)
-        if not isinstance(earnings_payload, dict):
-            earnings_payload = {}
-        else:
-            earnings_payload = dict(earnings_payload)
-        if not isinstance(institution_payload, dict):
-            institution_payload = {}
-        else:
-            institution_payload = dict(institution_payload)
-
-        # Derive TTM dividend yield from already-fetched quote price; avoid extra quote calls.
-        earnings_extra_errors: List[str] = []
-        dividend_payload = earnings_payload.get("dividend")
-        if isinstance(dividend_payload, dict):
-            dividend_payload = dict(dividend_payload)
-            ttm_cash_raw = dividend_payload.get("ttm_cash_dividend_per_share")
-            ttm_cash = None
-            if ttm_cash_raw is not None:
-                try:
-                    ttm_cash = float(ttm_cash_raw)
-                except (TypeError, ValueError):
-                    earnings_extra_errors.append("invalid_ttm_cash_dividend_per_share")
-            if isinstance(quote_payload, dict):
-                latest_price_raw = quote_payload.get("price")
-            else:
-                latest_price_raw = getattr(quote_payload, "price", None) if quote_payload else None
-            latest_price = None
-            if latest_price_raw is not None:
-                try:
-                    latest_price = float(latest_price_raw)
-                except (TypeError, ValueError):
-                    latest_price = None
-            ttm_yield = None
-            if ttm_cash is not None:
-                if latest_price is not None and latest_price > 0:
-                    ttm_yield = round(ttm_cash / latest_price * 100.0, 4)
-                else:
-                    earnings_extra_errors.append("invalid_price_for_ttm_dividend_yield")
-
-            dividend_payload["ttm_dividend_yield_pct"] = ttm_yield
-            if ttm_yield is not None:
-                dividend_payload["yield_formula"] = "ttm_cash_dividend_per_share / latest_price * 100"
-            earnings_payload["dividend"] = dividend_payload
-
-        adapter_errors = list(bundle_payload.get("errors", [])) if isinstance(bundle_payload, dict) else []
-        adapter_errors.extend(bundle_errors)
-        growth_errors = list(adapter_errors)
-        earnings_errors = list(adapter_errors)
-        earnings_errors.extend(earnings_extra_errors)
-        institution_errors = list(adapter_errors)
-
-        growth_status = self._infer_block_status(growth_payload, bundle_status)
-        earnings_status = self._infer_block_status(earnings_payload, bundle_status)
-        institution_status = self._infer_block_status(institution_payload, bundle_status)
-
-        result_ctx["growth"] = self._build_fundamental_block(
-            growth_status,
-            growth_payload,
-            bundle_chain,
-            growth_errors,
-        )
-        result_ctx["earnings"] = self._build_fundamental_block(
-            earnings_status,
-            earnings_payload,
-            bundle_chain,
-            earnings_errors,
-        )
-        result_ctx["institution"] = self._build_fundamental_block(
-            institution_status,
-            institution_payload,
-            bundle_chain,
-            institution_errors,
-        )
-
-        # capital flow
         if is_etf:
+            result_ctx["growth"] = self._build_fundamental_block(
+                "not_supported",
+                {},
+                [{"provider": "fundamental_pipeline", "result": "not_supported", "duration_ms": 0}],
+                ["etf not fully supported"],
+            )
+            result_ctx["earnings"] = self._build_fundamental_block(
+                "not_supported",
+                {},
+                [{"provider": "fundamental_pipeline", "result": "not_supported", "duration_ms": 0}],
+                ["etf not fully supported"],
+            )
+            result_ctx["institution"] = self._build_fundamental_block(
+                "not_supported",
+                {},
+                [{"provider": "fundamental_pipeline", "result": "not_supported", "duration_ms": 0}],
+                ["etf not fully supported"],
+            )
             result_ctx["capital_flow"] = self._build_fundamental_block(
                 "not_supported",
                 {},
@@ -2194,6 +2229,14 @@ class DataFetcherManager:
             )
             result_ctx["status"] = "partial"
         else:
+            boards_budget = min(max(fetch_timeout, 2.0), remaining_seconds)
+            boards_start = time.time()
+            result_ctx["boards"] = self.get_board_context(
+                stock_code,
+                budget_seconds=boards_budget,
+            )
+            _consume_budget(int((time.time() - boards_start) * 1000))
+
             capital_flow_budget = min(fetch_timeout, remaining_seconds)
             capital_flow_start = time.time()
             result_ctx["capital_flow"] = self.get_capital_flow_context(
@@ -2210,10 +2253,30 @@ class DataFetcherManager:
             )
             _consume_budget(int((time.time() - dragon_tiger_start) * 1000))
 
-            result_ctx["boards"] = self.get_board_context(
+            growth_budget = min(fetch_timeout, remaining_seconds)
+            growth_start = time.time()
+            result_ctx["growth"] = self.get_growth_context(
                 stock_code,
-                budget_seconds=min(fetch_timeout, remaining_seconds),
+                budget_seconds=growth_budget,
             )
+            _consume_budget(int((time.time() - growth_start) * 1000))
+
+            earnings_budget = min(fetch_timeout, remaining_seconds)
+            earnings_start = time.time()
+            result_ctx["earnings"] = self.get_earnings_context(
+                stock_code,
+                budget_seconds=earnings_budget,
+                quote_payload=quote_for_valuation,
+            )
+            _consume_budget(int((time.time() - earnings_start) * 1000))
+
+            institution_budget = min(fetch_timeout, remaining_seconds)
+            institution_start = time.time()
+            result_ctx["institution"] = self.get_institution_context(
+                stock_code,
+                budget_seconds=institution_budget,
+            )
+            _consume_budget(int((time.time() - institution_start) * 1000))
 
         block_statuses = {
             "valuation": result_ctx["valuation"].get("status", "not_supported"),
@@ -2258,6 +2321,185 @@ class DataFetcherManager:
                 }
             self._prune_fundamental_cache(cache_ttl, cache_max_entries)
         return result_ctx
+
+    def get_growth_context(self, stock_code: str, budget_seconds: Optional[float] = None) -> Dict[str, Any]:
+        from theme_picker.config import get_config
+
+        config = get_config()
+        stock_code = normalize_stock_code(stock_code)
+        timeout = float(budget_seconds if budget_seconds is not None else config.fundamental_fetch_timeout_seconds)
+        if _market_tag(stock_code) != "cn" or _is_etf_code(stock_code):
+            return self._build_fundamental_block(
+                "not_supported",
+                {},
+                [{"provider": "fundamental_pipeline", "result": "not_supported", "duration_ms": 0}],
+                ["not supported"],
+            )
+        if timeout <= 0:
+            return self._build_fundamental_block(
+                "failed",
+                {},
+                [{"provider": "fundamental_pipeline", "result": "failed", "duration_ms": 0}],
+                ["fundamental stage timeout"],
+            )
+
+        payload, err, cost_ms = self._run_with_retry(
+            lambda: self._fundamental_adapter.get_growth_snapshot(stock_code),
+            timeout,
+            "growth",
+        )
+        if not isinstance(payload, dict):
+            return self._build_fundamental_block(
+                "failed",
+                {},
+                [{"provider": "growth", "result": "failed", "duration_ms": cost_ms}],
+                [err or "growth failed"],
+            )
+
+        growth_payload = payload.get("growth", {}) if isinstance(payload.get("growth"), dict) else {}
+        growth_status = self._infer_block_status(growth_payload, str(payload.get("status", "not_supported")))
+        return self._build_fundamental_block(
+            growth_status,
+            growth_payload,
+            self._normalize_source_chain(payload.get("source_chain", []), "growth", growth_status, cost_ms),
+            list(payload.get("errors", [])) + ([err] if err else []),
+        )
+
+    def get_earnings_context(
+        self,
+        stock_code: str,
+        budget_seconds: Optional[float] = None,
+        quote_payload: Optional[Any] = None,
+    ) -> Dict[str, Any]:
+        from theme_picker.config import get_config
+
+        config = get_config()
+        stock_code = normalize_stock_code(stock_code)
+        timeout = float(budget_seconds if budget_seconds is not None else config.fundamental_fetch_timeout_seconds)
+        if _market_tag(stock_code) != "cn" or _is_etf_code(stock_code):
+            return self._build_fundamental_block(
+                "not_supported",
+                {},
+                [{"provider": "fundamental_pipeline", "result": "not_supported", "duration_ms": 0}],
+                ["not supported"],
+            )
+        if timeout <= 0:
+            return self._build_fundamental_block(
+                "failed",
+                {},
+                [{"provider": "fundamental_pipeline", "result": "failed", "duration_ms": 0}],
+                ["fundamental stage timeout"],
+            )
+
+        payload, err, cost_ms = self._run_with_retry(
+            lambda: self._fundamental_adapter.get_earnings_snapshot(stock_code),
+            timeout,
+            "earnings",
+        )
+        if not isinstance(payload, dict):
+            return self._build_fundamental_block(
+                "failed",
+                {},
+                [{"provider": "earnings", "result": "failed", "duration_ms": cost_ms}],
+                [err or "earnings failed"],
+            )
+
+        earnings_payload = payload.get("earnings", {}) if isinstance(payload.get("earnings"), dict) else {}
+        earnings_payload = dict(earnings_payload)
+        earnings_extra_errors: List[str] = []
+        dividend_payload = earnings_payload.get("dividend")
+        if isinstance(dividend_payload, dict):
+            dividend_payload = dict(dividend_payload)
+            ttm_cash_raw = dividend_payload.get("ttm_cash_dividend_per_share")
+            ttm_cash = None
+            if ttm_cash_raw is not None:
+                try:
+                    ttm_cash = float(ttm_cash_raw)
+                except (TypeError, ValueError):
+                    earnings_extra_errors.append("invalid_ttm_cash_dividend_per_share")
+            if isinstance(quote_payload, dict):
+                latest_price_raw = quote_payload.get("price")
+            else:
+                latest_price_raw = getattr(quote_payload, "price", None) if quote_payload else None
+            latest_price = None
+            if latest_price_raw is not None:
+                try:
+                    latest_price = float(latest_price_raw)
+                except (TypeError, ValueError):
+                    latest_price = None
+            ttm_yield = None
+            if ttm_cash is not None:
+                if latest_price is not None and latest_price > 0:
+                    ttm_yield = round(ttm_cash / latest_price * 100.0, 4)
+                else:
+                    earnings_extra_errors.append("invalid_price_for_ttm_dividend_yield")
+            dividend_payload["ttm_dividend_yield_pct"] = ttm_yield
+            if ttm_yield is not None:
+                dividend_payload["yield_formula"] = "ttm_cash_dividend_per_share / latest_price * 100"
+            earnings_payload["dividend"] = dividend_payload
+
+        earnings_status = self._infer_block_status(earnings_payload, str(payload.get("status", "not_supported")))
+        errors = list(payload.get("errors", []))
+        errors.extend(earnings_extra_errors)
+        if err:
+            errors.append(err)
+        return self._build_fundamental_block(
+            earnings_status,
+            earnings_payload,
+            self._normalize_source_chain(payload.get("source_chain", []), "earnings", earnings_status, cost_ms),
+            errors,
+        )
+
+    def get_institution_context(self, stock_code: str, budget_seconds: Optional[float] = None) -> Dict[str, Any]:
+        from theme_picker.config import get_config
+
+        config = get_config()
+        stock_code = normalize_stock_code(stock_code)
+        timeout = float(budget_seconds if budget_seconds is not None else config.fundamental_fetch_timeout_seconds)
+        if _market_tag(stock_code) != "cn" or _is_etf_code(stock_code):
+            return self._build_fundamental_block(
+                "not_supported",
+                {},
+                [{"provider": "fundamental_pipeline", "result": "not_supported", "duration_ms": 0}],
+                ["not supported"],
+            )
+        if timeout <= 0:
+            return self._build_fundamental_block(
+                "failed",
+                {},
+                [{"provider": "fundamental_pipeline", "result": "failed", "duration_ms": 0}],
+                ["fundamental stage timeout"],
+            )
+
+        payload, err, cost_ms = self._run_with_retry(
+            lambda: self._fundamental_adapter.get_institution_snapshot(stock_code),
+            timeout,
+            "institution",
+        )
+        if not isinstance(payload, dict):
+            return self._build_fundamental_block(
+                "failed",
+                {},
+                [{"provider": "institution", "result": "failed", "duration_ms": cost_ms}],
+                [err or "institution failed"],
+            )
+
+        institution_payload = payload.get("institution", {}) if isinstance(payload.get("institution"), dict) else {}
+        institution_status = self._infer_block_status(
+            institution_payload,
+            str(payload.get("status", "not_supported")),
+        )
+        return self._build_fundamental_block(
+            institution_status,
+            institution_payload,
+            self._normalize_source_chain(
+                payload.get("source_chain", []),
+                "institution",
+                institution_status,
+                cost_ms,
+            ),
+            list(payload.get("errors", [])) + ([err] if err else []),
+        )
 
     def get_capital_flow_context(self, stock_code: str, budget_seconds: Optional[float] = None) -> Dict[str, Any]:
         """资金流向块（fail-open）。"""
@@ -2374,7 +2616,7 @@ class DataFetcherManager:
         )
 
     def get_board_context(self, stock_code: str, budget_seconds: Optional[float] = None) -> Dict[str, Any]:
-        """板块榜单块（fail-open）。"""
+        """所属板块块（fail-open）。"""
         from theme_picker.config import get_config
 
         config = get_config()
@@ -2396,38 +2638,42 @@ class DataFetcherManager:
                 ["fundamental stage timeout"],
             )
 
-        def task() -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]], str]:
-            return self._get_sector_rankings_with_meta(5)
-
-        rankings, err, cost_ms = self._run_with_retry(task, timeout, "boards")
-        if isinstance(rankings, tuple) and len(rankings) == 4:
-            top, bottom, chain, chain_error = rankings
-            if chain_error and not err:
-                err = chain_error
-            if not top and not bottom:
-                return self._build_fundamental_block(
-                    "failed",
-                    {},
-                    chain if chain else [{"provider": "sector_rankings", "result": "failed", "duration_ms": cost_ms}],
-                    [err or "boards empty from all sources"],
-                )
-            board_status = "ok" if top and bottom else "partial"
+        start = time.time()
+        err: Optional[str] = None
+        source = "online"
+        try:
+            boards, fetcher_name = self.get_belong_boards_with_source(stock_code)
+            if fetcher_name:
+                source = fetcher_name
+        except Exception as exc:
+            boards = []
+            err = str(exc)
+        cost_ms = int((time.time() - start) * 1000)
+        if boards:
+            self.save_cached_belong_boards(stock_code, boards, source=source)
             return self._build_fundamental_block(
-                board_status,
-                {"top": top or [], "bottom": bottom or []},
-                chain if chain else self._normalize_source_chain(
-                    ["sector_rankings"],
-                    "boards",
-                    board_status,
-                    cost_ms,
-                ),
+                "ok",
+                {"items": boards, "source": "online", "provider": source},
+                self._normalize_source_chain([source], "boards", "ok", cost_ms),
                 [err] if err else [],
             )
 
+        cached_boards, cached_source = self.load_cached_belong_boards(stock_code)
+        if cached_boards:
+            return self._build_fundamental_block(
+                "partial",
+                {
+                    "items": cached_boards,
+                    "source": "cache",
+                    "provider": cached_source or "cache",
+                },
+                self._normalize_source_chain([cached_source or "cache"], "boards", "partial", cost_ms),
+                [err] if err else [],
+            )
         return self._build_fundamental_block(
             "failed",
             {},
-            [{"provider": "sector_rankings", "result": "failed", "duration_ms": cost_ms}],
+            [{"provider": "belong_boards", "result": "failed", "duration_ms": cost_ms}],
             [err or "boards failed"],
         )
 

@@ -717,6 +717,8 @@ class Config:
     agent_event_monitor_enabled: bool = False  # Enable periodic event-driven alert checks in schedule mode
     agent_event_monitor_interval_minutes: int = 5  # Polling interval for event monitor background checks
     agent_event_alert_rules_json: str = ""  # JSON array of serialized EventMonitor rules
+    stock_alert_loop_enabled: bool = False  # Enable in-process stock alert background loop
+    stock_alert_loop_base_tick_seconds: int = 60  # Base polling tick for stock alert loop
 
     # === 通知配置（可同时配置多个，全部推送）===
     
@@ -858,6 +860,20 @@ class Config:
     enable_realtime_technical_indicators: bool = True
     # 筹码分布开关（该接口不稳定，云端部署建议关闭）
     enable_chip_distribution: bool = True
+    # 筹码分布数据源优先级（逗号分隔）；当前支持 akshare / tushare
+    chip_distribution_source_priority: str = "akshare"
+    # 单股查询中单个日线数据源的最大等待时间（秒）；超时后切换到下一个候选源
+    stock_query_daily_fetch_timeout_seconds: float = 8.0
+    # 单股查询是否在日线在线抓取时临时禁用代理，避免本机代理误伤国内数据源
+    stock_query_daily_unproxy_enabled: bool = True
+    # 单股查询在线日线全部失败后，是否允许退回本地缓存
+    stock_query_allow_daily_cache_fallback: bool = True
+    # 单股查询中筹码分布的最大等待时间（秒）；超时后直接降级，不阻塞首屏
+    stock_query_chip_timeout_seconds: float = 2.5
+    # 单股查询中文本情报补充的最大等待时间（秒）；超时后直接降级，不阻塞主结果
+    stock_query_text_timeout_seconds: float = 2.0
+    # 单股查询中新闻摘要补充的最大等待时间（秒）；超时后直接降级，不阻塞主结果
+    stock_query_news_timeout_seconds: float = 1.8
     # 东财接口补丁开关
     enable_eastmoney_patch: bool = False
     # 实时行情数据源优先级（逗号分隔）
@@ -890,9 +906,9 @@ class Config:
     # 全局总开关；关闭时返回 not_supported 并保持主流程无变化
     enable_fundamental_pipeline: bool = True
     # 基本面阶段总预算（秒）
-    fundamental_stage_timeout_seconds: float = 1.5
+    fundamental_stage_timeout_seconds: float = 2.5
     # 单能力源调用超时（秒）
-    fundamental_fetch_timeout_seconds: float = 0.8
+    fundamental_fetch_timeout_seconds: float = 1.2
     # 单能力失败重试次数（已包含首次）
     fundamental_retry_max: int = 1
     # 基本面上下文短 TTL（秒）
@@ -1430,6 +1446,13 @@ class Config:
                 minimum=1,
             ),
             agent_event_alert_rules_json=os.getenv('AGENT_EVENT_ALERT_RULES_JSON', ''),
+            stock_alert_loop_enabled=os.getenv('STOCK_ALERT_LOOP_ENABLED', 'false').lower() == 'true',
+            stock_alert_loop_base_tick_seconds=parse_env_int(
+                os.getenv('STOCK_ALERT_LOOP_BASE_TICK_SECONDS'),
+                60,
+                field_name='STOCK_ALERT_LOOP_BASE_TICK_SECONDS',
+                minimum=5,
+            ),
             wechat_webhook_url=os.getenv('WECHAT_WEBHOOK_URL'),
             feishu_webhook_url=os.getenv('FEISHU_WEBHOOK_URL'),
             feishu_webhook_secret=os.getenv('FEISHU_WEBHOOK_SECRET'),
@@ -1574,6 +1597,42 @@ class Config:
                 'ENABLE_REALTIME_TECHNICAL_INDICATORS', 'true'
             ).lower() == 'true',
             enable_chip_distribution=os.getenv('ENABLE_CHIP_DISTRIBUTION', 'true').lower() == 'true',
+            chip_distribution_source_priority=os.getenv(
+                'CHIP_DISTRIBUTION_SOURCE_PRIORITY',
+                'akshare',
+            ),
+            stock_query_daily_fetch_timeout_seconds=parse_env_float(
+                os.getenv('STOCK_QUERY_DAILY_FETCH_TIMEOUT_SECONDS'),
+                8.0,
+                field_name='STOCK_QUERY_DAILY_FETCH_TIMEOUT_SECONDS',
+                minimum=0.0,
+            ),
+            stock_query_daily_unproxy_enabled=parse_env_bool(
+                os.getenv('STOCK_QUERY_DAILY_UNPROXY_ENABLED'),
+                True,
+            ),
+            stock_query_allow_daily_cache_fallback=parse_env_bool(
+                os.getenv('STOCK_QUERY_ALLOW_DAILY_CACHE_FALLBACK'),
+                True,
+            ),
+            stock_query_chip_timeout_seconds=parse_env_float(
+                os.getenv('STOCK_QUERY_CHIP_TIMEOUT_SECONDS'),
+                2.5,
+                field_name='STOCK_QUERY_CHIP_TIMEOUT_SECONDS',
+                minimum=0.0,
+            ),
+            stock_query_text_timeout_seconds=parse_env_float(
+                os.getenv('STOCK_QUERY_TEXT_TIMEOUT_SECONDS'),
+                2.0,
+                field_name='STOCK_QUERY_TEXT_TIMEOUT_SECONDS',
+                minimum=0.0,
+            ),
+            stock_query_news_timeout_seconds=parse_env_float(
+                os.getenv('STOCK_QUERY_NEWS_TIMEOUT_SECONDS'),
+                1.8,
+                field_name='STOCK_QUERY_NEWS_TIMEOUT_SECONDS',
+                minimum=0.0,
+            ),
             # 东财接口补丁开关
             enable_eastmoney_patch=os.getenv('ENABLE_EASTMONEY_PATCH', 'false').lower() == 'true',
             # 实时行情数据源优先级：

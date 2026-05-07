@@ -1,0 +1,654 @@
+import type React from 'react';
+import { useEffect, useEffectEvent, useMemo, useState } from 'react';
+import { Activity, Bell, CheckCheck, Layers3, RefreshCw, SquarePen, Star, Trash2, TrendingUp } from 'lucide-react';
+import { createParsedApiError, getParsedApiError, type ParsedApiError } from '../api/error';
+import { watchlistApi, type StockAlertEventItem, type StockAlertLoopStatus, type StockAlertRuleItem, type StockWatchlistItem } from '../api/watchlist';
+import { ApiErrorAlert, AppPage, Badge, Button, Card, EmptyState, InlineAlert, Input } from '../components/common';
+
+const DEFAULT_GROUP = '核心跟踪';
+
+function signalVariant(signal?: string | null): 'warning' | 'danger' | 'info' | 'default' {
+  if (signal === '持有候选') return 'warning';
+  if (signal === '短线异动') return 'danger';
+  if (signal === '低吸观察') return 'info';
+  return 'default';
+}
+
+function formatDateTime(value?: string | null): string {
+  if (!value) return '--';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(date);
+}
+
+function alertRuleLabel(value: string): string {
+  if (value === 'support_retest') return '接近支撑位';
+  if (value === 'breakout_confirm') return '突破确认位';
+  if (value === 'risk_event') return '明确风险事件';
+  return value;
+}
+
+function alertEventVariant(ruleType: string, readAt?: string | null): 'warning' | 'danger' | 'info' | 'history' {
+  if (readAt) return 'history';
+  if (ruleType === 'risk_event') return 'danger';
+  if (ruleType === 'breakout_confirm') return 'warning';
+  return 'info';
+}
+
+function formatThreshold(value?: number | null): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) return '--';
+  return value.toFixed(2);
+}
+
+const WatchlistPage: React.FC = () => {
+  const [items, setItems] = useState<StockWatchlistItem[]>([]);
+  const [alertRules, setAlertRules] = useState<StockAlertRuleItem[]>([]);
+  const [alertEvents, setAlertEvents] = useState<StockAlertEventItem[]>([]);
+  const [alertLoopStatus, setAlertLoopStatus] = useState<StockAlertLoopStatus | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<ParsedApiError | null>(null);
+  const [actionError, setActionError] = useState<ParsedApiError | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const [deletingCode, setDeletingCode] = useState<string | null>(null);
+  const [deletingRuleId, setDeletingRuleId] = useState<number | null>(null);
+  const [editingRuleId, setEditingRuleId] = useState<number | null>(null);
+  const [editingThreshold, setEditingThreshold] = useState('');
+  const [editingScanInterval, setEditingScanInterval] = useState('5');
+  const [editingNote, setEditingNote] = useState('');
+  const [savingRuleId, setSavingRuleId] = useState<number | null>(null);
+  const [readingEventId, setReadingEventId] = useState<number | null>(null);
+  const [markingAllRead, setMarkingAllRead] = useState(false);
+  const [runningScan, setRunningScan] = useState(false);
+
+  const loadWatchlist = useEffectEvent(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const [stockResponse, ruleResponse, eventResponse, loopStatusResponse] = await Promise.all([
+        watchlistApi.listStocks(),
+        watchlistApi.listStockAlertRules(),
+        watchlistApi.listStockAlertEvents({ limit: 20 }),
+        watchlistApi.getStockAlertLoopStatus(),
+      ]);
+      setItems(stockResponse.items);
+      setAlertRules(ruleResponse.items);
+      setAlertEvents(eventResponse.items);
+      setAlertLoopStatus(loopStatusResponse);
+    } catch (requestError) {
+      setError(getParsedApiError(requestError));
+    } finally {
+      setLoading(false);
+    }
+  });
+
+  useEffect(() => {
+    void loadWatchlist();
+  }, []);
+
+  const handleDelete = useEffectEvent(async (stockCode: string) => {
+    setDeletingCode(stockCode);
+    setActionError(null);
+    setMessage(null);
+    try {
+      await watchlistApi.deleteStock(stockCode);
+      setItems((prev) => prev.filter((item) => item.stockCode !== stockCode));
+      setMessage(`${stockCode} 已从观察池移除`);
+    } catch (requestError) {
+      setActionError(getParsedApiError(requestError));
+    } finally {
+      setDeletingCode(null);
+    }
+  });
+
+  const groups = useMemo(() => {
+    const values = new Set<string>();
+    values.add(DEFAULT_GROUP);
+    items.forEach((item) => {
+      if (item.groupName?.trim()) {
+        values.add(item.groupName.trim());
+      }
+    });
+    return Array.from(values);
+  }, [items]);
+
+  const alertEnabledCount = useMemo(() => items.filter((item) => item.alertEnabled).length, [items]);
+  const unreadEventCount = useMemo(() => alertEvents.filter((event) => !event.readAt).length, [alertEvents]);
+
+  const handleDeleteAlertRule = useEffectEvent(async (ruleId: number) => {
+    setDeletingRuleId(ruleId);
+    setActionError(null);
+    setMessage(null);
+    try {
+      await watchlistApi.deleteStockAlertRule(ruleId);
+      setAlertRules((prev) => prev.filter((item) => item.id !== ruleId));
+      setMessage(`已删除一条单股告警规则`);
+      void loadWatchlist();
+    } catch (requestError) {
+      setActionError(getParsedApiError(requestError));
+    } finally {
+      setDeletingRuleId(null);
+    }
+  });
+
+  const startEditingRule = (rule: StockAlertRuleItem) => {
+    setEditingRuleId(rule.id);
+    setEditingThreshold(rule.thresholdValue !== null && rule.thresholdValue !== undefined ? String(rule.thresholdValue) : '');
+    setEditingScanInterval(String(Math.max(5, rule.scanIntervalMinutes || 5)));
+    setEditingNote(rule.note ?? '');
+  };
+
+  const cancelEditingRule = () => {
+    setEditingRuleId(null);
+    setEditingThreshold('');
+    setEditingScanInterval('5');
+    setEditingNote('');
+  };
+
+  const handleToggleAlertRule = useEffectEvent(async (rule: StockAlertRuleItem) => {
+    setSavingRuleId(rule.id);
+    setActionError(null);
+    setMessage(null);
+    try {
+      const updated = await watchlistApi.updateStockAlertRule({
+        ruleId: rule.id,
+        thresholdValue: rule.thresholdValue,
+        scanIntervalMinutes: rule.scanIntervalMinutes,
+        enabled: !rule.enabled,
+        note: rule.note ?? undefined,
+      });
+      setAlertRules((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
+      setMessage(`${rule.stockName} 的规则已${updated.enabled ? '启用' : '停用'}`);
+      void loadWatchlist();
+    } catch (requestError) {
+      setActionError(getParsedApiError(requestError));
+    } finally {
+      setSavingRuleId(null);
+    }
+  });
+
+  const handleSaveRule = useEffectEvent(async (rule: StockAlertRuleItem) => {
+    setSavingRuleId(rule.id);
+    setActionError(null);
+    setMessage(null);
+    try {
+      const nextThreshold = editingThreshold.trim() === '' ? null : Number(editingThreshold.trim());
+      const nextScanInterval = Number(editingScanInterval.trim() || '5');
+      if (rule.ruleType !== 'risk_event' && nextThreshold !== null && !Number.isFinite(nextThreshold)) {
+        throw createParsedApiError({
+          title: '阈值格式不正确',
+          message: '请输入有效的价格阈值。',
+          category: 'unknown',
+        });
+      }
+      if (!Number.isFinite(nextScanInterval) || nextScanInterval < 5) {
+        throw createParsedApiError({
+          title: '扫描间隔不正确',
+          message: '扫描间隔单位为分钟，最小 5 分钟。',
+          category: 'unknown',
+        });
+      }
+      const updated = await watchlistApi.updateStockAlertRule({
+        ruleId: rule.id,
+        thresholdValue: rule.ruleType === 'risk_event' ? null : nextThreshold,
+        scanIntervalMinutes: Math.round(nextScanInterval),
+        enabled: rule.enabled,
+        note: editingNote.trim() || undefined,
+      });
+      setAlertRules((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
+      setMessage(`${rule.stockName} 的规则已更新`);
+      cancelEditingRule();
+    } catch (requestError) {
+      setActionError(getParsedApiError(requestError));
+    } finally {
+      setSavingRuleId(null);
+    }
+  });
+
+  const handleMarkEventRead = useEffectEvent(async (eventId: number) => {
+    setReadingEventId(eventId);
+    setActionError(null);
+    setMessage(null);
+    try {
+      const updated = await watchlistApi.markStockAlertEventRead(eventId);
+      setAlertEvents((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
+      setMessage('已标记一条告警事件为已读');
+    } catch (requestError) {
+      setActionError(getParsedApiError(requestError));
+    } finally {
+      setReadingEventId(null);
+    }
+  });
+
+  const handleMarkAllEventsRead = useEffectEvent(async () => {
+    setMarkingAllRead(true);
+    setActionError(null);
+    setMessage(null);
+    try {
+      const response = await watchlistApi.markAllStockAlertEventsRead();
+      if (response.updated > 0) {
+        setAlertEvents((prev) => prev.map((item) => ({ ...item, readAt: item.readAt ?? new Date().toISOString() })));
+      }
+      setMessage(`已标记 ${response.updated} 条告警事件为已读`);
+    } catch (requestError) {
+      setActionError(getParsedApiError(requestError));
+    } finally {
+      setMarkingAllRead(false);
+    }
+  });
+
+  const handleRunScanOnce = useEffectEvent(async () => {
+    setRunningScan(true);
+    setActionError(null);
+    setMessage(null);
+    try {
+      const summary = await watchlistApi.runStockAlertLoopOnce();
+      const [eventResponse, loopStatusResponse] = await Promise.all([
+        watchlistApi.listStockAlertEvents({ limit: 20 }),
+        watchlistApi.getStockAlertLoopStatus(),
+      ]);
+      setAlertEvents(eventResponse.items);
+      setAlertLoopStatus(loopStatusResponse);
+      setMessage(`手动扫描完成：到期 ${summary.dueRules} 条，触发 ${summary.triggeredEvents} 条事件`);
+    } catch (requestError) {
+      setActionError(getParsedApiError(requestError));
+    } finally {
+      setRunningScan(false);
+    }
+  });
+
+  return (
+    <AppPage className="space-y-6 !max-w-[1680px] px-3 md:px-5 lg:px-6">
+      <section className="overflow-hidden rounded-[32px] border border-border/60 bg-[radial-gradient(circle_at_top_left,_rgba(6,182,212,0.15),_transparent_34%),linear-gradient(180deg,rgba(255,255,255,0.98),rgba(246,249,252,0.96))] shadow-soft-card dark:bg-[radial-gradient(circle_at_top_left,_rgba(34,211,238,0.16),_transparent_30%),radial-gradient(circle_at_bottom_right,_rgba(129,140,248,0.12),_transparent_30%),linear-gradient(180deg,rgba(10,15,26,0.98),rgba(14,20,32,0.96))]">
+        <div className="grid gap-6 px-5 py-6 lg:grid-cols-[1fr_0.9fr] lg:px-7 lg:py-7">
+          <div className="space-y-5">
+            <div className="flex items-center gap-4">
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-cyan/10 text-cyan shadow-soft-card">
+                <Star className="h-7 w-7" />
+              </div>
+              <div>
+                <p className="text-xs uppercase tracking-[0.18em] text-secondary-text">Persistent Workflow</p>
+                <h2 className="mt-1 text-3xl font-semibold tracking-tight text-foreground">把高价值股票沉淀成观察池</h2>
+                <p className="mt-2 max-w-3xl text-sm leading-7 text-secondary-text">
+                  这一版先把单股查询接成真实持久化观察池。股票会保存到后端 SQLite，支持回看和移除。
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              {groups.map((group, index) => (
+                <span
+                  key={group}
+                  className={[
+                    'inline-flex items-center rounded-full border px-4 py-2 text-sm transition-all',
+                    index === 0
+                      ? 'border-cyan/30 bg-primary-gradient text-primary-foreground shadow-lg shadow-cyan/20'
+                      : 'border-border/60 bg-background/80 text-secondary-text',
+                  ].join(' ')}
+                >
+                  {group}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          <Card variant="bordered" padding="lg" className="rounded-[28px] border-border/60 bg-card/90">
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <div className="rounded-[22px] border border-border/60 bg-background/72 px-4 py-4">
+                <p className="text-xs uppercase tracking-[0.16em] text-secondary-text">观察股票</p>
+                <p className="mt-3 text-3xl font-semibold text-foreground">{items.length}</p>
+                <p className="mt-2 text-sm text-secondary-text">已持久化到后端 SQLite</p>
+              </div>
+              <div className="rounded-[22px] border border-border/60 bg-background/72 px-4 py-4">
+                <p className="text-xs uppercase tracking-[0.16em] text-secondary-text">分组数量</p>
+                <p className="mt-3 text-3xl font-semibold text-foreground">{groups.length}</p>
+                <p className="mt-2 text-sm text-secondary-text">当前默认使用核心跟踪</p>
+              </div>
+              <div className="rounded-[22px] border border-border/60 bg-background/72 px-4 py-4">
+                <p className="text-xs uppercase tracking-[0.16em] text-secondary-text">提醒规则</p>
+                <p className="mt-3 text-3xl font-semibold text-foreground">{alertRules.length}</p>
+                <p className="mt-2 text-sm text-secondary-text">{alertEnabledCount} 只股票已开启提醒</p>
+              </div>
+              <div className="rounded-[22px] border border-border/60 bg-background/72 px-4 py-4">
+                <p className="text-xs uppercase tracking-[0.16em] text-secondary-text">告警事件</p>
+                <p className="mt-3 text-3xl font-semibold text-foreground">{alertEvents.length}</p>
+                <p className="mt-2 text-sm text-secondary-text">{unreadEventCount} 条未读</p>
+              </div>
+            </div>
+          </Card>
+        </div>
+      </section>
+
+      {error ? <ApiErrorAlert error={error} /> : null}
+      {actionError ? <ApiErrorAlert error={actionError} /> : null}
+      {message ? <InlineAlert variant="success" title="观察池已更新" message={message} /> : null}
+
+      <Card variant="bordered" padding="lg" className="rounded-[28px]">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-cyan/10 text-cyan">
+              <Activity className="h-5 w-5" />
+            </div>
+            <div>
+              <span className="label-uppercase">Alert Loop</span>
+              <h3 className="mt-1 text-xl font-semibold text-foreground">后台扫描状态</h3>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant={alertLoopStatus?.enabled ? 'success' : 'default'} className="border-0 px-3 py-1">
+              {alertLoopStatus?.enabled ? '已开启' : '未开启'}
+            </Badge>
+            <Badge variant={alertLoopStatus?.running ? 'info' : 'history'} className="border-0 px-3 py-1">
+              {alertLoopStatus?.running ? '运行中' : '未运行'}
+            </Badge>
+            <Button
+              variant="secondary"
+              size="sm"
+              className="rounded-xl"
+              isLoading={runningScan}
+              loadingText="扫描中..."
+              onClick={() => void handleRunScanOnce()}
+            >
+              <RefreshCw className="h-4 w-4" />
+              手动扫描
+            </Button>
+          </div>
+        </div>
+        <div className="mt-4 grid gap-3 md:grid-cols-4">
+          <div className="rounded-[18px] border border-border/60 bg-background/72 px-4 py-3">
+            <p className="text-xs text-secondary-text">基础 tick</p>
+            <p className="mt-2 text-lg font-semibold text-foreground">{alertLoopStatus?.baseTickSeconds ?? 60}s</p>
+          </div>
+          <div className="rounded-[18px] border border-border/60 bg-background/72 px-4 py-3">
+            <p className="text-xs text-secondary-text">最近完成</p>
+            <p className="mt-2 text-sm font-medium text-foreground">{formatDateTime(alertLoopStatus?.lastFinishedAt)}</p>
+          </div>
+          <div className="rounded-[18px] border border-border/60 bg-background/72 px-4 py-3">
+            <p className="text-xs text-secondary-text">最近到期</p>
+            <p className="mt-2 text-lg font-semibold text-foreground">{alertLoopStatus?.lastSummary?.dueRules ?? 0}</p>
+          </div>
+          <div className="rounded-[18px] border border-border/60 bg-background/72 px-4 py-3">
+            <p className="text-xs text-secondary-text">最近触发</p>
+            <p className="mt-2 text-lg font-semibold text-foreground">{alertLoopStatus?.lastSummary?.triggeredEvents ?? 0}</p>
+          </div>
+        </div>
+        {alertLoopStatus?.lastError ? (
+          <p className="mt-3 text-sm text-danger">最近错误：{alertLoopStatus.lastError}</p>
+        ) : null}
+      </Card>
+
+      <section className="grid gap-5 xl:grid-cols-[1.05fr_0.95fr]">
+        <Card variant="bordered" padding="lg" className="rounded-[28px]">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-500">
+                <TrendingUp className="h-5 w-5" />
+              </div>
+              <div>
+                <span className="label-uppercase">Watched Stocks</span>
+                <h3 className="mt-1 text-2xl font-semibold text-foreground">股票观察项</h3>
+              </div>
+            </div>
+            <Button variant="secondary" className="rounded-2xl" onClick={() => void loadWatchlist()} isLoading={loading} loadingText="刷新中...">
+              刷新列表
+            </Button>
+          </div>
+
+          <div className="mt-5 space-y-3">
+            {!loading && items.length === 0 ? (
+              <EmptyState
+                title="观察池还是空的"
+                description="先从单股查询页把一只股票加入观察池，这里就会开始积累真实观察项。"
+              />
+            ) : null}
+
+            {items.map((item) => (
+              <div key={item.stockCode} className="rounded-[24px] border border-border/60 bg-background/72 px-5 py-4">
+                <div className="grid gap-4 xl:grid-cols-[1fr_130px_160px_170px] xl:items-center">
+                  <div>
+                    <div className="flex items-center gap-3">
+                      <h4 className="text-lg font-semibold text-foreground">{item.stockName}</h4>
+                      <span className="text-sm text-secondary-text">{item.stockCode}</span>
+                    </div>
+                    <p className="mt-2 text-sm text-secondary-text">
+                      {item.latestTheme || '暂无题材摘要'} · 分组 {item.groupName || DEFAULT_GROUP}
+                    </p>
+                    <p className="mt-1 text-xs text-secondary-text">更新于 {formatDateTime(item.updatedAt)}</p>
+                  </div>
+                  <Badge variant={signalVariant(item.latestSignal)} className="w-fit border-0 px-3 py-1">
+                    {item.latestSignal || '未记录'}
+                  </Badge>
+                  <p className="text-sm text-secondary-text">{item.note || '当前没有备注，后续可再补编辑能力。'}</p>
+                  <div className="flex items-center justify-end gap-2">
+                    <Badge variant={item.alertEnabled ? 'success' : 'default'} className="border-0 px-3 py-1">
+                      {item.alertEnabled ? '提醒已开' : '提醒未开'}
+                    </Badge>
+                    <Button
+                      variant="danger-subtle"
+                      size="sm"
+                      className="rounded-xl"
+                      isLoading={deletingCode === item.stockCode}
+                      loadingText="移除中..."
+                      onClick={() => void handleDelete(item.stockCode)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      移除
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+
+        <div className="space-y-5">
+          <Card variant="bordered" padding="lg" className="rounded-[28px]">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-cyan/10 text-cyan">
+                  <Bell className="h-5 w-5" />
+                </div>
+                <div>
+                  <span className="label-uppercase">Notification Center</span>
+                  <h3 className="mt-1 text-2xl font-semibold text-foreground">告警事件</h3>
+                </div>
+              </div>
+              <Button
+                variant="secondary"
+                size="sm"
+                className="rounded-xl"
+                isLoading={markingAllRead}
+                loadingText="处理中..."
+                onClick={() => void handleMarkAllEventsRead()}
+                disabled={unreadEventCount === 0}
+              >
+                <CheckCheck className="h-4 w-4" />
+                全部已读
+              </Button>
+            </div>
+            <div className="mt-5 space-y-3">
+              {alertEvents.length === 0 ? (
+                <EmptyState
+                  title="还没有告警事件"
+                  description="等后台扫描命中规则之后，这里会显示真实事件流。"
+                />
+              ) : (
+                alertEvents.map((event) => (
+                  <div key={event.id} className="rounded-[22px] border border-border/60 bg-background/72 px-4 py-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="text-sm font-semibold text-foreground">{event.title}</p>
+                          <Badge variant={alertEventVariant(event.ruleType, event.readAt)} className="border-0 px-3 py-1">
+                            {event.readAt ? '已读' : '未读'}
+                          </Badge>
+                          <Badge variant="default" className="border-0 px-3 py-1">
+                            {alertRuleLabel(event.ruleType)}
+                          </Badge>
+                        </div>
+                        <p className="mt-2 text-sm leading-6 text-secondary-text">{event.message}</p>
+                        <p className="mt-2 text-xs text-secondary-text">
+                          {event.stockName} · {event.stockCode} · {formatDateTime(event.createdAt)}
+                        </p>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="rounded-xl"
+                        isLoading={readingEventId === event.id}
+                        loadingText="处理中..."
+                        disabled={Boolean(event.readAt)}
+                        onClick={() => void handleMarkEventRead(event.id)}
+                      >
+                        标记已读
+                      </Button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </Card>
+
+          <Card variant="bordered" padding="lg" className="rounded-[28px]">
+            <div className="flex items-center gap-3">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-purple/10 text-purple">
+                <Layers3 className="h-5 w-5" />
+              </div>
+              <div>
+                <span className="label-uppercase">Watched Themes</span>
+                <h3 className="mt-1 text-2xl font-semibold text-foreground">主题观察项</h3>
+              </div>
+            </div>
+            <EmptyState
+              className="mt-5"
+              title="主题观察池还没接真实持久化"
+              description="这一轮先把股票观察项打通；主题观察项会在下一步和主题扫描结果页一起接上。"
+            />
+          </Card>
+
+          <Card variant="bordered" padding="lg" className="rounded-[28px]">
+            <div className="flex items-center gap-3">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-cyan/10 text-cyan">
+                <Bell className="h-5 w-5" />
+              </div>
+              <div>
+                <span className="label-uppercase">Rules</span>
+                <h3 className="mt-1 text-2xl font-semibold text-foreground">提醒规则</h3>
+              </div>
+            </div>
+            <div className="mt-5 space-y-3 text-sm leading-6 text-secondary-text">
+              {alertRules.length === 0 ? (
+                <EmptyState
+                  title="还没有单股告警规则"
+                  description="先在单股查询页点击“设置告警”，系统会按当前结果生成默认三条规则。"
+                />
+              ) : (
+                alertRules.map((rule) => (
+                  <div key={rule.id} className="rounded-[22px] border border-border/60 bg-background/72 px-4 py-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-foreground">{rule.stockName} · {alertRuleLabel(rule.ruleType)}</p>
+                        <p className="mt-1 text-sm text-secondary-text">
+                          {rule.ruleType === 'risk_event' ? '监控新闻中的明确风险事件' : `阈值 ${formatThreshold(rule.thresholdValue)}`}
+                        </p>
+                        <p className="mt-1 text-xs text-secondary-text">扫描间隔 {Math.max(5, rule.scanIntervalMinutes || 5)} 分钟</p>
+                        <p className="mt-1 text-xs text-secondary-text">更新于 {formatDateTime(rule.updatedAt)}</p>
+                        <p className="mt-1 text-xs text-secondary-text">{rule.note || '当前没有备注'}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge variant={rule.enabled ? 'success' : 'default'} className="border-0 px-3 py-1">
+                          {rule.enabled ? '已启用' : '已停用'}
+                        </Badge>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          className="rounded-xl"
+                          isLoading={savingRuleId === rule.id}
+                          loadingText="处理中..."
+                          onClick={() => void handleToggleAlertRule(rule)}
+                        >
+                          {rule.enabled ? '停用' : '启用'}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="rounded-xl"
+                          onClick={() => startEditingRule(rule)}
+                        >
+                          <SquarePen className="h-4 w-4" />
+                          编辑
+                        </Button>
+                        <Button
+                          variant="danger-subtle"
+                          size="sm"
+                          className="rounded-xl"
+                          isLoading={deletingRuleId === rule.id}
+                          loadingText="移除中..."
+                          onClick={() => void handleDeleteAlertRule(rule.id)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                          删除
+                        </Button>
+                      </div>
+                    </div>
+
+                    {editingRuleId === rule.id ? (
+                      <div className="mt-4 grid gap-3 rounded-[18px] border border-border/60 bg-card/70 p-4 md:grid-cols-[1fr_1fr_1fr_auto]">
+                        {rule.ruleType !== 'risk_event' ? (
+                          <Input
+                            label="阈值"
+                            value={editingThreshold}
+                            onChange={(event) => setEditingThreshold(event.target.value)}
+                            placeholder="输入新的价格阈值"
+                            className="h-10"
+                          />
+                        ) : (
+                          <div />
+                        )}
+                        <Input
+                          label="扫描间隔(分钟)"
+                          value={editingScanInterval}
+                          onChange={(event) => setEditingScanInterval(event.target.value)}
+                          placeholder="最小 5"
+                          className="h-10"
+                        />
+                        <Input
+                          label="备注"
+                          value={editingNote}
+                          onChange={(event) => setEditingNote(event.target.value)}
+                          placeholder="可选备注"
+                          className="h-10"
+                        />
+                        <div className="flex items-end gap-2">
+                          <Button
+                            size="sm"
+                            className="rounded-xl"
+                            isLoading={savingRuleId === rule.id}
+                            loadingText="保存中..."
+                            onClick={() => void handleSaveRule(rule)}
+                          >
+                            保存
+                          </Button>
+                          <Button variant="secondary" size="sm" className="rounded-xl" onClick={cancelEditingRule}>
+                            取消
+                          </Button>
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                ))
+              )}
+            </div>
+          </Card>
+        </div>
+      </section>
+    </AppPage>
+  );
+};
+
+export default WatchlistPage;

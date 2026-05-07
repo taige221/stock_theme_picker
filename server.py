@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import sys
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -16,11 +17,33 @@ if str(PARENT_DIR) not in sys.path:
     sys.path.insert(0, str(PARENT_DIR))
 
 from theme_picker.api.endpoints import router as theme_picker_router  # noqa: E402
+from theme_picker.api.stock_query_endpoints import router as stock_query_router  # noqa: E402
+from theme_picker.api.watchlist_endpoints import router as watchlist_router  # noqa: E402
+from theme_picker.application.stock_alert_loop_service import StockAlertLoopService  # noqa: E402
+from theme_picker.config import get_config  # noqa: E402
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    cfg = get_config()
+    alert_loop = None
+    if bool(getattr(cfg, "stock_alert_loop_enabled", False)):
+        alert_loop = StockAlertLoopService(
+            base_tick_seconds=int(getattr(cfg, "stock_alert_loop_base_tick_seconds", 60) or 60),
+        )
+        alert_loop.start()
+        app.state.stock_alert_loop = alert_loop
+    try:
+        yield
+    finally:
+        if alert_loop is not None:
+            alert_loop.stop()
 
 app = FastAPI(
     title="Theme Picker API",
     description="独立主题选股服务",
     version="0.1.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -35,6 +58,18 @@ app.include_router(
     theme_picker_router,
     prefix="/api/v1/theme-picker",
     tags=["theme-picker"],
+)
+
+app.include_router(
+    stock_query_router,
+    prefix="/api/v1/stock-query",
+    tags=["stock-query"],
+)
+
+app.include_router(
+    watchlist_router,
+    prefix="/api/v1/watchlist",
+    tags=["watchlist"],
 )
 
 
