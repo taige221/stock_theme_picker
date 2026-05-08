@@ -1,1 +1,0 @@
-"""Standalone theme picker package."""

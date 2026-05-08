@@ -267,6 +267,55 @@ class StockQueryHistoryListResponse(BaseModel):
     items: List[StockQueryHistoryItemSchema] = Field(default_factory=list)
 
 
+class StockDeepAnalysisCreateRequest(BaseModel):
+    force_refresh: bool = Field(default=False, description="是否忽略已有结果并重新生成")
+
+
+class StockDeepAnalysisMessageSchema(BaseModel):
+    id: int
+    analysis_id: str
+    role: str
+    content: str
+    created_at: str
+
+
+class StockDeepAnalysisItemSchema(BaseModel):
+    analysis_id: str
+    stock_code: str
+    stock_name: str
+    source_query_id: Optional[str] = None
+    status: str
+    action: Optional[str] = None
+    summary: Optional[str] = None
+    trade_plan: Dict[str, Any] = Field(default_factory=dict)
+    technical: Dict[str, Any] = Field(default_factory=dict)
+    fundamental: Dict[str, Any] = Field(default_factory=dict)
+    risk: Dict[str, Any] = Field(default_factory=dict)
+    context_snapshot: Optional[Dict[str, Any]] = None
+    error: Optional[str] = None
+    created_at: str
+    updated_at: str
+    messages: List[StockDeepAnalysisMessageSchema] = Field(default_factory=list)
+
+
+class StockDeepAnalysisListResponse(BaseModel):
+    items: List[StockDeepAnalysisItemSchema] = Field(default_factory=list)
+
+
+class StockDeepAnalysisChatRequest(BaseModel):
+    message: str = Field(min_length=1, max_length=1000, description="围绕本次深度分析的追问")
+
+
+class StockDeepAnalysisChatResponse(BaseModel):
+    analysis_id: str
+    user_message: StockDeepAnalysisMessageSchema
+    assistant_message: StockDeepAnalysisMessageSchema
+
+
+class StockDeepAnalysisAlertRulesRequest(BaseModel):
+    scan_interval_minutes: int = Field(default=5, ge=5, description="生成告警规则的扫描间隔，单位分钟")
+
+
 class StockWatchlistUpsertRequest(BaseModel):
     stock_code: str = Field(description="股票代码")
     stock_name: str = Field(description="股票名称")

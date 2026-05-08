@@ -9,6 +9,8 @@ from theme_picker.storage import (
     DatabaseManager,
     StockAlertEvent,
     StockAlertRule,
+    StockDeepAnalysisHistory,
+    StockDeepAnalysisMessage,
     StockQueryHistory,
     StockWatchlist,
     ThemePickerTaskHistory,
@@ -121,10 +123,37 @@ def mark_all_stock_alert_events_read(db: DatabaseManager, *, stock_code: str | N
     return db.mark_all_stock_alert_events_read(stock_code=stock_code)
 
 
+def save_stock_deep_analysis_record(db: DatabaseManager, **kwargs: Any):
+    return db.save_stock_deep_analysis_history(**kwargs)
+
+
+def get_stock_deep_analysis_record(db: DatabaseManager, analysis_id: str):
+    return db.get_stock_deep_analysis_history(analysis_id)
+
+
+def list_stock_deep_analysis_records(
+    db: DatabaseManager,
+    *,
+    stock_code: str | None = None,
+    limit: int = 20,
+):
+    return db.list_stock_deep_analysis_history(stock_code=stock_code, limit=limit)
+
+
+def create_stock_deep_analysis_message(db: DatabaseManager, **kwargs: Any):
+    return db.create_stock_deep_analysis_message(**kwargs)
+
+
+def list_stock_deep_analysis_messages(db: DatabaseManager, *, analysis_id: str, limit: int = 50):
+    return db.list_stock_deep_analysis_messages(analysis_id=analysis_id, limit=limit)
+
+
 __all__ = [
     "StockQueryHistory",
     "StockAlertEvent",
     "StockAlertRule",
+    "StockDeepAnalysisHistory",
+    "StockDeepAnalysisMessage",
     "StockWatchlist",
     "ThemePickerTaskHistory",
     "get_theme_picker_db",
@@ -148,6 +177,11 @@ __all__ = [
     "list_stock_alert_events",
     "mark_stock_alert_event_read",
     "mark_all_stock_alert_events_read",
+    "save_stock_deep_analysis_record",
+    "get_stock_deep_analysis_record",
+    "list_stock_deep_analysis_records",
+    "create_stock_deep_analysis_message",
+    "list_stock_deep_analysis_messages",
     "list_task_history",
     "list_task_history_by_statuses",
     "cleanup_task_history",

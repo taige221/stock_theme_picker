@@ -207,6 +207,46 @@ class StockAlertEvent(Base):
     )
 
 
+class StockDeepAnalysisHistory(Base):
+    __tablename__ = "stock_deep_analysis_history"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    analysis_id = Column(String(64), nullable=False, unique=True, index=True)
+    stock_code = Column(String(16), nullable=False, index=True)
+    stock_name = Column(String(64), nullable=False)
+    source_query_id = Column(String(64), nullable=True, index=True)
+    status = Column(String(20), nullable=False, index=True, default="completed")
+    action = Column(String(32), nullable=True, index=True)
+    summary = Column(Text, nullable=True)
+    trade_plan_json = Column(Text, nullable=True)
+    technical_json = Column(Text, nullable=True)
+    fundamental_json = Column(Text, nullable=True)
+    risk_json = Column(Text, nullable=True)
+    context_snapshot_json = Column(Text, nullable=True)
+    error = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.now, index=True)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, index=True)
+
+    __table_args__ = (
+        Index("ix_stock_deep_analysis_stock_created", "stock_code", "created_at"),
+        Index("ix_stock_deep_analysis_query_created", "source_query_id", "created_at"),
+    )
+
+
+class StockDeepAnalysisMessage(Base):
+    __tablename__ = "stock_deep_analysis_message"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    analysis_id = Column(String(64), nullable=False, index=True)
+    role = Column(String(16), nullable=False)
+    content = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.now, index=True)
+
+    __table_args__ = (
+        Index("ix_stock_deep_analysis_message_created", "analysis_id", "created_at"),
+    )
+
+
 @dataclass
 class _SqliteSettings:
     database_path: Path
@@ -901,6 +941,127 @@ class DatabaseManager:
                 record.read_at = now
             session.flush()
             return len(records)
+
+    def save_stock_deep_analysis_history(
+        self,
+        *,
+        analysis_id: str,
+        stock_code: str,
+        stock_name: str,
+        source_query_id: Optional[str],
+        status: str,
+        action: Optional[str] = None,
+        summary: Optional[str] = None,
+        trade_plan: Optional[Dict[str, Any]] = None,
+        technical: Optional[Dict[str, Any]] = None,
+        fundamental: Optional[Dict[str, Any]] = None,
+        risk: Optional[Dict[str, Any]] = None,
+        context_snapshot: Optional[Dict[str, Any]] = None,
+        error: Optional[str] = None,
+    ) -> StockDeepAnalysisHistory:
+        now = datetime.now()
+        values = {
+            "analysis_id": analysis_id,
+            "stock_code": stock_code,
+            "stock_name": stock_name,
+            "source_query_id": source_query_id,
+            "status": status,
+            "action": action,
+            "summary": summary,
+            "trade_plan_json": self._safe_json_dumps(trade_plan) if trade_plan is not None else None,
+            "technical_json": self._safe_json_dumps(technical) if technical is not None else None,
+            "fundamental_json": self._safe_json_dumps(fundamental) if fundamental is not None else None,
+            "risk_json": self._safe_json_dumps(risk) if risk is not None else None,
+            "context_snapshot_json": self._safe_json_dumps(context_snapshot) if context_snapshot is not None else None,
+            "error": error,
+            "created_at": now,
+            "updated_at": now,
+        }
+        with self.session_scope() as session:
+            stmt = sqlite_insert(StockDeepAnalysisHistory).values(values)
+            excluded = stmt.excluded
+            session.execute(
+                stmt.on_conflict_do_update(
+                    index_elements=["analysis_id"],
+                    set_={
+                        "stock_code": excluded.stock_code,
+                        "stock_name": excluded.stock_name,
+                        "source_query_id": excluded.source_query_id,
+                        "status": excluded.status,
+                        "action": excluded.action,
+                        "summary": excluded.summary,
+                        "trade_plan_json": excluded.trade_plan_json,
+                        "technical_json": excluded.technical_json,
+                        "fundamental_json": excluded.fundamental_json,
+                        "risk_json": excluded.risk_json,
+                        "context_snapshot_json": excluded.context_snapshot_json,
+                        "error": excluded.error,
+                        "updated_at": excluded.updated_at,
+                    },
+                )
+            )
+            return session.execute(
+                select(StockDeepAnalysisHistory)
+                .where(StockDeepAnalysisHistory.analysis_id == analysis_id)
+                .limit(1)
+            ).scalars().first()
+
+    def get_stock_deep_analysis_history(self, analysis_id: str) -> Optional[StockDeepAnalysisHistory]:
+        with self.session_scope() as session:
+            return session.execute(
+                select(StockDeepAnalysisHistory)
+                .where(StockDeepAnalysisHistory.analysis_id == analysis_id)
+                .limit(1)
+            ).scalars().first()
+
+    def list_stock_deep_analysis_history(
+        self,
+        *,
+        stock_code: Optional[str] = None,
+        limit: int = 20,
+    ) -> List[StockDeepAnalysisHistory]:
+        stmt = select(StockDeepAnalysisHistory)
+        if stock_code:
+            stmt = stmt.where(StockDeepAnalysisHistory.stock_code == stock_code)
+        stmt = stmt.order_by(desc(StockDeepAnalysisHistory.created_at), desc(StockDeepAnalysisHistory.id)).limit(
+            max(1, int(limit))
+        )
+        with self.session_scope() as session:
+            return list(session.execute(stmt).scalars().all())
+
+    def create_stock_deep_analysis_message(
+        self,
+        *,
+        analysis_id: str,
+        role: str,
+        content: str,
+    ) -> StockDeepAnalysisMessage:
+        with self.session_scope() as session:
+            record = StockDeepAnalysisMessage(
+                analysis_id=analysis_id,
+                role=role,
+                content=content,
+                created_at=datetime.now(),
+            )
+            session.add(record)
+            session.flush()
+            return record
+
+    def list_stock_deep_analysis_messages(
+        self,
+        *,
+        analysis_id: str,
+        limit: int = 50,
+    ) -> List[StockDeepAnalysisMessage]:
+        with self.session_scope() as session:
+            return list(
+                session.execute(
+                    select(StockDeepAnalysisMessage)
+                    .where(StockDeepAnalysisMessage.analysis_id == analysis_id)
+                    .order_by(StockDeepAnalysisMessage.created_at.asc(), StockDeepAnalysisMessage.id.asc())
+                    .limit(max(1, int(limit)))
+                ).scalars().all()
+            )
 
 
 def get_db() -> DatabaseManager:

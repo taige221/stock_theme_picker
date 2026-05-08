@@ -6,3 +6,6 @@ __pycache__/
 plans/
 logs/
 data/
+build/
+dist/
+*.egg-info/
