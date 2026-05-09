@@ -85,7 +85,7 @@ class StockQueryService:
         )
         self.db = db or get_theme_picker_db()
 
-    def analyze(self, request: Any) -> Dict[str, Any]:
+    def analyze(self, request: Any, *, query_id: Optional[str] = None) -> Dict[str, Any]:
         stock_code = self._resolve_stock_code(request)
         requested_name = self._resolve_requested_name(request)
         stock_name = requested_name or stock_code
@@ -121,11 +121,12 @@ class StockQueryService:
             stock_name=stock_name,
             fundamental_context=fundamental_context,
         )
+        normalized_fundamental_context = self._normalize_fundamental_context(fundamental_context)
         stock_news_summary = self._load_stock_news_summary(
             stock_code=stock_code,
             stock_name=stock_name,
         )
-        valuation_snapshot = self._extract_valuation_snapshot(quote, fundamental_context)
+        valuation_snapshot = self._extract_valuation_snapshot(quote, normalized_fundamental_context)
         signal_payload = self.signal_service.analyze(
             trend_result=trend_result,
             current_price=current_price,
@@ -133,11 +134,11 @@ class StockQueryService:
             volume_ratio=volume_ratio,
             turnover_rate=turnover_rate,
             chip_data=chip_data,
-            fundamental_context=fundamental_context,
+            fundamental_context=normalized_fundamental_context,
         )
         theme_attributions = self.theme_attribution_service.attribute(stock_code)
 
-        query_id = uuid.uuid4().hex
+        query_id = query_id or uuid.uuid4().hex
         news_provider = None
         if isinstance(stock_news_summary, dict):
             news_provider = str(stock_news_summary.get("provider") or "").strip() or None
@@ -169,14 +170,15 @@ class StockQueryService:
             "theme_attributions": theme_attributions,
             "themes": theme_attributions,
             "stock_news_summary": stock_news_summary,
-            "fundamental_coverage": self._extract_fundamental_coverage(fundamental_context),
-            "fundamental_errors": self._extract_fundamental_errors(fundamental_context),
-            "fundamental_details": self._extract_fundamental_details(fundamental_context),
+            "fundamental_context": normalized_fundamental_context,
+            "fundamental_coverage": self._extract_fundamental_coverage(normalized_fundamental_context),
+            "fundamental_errors": self._extract_fundamental_errors(normalized_fundamental_context),
+            "fundamental_details": self._extract_fundamental_details(normalized_fundamental_context),
             "data_sources": {
                 "daily": daily_source,
                 "realtime": getattr(getattr(quote, "source", None), "value", None) if quote else None,
                 "chip": getattr(chip_data, "source", None) if chip_data else None,
-                "fundamental": self._resolve_fundamental_source(fundamental_context),
+                "fundamental": self._resolve_fundamental_source(normalized_fundamental_context),
                 "news": news_provider,
             },
         }
@@ -552,6 +554,24 @@ class StockQueryService:
             data = {}
             block["data"] = data
         data.update(extra_data)
+        if data:
+            status = str(block.get("status") or "").strip().lower()
+            if status in {"", "failed", "not_supported"}:
+                block["status"] = "partial"
+        provider = str(extra_data.get("text_provider") or extra_data.get("provider") or "").strip()
+        if provider:
+            source_chain = block.get("source_chain")
+            if not isinstance(source_chain, list):
+                source_chain = []
+                block["source_chain"] = source_chain
+            if not any(str(item.get("provider") or "").strip() == provider for item in source_chain if isinstance(item, dict)):
+                source_chain.append(
+                    {
+                        "provider": provider,
+                        "result": "ok",
+                        "duration_ms": 0,
+                    }
+                )
 
     @staticmethod
     def _resolve_fundamental_source(fundamental_context: Optional[Dict[str, Any]]) -> Optional[str]:
@@ -562,10 +582,142 @@ class StockQueryService:
             return status
         source_chain = fundamental_context.get("source_chain")
         if isinstance(source_chain, list) and source_chain:
-            provider = str(source_chain[0].get("provider") or "").strip()
-            if provider:
-                return provider
+            for item in source_chain:
+                if not isinstance(item, dict):
+                    continue
+                provider = str(item.get("provider") or "").strip()
+                if provider:
+                    return provider
         return status or None
+
+    def _normalize_fundamental_context(self, fundamental_context: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+        block_names = (
+            "valuation",
+            "growth",
+            "earnings",
+            "institution",
+            "capital_flow",
+            "dragon_tiger",
+            "boards",
+        )
+        normalized: Dict[str, Any] = {
+            "market": None,
+            "status": "failed",
+            "coverage": {},
+            "source_chain": [],
+            "errors": [],
+            "elapsed_ms": None,
+        }
+        if isinstance(fundamental_context, dict):
+            normalized["market"] = fundamental_context.get("market")
+            normalized["status"] = fundamental_context.get("status") or "failed"
+            normalized["coverage"] = self._normalize_str_dict(fundamental_context.get("coverage"))
+            normalized["source_chain"] = self._normalize_source_chain(fundamental_context.get("source_chain"))
+            normalized["errors"] = self._normalize_error_list(fundamental_context.get("errors"))
+            elapsed_ms = fundamental_context.get("elapsed_ms")
+            if isinstance(elapsed_ms, int):
+                normalized["elapsed_ms"] = elapsed_ms
+
+        for block_name in block_names:
+            raw_block = fundamental_context.get(block_name) if isinstance(fundamental_context, dict) else None
+            normalized[block_name] = self._normalize_fundamental_block(raw_block)
+
+        normalized["coverage"] = {
+            **{key: str(value) for key, value in normalized["coverage"].items() if key},
+            **{
+                block_name: str(normalized[block_name].get("status") or "failed")
+                for block_name in block_names
+            },
+        }
+        merged_errors = list(normalized["errors"])
+        for block_name in block_names:
+            for item in normalized[block_name]["errors"]:
+                if item not in merged_errors:
+                    merged_errors.append(item)
+            normalized["source_chain"].extend(normalized[block_name]["source_chain"])
+        normalized["errors"] = merged_errors
+        normalized["source_chain"] = self._dedupe_source_chain(normalized["source_chain"])
+
+        if not normalized.get("market") and isinstance(fundamental_context, dict):
+            normalized["market"] = fundamental_context.get("market")
+        if not normalized.get("status"):
+            coverage_values = set(normalized["coverage"].values())
+            if coverage_values == {"not_supported"}:
+                normalized["status"] = "not_supported"
+            elif "failed" in coverage_values or "partial" in coverage_values:
+                normalized["status"] = "partial"
+            else:
+                normalized["status"] = "ok"
+        return normalized
+
+    def _normalize_fundamental_block(self, block: Any) -> Dict[str, Any]:
+        normalized = {
+            "status": "failed",
+            "data": {},
+            "source_chain": [],
+            "errors": [],
+        }
+        if not isinstance(block, dict):
+            return normalized
+        normalized["status"] = str(block.get("status") or "failed")
+        data = block.get("data")
+        normalized["data"] = dict(data) if isinstance(data, dict) else {}
+        normalized["source_chain"] = self._normalize_source_chain(block.get("source_chain"))
+        normalized["errors"] = self._normalize_error_list(block.get("errors"))
+        return normalized
+
+    @staticmethod
+    def _normalize_str_dict(value: Any) -> Dict[str, str]:
+        if not isinstance(value, dict):
+            return {}
+        return {
+            str(key): str(item)
+            for key, item in value.items()
+            if str(key or "").strip() and item is not None
+        }
+
+    @staticmethod
+    def _normalize_error_list(value: Any) -> List[str]:
+        if not isinstance(value, list):
+            return []
+        normalized: List[str] = []
+        seen = set()
+        for item in value:
+            text = str(item or "").strip()
+            if not text or text in seen:
+                continue
+            seen.add(text)
+            normalized.append(text)
+        return normalized
+
+    @staticmethod
+    def _normalize_source_chain(value: Any) -> List[Dict[str, Any]]:
+        if not isinstance(value, list):
+            return []
+        normalized: List[Dict[str, Any]] = []
+        for item in value:
+            if isinstance(item, dict):
+                normalized.append(dict(item))
+            elif isinstance(item, str) and item.strip():
+                normalized.append({"provider": item.strip(), "result": "ok", "duration_ms": 0})
+        return normalized
+
+    @staticmethod
+    def _dedupe_source_chain(source_chain: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        deduped: List[Dict[str, Any]] = []
+        seen = set()
+        for item in source_chain:
+            if not isinstance(item, dict):
+                continue
+            provider = str(item.get("provider") or "").strip()
+            result = str(item.get("result") or "").strip()
+            duration = item.get("duration_ms")
+            key = (provider, result, duration)
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append(item)
+        return deduped
 
     @staticmethod
     def _extract_valuation_snapshot(quote: Any, fundamental_context: Optional[Dict[str, Any]]) -> Dict[str, Optional[float]]:
@@ -629,7 +781,7 @@ class StockQueryService:
             return {}
 
         details: Dict[str, Any] = {}
-        for key in ("growth", "earnings", "institution", "capital_flow", "dragon_tiger", "boards"):
+        for key in ("valuation", "growth", "earnings", "institution", "capital_flow", "dragon_tiger", "boards"):
             block = fundamental_context.get(key)
             if not isinstance(block, dict):
                 continue

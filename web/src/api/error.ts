@@ -9,6 +9,7 @@ export type ApiErrorCategory =
   | 'portfolio_oversell'
   | 'portfolio_busy'
   | 'upstream_llm_400'
+  | 'local_request_timeout'
   | 'upstream_timeout'
   | 'upstream_network'
   | 'local_connection_failed'
@@ -390,6 +391,20 @@ export function parseApiError(error: unknown): ParsedApiError {
       rawMessage,
       status,
       category: 'invalid_tool_call',
+    });
+  }
+
+  const localRequestTimeout = !response && (
+    code === 'ECONNABORTED'
+    || includesAny(matchText, ['timeout', 'timed out'])
+  );
+  if (localRequestTimeout) {
+    return createParsedApiError({
+      title: '本地请求等待超时',
+      message: '浏览器已经连到本地服务，但本次查询处理时间超过前端等待上限。通常是后端卡在某个慢数据源，请查看后端日志确认具体链路。',
+      rawMessage,
+      status,
+      category: 'local_request_timeout',
     });
   }
 

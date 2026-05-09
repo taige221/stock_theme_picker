@@ -19,6 +19,7 @@ import logging
 import os
 import random
 import time
+import concurrent.futures
 from threading import BoundedSemaphore, RLock, Thread
 from abc import ABC, abstractmethod
 from datetime import datetime
@@ -1607,6 +1608,29 @@ class DataFetcherManager:
                 continue
         return [], None
 
+    @staticmethod
+    def _call_with_timeout(
+        func: Callable[[], Any],
+        *,
+        timeout_seconds: float,
+        timeout_message: str,
+    ) -> Any:
+        executor: Optional[concurrent.futures.ThreadPoolExecutor] = None
+        future: Optional[concurrent.futures.Future] = None
+        try:
+            executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+            future = executor.submit(func)
+            return future.result(timeout=max(0.0, timeout_seconds))
+        except concurrent.futures.TimeoutError as exc:
+            if future is not None:
+                future.cancel()
+            if executor is not None:
+                executor.shutdown(wait=False, cancel_futures=True)
+            raise TimeoutError(timeout_message) from exc
+        finally:
+            if executor is not None:
+                executor.shutdown(wait=False)
+
     def load_cached_belong_boards(self, stock_code: str, *, ttl_seconds: Optional[int] = None) -> Tuple[List[Dict[str, Any]], Optional[str]]:
         stock_code = normalize_stock_code(stock_code)
         ttl = int(ttl_seconds if ttl_seconds is not None else self._get_fundamental_config().theme_board_cache_ttl_seconds)
@@ -2642,9 +2666,17 @@ class DataFetcherManager:
         err: Optional[str] = None
         source = "online"
         try:
-            boards, fetcher_name = self.get_belong_boards_with_source(stock_code)
+            boards, fetcher_name = self._call_with_timeout(
+                lambda: self.get_belong_boards_with_source(stock_code),
+                timeout_seconds=timeout,
+                timeout_message=f"boards online timeout after {timeout:.1f}s",
+            )
             if fetcher_name:
                 source = fetcher_name
+        except TimeoutError as exc:
+            boards = []
+            err = str(exc)
+            logger.warning("[板块] 获取所属板块超时: code=%s timeout=%.1fs", stock_code, timeout)
         except Exception as exc:
             boards = []
             err = str(exc)

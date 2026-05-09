@@ -115,7 +115,7 @@ cp .env.example .env
 - `ANSPIRE_API_KEYS`
 - `BOCHA_API_KEYS`
 - `MINIMAX_API_KEYS`
-- `TAVILY_API_KEYS`
+- `TAVILY_API_KEYS`：Tavily 搜索 API Keys，支持逗号分隔；也兼容单个 `TAVILY_API_KEY`
 - `BRAVE_API_KEYS`
 - `SERPAPI_API_KEYS`
 - `SEARXNG_BASE_URLS`
@@ -148,6 +148,34 @@ cp .env.example .env
 - `NEWS_MAX_AGE_DAYS`：新闻时间窗口
 - `NEWS_STRATEGY_PROFILE`：新闻策略窗口档位
 - `BIAS_THRESHOLD`：技术分析偏离阈值
+
+#### 深度分析 LLM
+
+- `LITELLM_MODEL`：全局主模型，建议填写 `provider/model`
+- `LITELLM_FALLBACK_MODELS`：可选 fallback 模型列表，逗号分隔
+- `AGENT_LITELLM_MODEL`：可选 Agent / 深度分析优先模型
+- `AIHUBMIX_KEY`：如果走 AIHubMix，优先填这个
+- `OPENAI_API_KEY` / `OPENAI_BASE_URL` / `OPENAI_MODEL`：OpenAI-compatible 入口
+- `DEEPSEEK_API_KEY`：如果走 DeepSeek native，可填这个
+- `DEEP_ANALYSIS_LLM_ENABLED`：是否启用真实 LLM 深度分析；关闭后退回确定性规则分析
+- `DEEP_ANALYSIS_LITELLM_MODEL`：为深度分析单独指定模型；留空则继承 `AGENT_LITELLM_MODEL` / `LITELLM_MODEL`
+- `DEEP_ANALYSIS_LLM_TIMEOUT_SECONDS`：深度分析单次 LLM 请求超时
+- `DEEP_ANALYSIS_LLM_MAX_TOKENS`：深度分析输出 token 上限
+- `DEEP_ANALYSIS_LLM_REASONING_EFFORT`：推理强度，支持 `none/minimal/low/medium/high/xhigh/default`
+- `DEEP_ANALYSIS_LLM_VERBOSITY`：输出冗长度，支持 `low/medium/high`
+
+最小可用组合通常是：
+
+- `LITELLM_MODEL=openai/gpt-5.5`
+- `OPENAI_API_KEY=...`
+- `OPENAI_BASE_URL=...`
+
+或者：
+
+- `LITELLM_MODEL=openai/gpt-5.5`
+- `AIHUBMIX_KEY=...`
+
+这组配置走仓库现有 LiteLLM / 多 channel 模型配置，不额外引入另一套 provider 配置。
 - `SQLITE_WAL_ENABLED` / `SQLITE_BUSY_TIMEOUT_MS`：SQLite 运行参数
 - `THEME_PICKER_TASK_HISTORY_CLEANUP_BATCH_SIZE`：历史清理批量大小
 

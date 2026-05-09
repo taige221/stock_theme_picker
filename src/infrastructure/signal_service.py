@@ -9,8 +9,9 @@ from __future__ import annotations
 
 import concurrent.futures
 import logging
+import os
 from datetime import datetime, timedelta
-from threading import Event
+from threading import Event, Lock
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
@@ -30,6 +31,22 @@ from theme_picker.infrastructure.runtime import get_theme_picker_config
 from theme_picker.infrastructure.stock_pool_service import build_stock_code_variants, canonicalize_stock_code
 
 logger = logging.getLogger(__name__)
+
+_THEME_QUOTE_UNPROXY_FETCHERS = {
+    "TushareFetcher",
+    "EfinanceFetcher",
+    "AkshareFetcher",
+}
+_PROXY_ENV_KEYS = (
+    "HTTP_PROXY",
+    "HTTPS_PROXY",
+    "ALL_PROXY",
+    "http_proxy",
+    "https_proxy",
+    "all_proxy",
+)
+_NO_PROXY_ENV_KEYS = ("NO_PROXY", "no_proxy")
+_PROXY_ENV_LOCK = Lock()
 
 
 class ThemeSignalService:
@@ -136,6 +153,8 @@ class ThemeSignalService:
             "trend_score": self._safe_float(trend_result.signal_score),
             "trend_status": trend_result.trend_status.value,
             "buy_signal": trend_result.buy_signal.value,
+            "realtime_price_used": bool(quote is not None and getattr(quote, "price", None) is not None),
+            "realtime_source": getattr(getattr(quote, "source", None), "value", None) if quote else None,
         }
         metrics.update(self._build_context_metrics(trend_df, rule))
 
@@ -309,18 +328,51 @@ class ThemeSignalService:
         return primary_quote
 
     def _call_named_fetcher_quote(self, fetcher_name: str, stock_code: str, **kwargs):
-        for fetcher in self.fetcher_manager._get_fetchers_snapshot():
-            if fetcher.name != fetcher_name:
-                continue
-            if not hasattr(fetcher, "get_realtime_quote"):
-                return None
-            return self.fetcher_manager._call_fetcher_method(
-                fetcher,
-                "get_realtime_quote",
-                stock_code,
-                **kwargs,
-            )
-        return None
+        without_proxy = fetcher_name in _THEME_QUOTE_UNPROXY_FETCHERS
+        lock = _PROXY_ENV_LOCK if without_proxy else None
+        env_snapshot: Dict[str, Optional[str]] = {}
+
+        if lock is not None:
+            lock.acquire()
+        try:
+            if without_proxy:
+                env_snapshot = self._disable_proxy_env_for_attempt()
+            for fetcher in self.fetcher_manager._get_fetchers_snapshot():
+                if fetcher.name != fetcher_name:
+                    continue
+                if not hasattr(fetcher, "get_realtime_quote"):
+                    return None
+                return self.fetcher_manager._call_fetcher_method(
+                    fetcher,
+                    "get_realtime_quote",
+                    stock_code,
+                    **kwargs,
+                )
+            return None
+        finally:
+            if without_proxy:
+                self._restore_proxy_env_after_attempt(env_snapshot)
+            if lock is not None:
+                lock.release()
+
+    @staticmethod
+    def _disable_proxy_env_for_attempt() -> Dict[str, Optional[str]]:
+        snapshot: Dict[str, Optional[str]] = {}
+        for key in (*_PROXY_ENV_KEYS, *_NO_PROXY_ENV_KEYS):
+            snapshot[key] = os.environ.get(key)
+        for key in _PROXY_ENV_KEYS:
+            os.environ.pop(key, None)
+        os.environ["NO_PROXY"] = "*"
+        os.environ["no_proxy"] = "*"
+        return snapshot
+
+    @staticmethod
+    def _restore_proxy_env_after_attempt(snapshot: Dict[str, Optional[str]]) -> None:
+        for key, value in snapshot.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
 
     def _load_or_fetch_bars(
         self,

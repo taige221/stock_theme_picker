@@ -7,7 +7,7 @@ Theme Alert Pipeline
 
 from __future__ import annotations
 
-from typing import Iterable, List, Optional
+from typing import Any, Dict, Iterable, List, Optional
 
 from theme_picker.application.registry_service import ThemeRegistryService
 from theme_picker.domain.theme_event import ThemeAlertResultSchema, ThemeDefinitionSchema
@@ -43,15 +43,22 @@ class ThemeAlertPipeline:
         max_results_per_keyword: int = 5,
         max_expanded_candidates: int = 30,
         triggered_only: bool = True,
+        log_context: Optional[Dict[str, Any]] = None,
     ) -> ThemeAlertResultSchema:
         themes = self._resolve_themes(theme_ids, extra_themes=extra_themes)
         result = ThemeAlertResultSchema(scanned_theme_ids=[theme.id for theme in themes])
 
         for theme in themes:
+            theme_log_context = {
+                **dict(log_context or {}),
+                "theme_id": theme.id,
+                "theme_name": theme.name,
+            }
             event = self.event_scanner.scan_theme(
                 theme,
                 max_results_per_keyword=max_results_per_keyword,
                 days=days,
+                log_context=theme_log_context,
             )
             result.events.append(event)
 
@@ -66,6 +73,7 @@ class ThemeAlertPipeline:
                 days=days,
                 max_results_per_query=max_results_per_keyword,
                 max_candidates=max_expanded_candidates,
+                log_context=theme_log_context,
             )
             signals = self.signal_service.evaluate_theme(theme, event, candidate_pool)
             result.signals.extend(signals)

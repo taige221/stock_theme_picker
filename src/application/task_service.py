@@ -312,7 +312,7 @@ class ThemePickerTaskService:
 
         try:
             service = ThemePickerService()
-            result = service.scan(SimpleNamespace(**request_payload))
+            result = service.scan(SimpleNamespace(**request_payload), task_id=task_id)
 
             with self._lock:
                 task = self._tasks.get(task_id)

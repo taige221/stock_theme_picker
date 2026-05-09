@@ -11,7 +11,7 @@ import concurrent.futures
 import logging
 import re
 from threading import RLock
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import pandas as pd
 
@@ -19,16 +19,27 @@ from theme_picker.data_provider import DataFetcherManager
 from theme_picker.data.stock_mapping import STOCK_NAME_MAP
 from theme_picker.data.stock_index_loader import get_stock_name_index_map
 from theme_picker.domain.theme_event import ThemeDefinitionSchema, ThemeEventSchema
+from theme_picker.infrastructure.search_fallback_logging import emit_search_fallback_log
 from theme_picker.search_service import SearchService
 from theme_picker.infrastructure.board_resolver_service import ThemeBoardResolverService
 from theme_picker.infrastructure.runtime import get_theme_picker_config
 from theme_picker.infrastructure.stock_pool_service import ThemeStockPoolService, canonicalize_stock_code
 
 logger = logging.getLogger(__name__)
+_SEARCH_FALLBACK_TAG = "SEARCH_FALLBACK"
 
 _A_SHARE_CODE_PATTERN = re.compile(r"(?<!\d)([0-9]{6})(?!\d)")
 _DEFAULT_QUERY_TIMEOUT_SECONDS = 8.0
 _DEFAULT_ALLOWED_SUFFIXES = (".SH", ".SZ", ".BJ")
+
+
+def _emit_theme_expansion_fallback_log(payload: dict, *, level: str = "info") -> None:
+    enriched_payload = {"tag": _SEARCH_FALLBACK_TAG, **payload}
+    emit_search_fallback_log(
+        enriched_payload,
+        level=level,
+        mirror_logger=logger,
+    )
 
 
 class ThemeExpansionService:
@@ -58,6 +69,7 @@ class ThemeExpansionService:
         days: int = 7,
         max_results_per_query: int = 5,
         max_candidates: int = 30,
+        log_context: Optional[Dict[str, Any]] = None,
     ) -> List[str]:
         candidates = self._filter_allowed_market_codes(
             ThemeStockPoolService.normalize_codes(seed_pool)
@@ -110,6 +122,7 @@ class ThemeExpansionService:
                     query=query,
                     max_results=max_results_per_query,
                     days=days,
+                    log_context=log_context,
                 )
                 if response is None or not response.success:
                     logger.debug("主题扩池搜索无结果: theme=%s query=%s", theme.id, query)
@@ -209,15 +222,19 @@ class ThemeExpansionService:
         query: str,
         max_results: int,
         days: int,
+        log_context: Optional[Dict[str, Any]] = None,
     ):
         if self.search_service is None or not self.search_service.is_available:
             return None
         last_response = None
         providers = getattr(self.search_service, "_providers", []) or []
+        attempts = []
+        context = dict(log_context or {})
         for provider in providers:
             if not provider.is_available:
                 continue
             executor: Optional[concurrent.futures.ThreadPoolExecutor] = None
+            provider_name = getattr(provider, "name", provider.__class__.__name__)
             try:
                 executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
                 future = executor.submit(
@@ -228,9 +245,16 @@ class ThemeExpansionService:
                 )
                 response = future.result(timeout=self.query_timeout_seconds)
             except concurrent.futures.TimeoutError:
+                attempts.append(
+                    {
+                        "provider": provider_name,
+                        "status": "timeout",
+                        "timeout_seconds": self.query_timeout_seconds,
+                    }
+                )
                 logger.warning(
                     "主题扩池搜索超时: provider=%s query=%s timeout=%.1fs",
-                    getattr(provider, "name", provider.__class__.__name__),
+                    provider_name,
                     query,
                     self.query_timeout_seconds,
                 )
@@ -238,9 +262,16 @@ class ThemeExpansionService:
                     executor.shutdown(wait=False, cancel_futures=True)
                 continue
             except Exception as exc:
+                attempts.append(
+                    {
+                        "provider": provider_name,
+                        "status": "error",
+                        "error": str(exc),
+                    }
+                )
                 logger.debug(
                     "主题扩池搜索失败: provider=%s query=%s err=%s",
-                    getattr(provider, "name", provider.__class__.__name__),
+                    provider_name,
                     query,
                     exc,
                 )
@@ -251,8 +282,48 @@ class ThemeExpansionService:
                 if executor is not None:
                     executor.shutdown(wait=False)
             last_response = response
+            attempts.append(
+                {
+                    "provider": provider_name,
+                    "status": "success" if response.success and response.results else ("empty" if response.success else "failed"),
+                    "result_count": len(response.results or []),
+                    "response_provider": response.provider,
+                    "error": response.error_message,
+                }
+            )
             if response.success and response.results:
+                if len(attempts) > 1:
+                    _emit_theme_expansion_fallback_log(
+                        {
+                            "event": "theme_expansion_provider_fallback",
+                            "stage": "theme_expansion",
+                            "query": query,
+                            "days": days,
+                            "max_results": max_results,
+                            "fallback_used": True,
+                            "selected_provider": response.provider,
+                            "attempts": attempts,
+                            **context,
+                        }
+                    )
                 return response
+        if attempts:
+            _emit_theme_expansion_fallback_log(
+                {
+                    "event": "theme_expansion_provider_fallback",
+                    "stage": "theme_expansion",
+                    "query": query,
+                    "days": days,
+                    "max_results": max_results,
+                    "fallback_used": True,
+                    "selected_provider": getattr(last_response, "provider", None) if last_response else None,
+                    "attempts": attempts,
+                    "final_success": bool(last_response and last_response.success),
+                    "final_result_count": len(getattr(last_response, "results", []) or []) if last_response else 0,
+                    **context,
+                },
+                level="warning",
+            )
         return last_response
 
     def _extract_candidate_signals_from_text(self, text: str) -> Dict[str, int]:

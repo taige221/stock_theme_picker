@@ -10,6 +10,7 @@ from __future__ import annotations
 import uuid
 from typing import Any, Dict, List, Optional
 
+from theme_picker.application.deep_analysis_llm_adapter import DeepAnalysisLLMAdapter
 from theme_picker.infrastructure.persistence import (
     create_stock_deep_analysis_message,
     get_stock_deep_analysis_record,
@@ -26,8 +27,9 @@ from theme_picker.infrastructure.persistence import (
 class StockDeepAnalysisService:
     """Build a structured deep-analysis record from an existing stock query."""
 
-    def __init__(self, *, db=None):
+    def __init__(self, *, db=None, llm_adapter: Optional[DeepAnalysisLLMAdapter] = None):
         self.db = db or get_theme_picker_db()
+        self.llm_adapter = llm_adapter or DeepAnalysisLLMAdapter()
 
     def create_from_query(self, query_id: str, *, force_refresh: bool = False) -> Any:
         query_id = str(query_id or "").strip()
@@ -65,6 +67,8 @@ class StockDeepAnalysisService:
                 "source": "stock_query_history",
                 "query_id": query_id,
                 "stock_query_result": result_payload,
+                "generation_mode": analysis_payload.get("generation_mode", "deterministic"),
+                "generation_model": analysis_payload.get("generation_model"),
             },
         )
 
@@ -94,11 +98,12 @@ class StockDeepAnalysisService:
             role="user",
             content=user_text,
         )
+        llm_answer = self._answer_follow_up_with_llm(record, user_text)
         assistant_message = create_stock_deep_analysis_message(
             self.db,
             analysis_id=record.analysis_id,
             role="assistant",
-            content=self._answer_follow_up(record, user_text),
+            content=llm_answer or self._answer_follow_up(record, user_text),
         )
         return user_message, assistant_message
 
@@ -232,9 +237,10 @@ class StockDeepAnalysisService:
             "assessment": self._technical_assessment(action_label, result),
         }
         fundamental = {
-            "coverage": result.get("fundamental_coverage") or {},
-            "details": result.get("fundamental_details") or {},
-            "errors": result.get("fundamental_errors") or [],
+            "context": result.get("fundamental_context") or {},
+            "coverage": result.get("fundamental_coverage") or (result.get("fundamental_context") or {}).get("coverage") or {},
+            "details": result.get("fundamental_details") or self._extract_fundamental_details_from_context(result.get("fundamental_context")) or {},
+            "errors": result.get("fundamental_errors") or (result.get("fundamental_context") or {}).get("errors") or [],
             "assessment": self._fundamental_assessment(result),
         }
         risk = {
@@ -242,7 +248,7 @@ class StockDeepAnalysisService:
             "news_summary": result.get("stock_news_summary"),
             "risk_level": "high" if len(risks) >= 3 else "medium" if risks else "low",
         }
-        return {
+        payload = {
             "stock_code": stock_code,
             "stock_name": stock_name,
             "action": action,
@@ -252,7 +258,134 @@ class StockDeepAnalysisService:
             "fundamental": fundamental,
             "risk": risk,
             "query_id": query_id,
+            "generation_mode": "deterministic",
+            "generation_model": None,
         }
+        llm_overlay = self._generate_with_llm(
+            stock_code=stock_code,
+            stock_name=stock_name,
+            result=result,
+            base_payload=payload,
+        )
+        if llm_overlay is not None:
+            payload = self._apply_llm_overlay(payload, llm_overlay)
+        return payload
+
+    def _generate_with_llm(
+        self,
+        *,
+        stock_code: str,
+        stock_name: str,
+        result: Dict[str, Any],
+        base_payload: Dict[str, Any],
+    ) -> Optional[Dict[str, Any]]:
+        try:
+            overlay = self.llm_adapter.generate(
+                stock_code=stock_code,
+                stock_name=stock_name,
+                result=result,
+                base_payload=base_payload,
+            )
+            if overlay:
+                overlay["generation_mode"] = "llm"
+            return overlay
+        except Exception:
+            return None
+
+    def _apply_llm_overlay(self, payload: Dict[str, Any], overlay: Dict[str, Any]) -> Dict[str, Any]:
+        next_payload = dict(payload)
+        action = str(overlay.get("action") or "").strip()
+        if action:
+            next_payload["action"] = action
+            next_payload["trade_plan"] = {
+                **(next_payload.get("trade_plan") or {}),
+                "action": action,
+            }
+        action_label = str(overlay.get("action_label") or "").strip()
+        if action_label:
+            next_payload["trade_plan"] = {
+                **(next_payload.get("trade_plan") or {}),
+                "action_label": action_label,
+            }
+        summary = str(overlay.get("summary") or "").strip()
+        if summary:
+            next_payload["summary"] = summary
+        confidence = self._safe_float(overlay.get("confidence"))
+        if confidence is not None:
+            next_payload["trade_plan"] = {
+                **(next_payload.get("trade_plan") or {}),
+                "confidence": int(round(confidence)),
+            }
+        position_plan = overlay.get("position_plan")
+        if isinstance(position_plan, dict) and position_plan:
+            next_payload["trade_plan"] = {
+                **(next_payload.get("trade_plan") or {}),
+                "position_plan": {
+                    **((next_payload.get("trade_plan") or {}).get("position_plan") or {}),
+                    **{str(key): str(value) for key, value in position_plan.items() if value},
+                },
+            }
+        triggers = overlay.get("triggers")
+        if isinstance(triggers, list) and triggers:
+            next_payload["trade_plan"] = {
+                **(next_payload.get("trade_plan") or {}),
+                "triggers": [str(item) for item in triggers[:4] if str(item).strip()],
+            }
+        technical_assessment = str(overlay.get("technical_assessment") or "").strip()
+        if technical_assessment:
+            next_payload["technical"] = {
+                **(next_payload.get("technical") or {}),
+                "assessment": technical_assessment,
+            }
+        fundamental_assessment = str(overlay.get("fundamental_assessment") or "").strip()
+        if fundamental_assessment:
+            next_payload["fundamental"] = {
+                **(next_payload.get("fundamental") or {}),
+                "assessment": fundamental_assessment,
+            }
+        risk_items = overlay.get("risk_items")
+        if isinstance(risk_items, list) and risk_items:
+            next_payload["risk"] = {
+                **(next_payload.get("risk") or {}),
+                "items": [str(item) for item in risk_items[:6] if str(item).strip()],
+            }
+        risk_level = str(overlay.get("risk_level") or "").strip()
+        if risk_level:
+            next_payload["risk"] = {
+                **(next_payload.get("risk") or {}),
+                "risk_level": risk_level,
+            }
+        next_payload["generation_mode"] = overlay.get("generation_mode", "llm")
+        next_payload["generation_model"] = overlay.get("generation_model")
+        return next_payload
+
+    def _answer_follow_up_with_llm(self, record: Any, user_text: str) -> Optional[str]:
+        try:
+            analysis = {
+                "analysis_id": record.analysis_id,
+                "stock_code": record.stock_code,
+                "stock_name": record.stock_name,
+                "action": record.action,
+                "summary": record.summary,
+                "trade_plan": self.db._safe_json_loads(record.trade_plan_json) or {},
+                "technical": self.db._safe_json_loads(record.technical_json) or {},
+                "fundamental": self.db._safe_json_loads(record.fundamental_json) or {},
+                "risk": self.db._safe_json_loads(record.risk_json) or {},
+                "context_snapshot": self.db._safe_json_loads(record.context_snapshot_json) or {},
+            }
+            recent_messages = [
+                {"role": message.role, "content": message.content}
+                for message in self.list_messages(record.analysis_id, limit=8)
+            ]
+            answer = self.llm_adapter.chat(
+                analysis=analysis,
+                user_message=user_text,
+                recent_messages=recent_messages,
+            )
+            normalized = str(answer or "").strip()
+            return normalized or None
+        except Exception:
+            return None
 
     def _build_levels(
         self,
@@ -343,11 +476,25 @@ class StockDeepAnalysisService:
 
     @staticmethod
     def _fundamental_assessment(result: Dict[str, Any]) -> str:
-        coverage = result.get("fundamental_coverage") or {}
+        coverage = result.get("fundamental_coverage") or (result.get("fundamental_context") or {}).get("coverage") or {}
         available = [key for key, value in coverage.items() if value and value != "missing"]
         if available:
             return f"已覆盖 {len(available)} 个基本面模块，适合作为交易计划的辅助验证。"
         return "当前基本面结构化覆盖不足，深度分析不应把基本面作为重仓依据。"
+
+    @staticmethod
+    def _extract_fundamental_details_from_context(fundamental_context: Any) -> Dict[str, Any]:
+        if not isinstance(fundamental_context, dict):
+            return {}
+        details: Dict[str, Any] = {}
+        for key in ("valuation", "growth", "earnings", "institution", "capital_flow", "dragon_tiger", "boards"):
+            block = fundamental_context.get(key)
+            if not isinstance(block, dict):
+                continue
+            data = block.get("data")
+            if isinstance(data, dict) and data:
+                details[key] = data
+        return details
 
     def _answer_follow_up(self, record: Any, message: str) -> str:
         trade_plan = self.db._safe_json_loads(record.trade_plan_json) or {}

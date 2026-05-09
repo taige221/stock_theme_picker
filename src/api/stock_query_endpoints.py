@@ -6,6 +6,7 @@
 """
 
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import JSONResponse
 
 from theme_picker.api.schemas import (
     StockAlertRuleItemSchema,
@@ -21,34 +22,37 @@ from theme_picker.api.schemas import (
     StockQueryAnalyzeResponse,
     StockQueryHistoryItemSchema,
     StockQueryHistoryListResponse,
+    StockQueryTaskAcceptedSchema,
+    StockQueryTaskStatusSchema,
 )
 from theme_picker.application.stock_deep_analysis_service import StockDeepAnalysisService
-from theme_picker.application.stock_query_service import StockQueryService
-from theme_picker.infrastructure.persistence import (
-    get_stock_query_record,
-    get_theme_picker_db,
-    list_stock_query_records,
-)
+from theme_picker.application.stock_query_task_service import get_stock_query_task_service
 
 router = APIRouter()
 
 
 @router.post(
     "/analyze",
-    response_model=StockQueryAnalyzeResponse,
+    status_code=202,
+    response_model=StockQueryTaskAcceptedSchema,
     responses={
-        200: {"description": "单股查询结果", "model": StockQueryAnalyzeResponse},
+        202: {"description": "单股查询任务已接受", "model": StockQueryTaskAcceptedSchema},
         400: {"description": "请求参数错误"},
         500: {"description": "服务器错误"},
     },
     summary="执行单股查询",
-    description="根据股票代码或名称，返回该股票的技术状态、关联主题以及入选/未入选原因。",
+    description="根据股票代码或名称，异步执行单股查询任务。",
 )
-def analyze_single_stock(request: StockQueryAnalyzeRequest) -> StockQueryAnalyzeResponse:
+def analyze_single_stock(request: StockQueryAnalyzeRequest) -> JSONResponse:
     try:
-        service = StockQueryService()
-        payload = service.analyze(request)
-        return StockQueryAnalyzeResponse(**payload)
+        task_service = get_stock_query_task_service()
+        task = task_service.submit_query(request)
+        accepted = StockQueryTaskAcceptedSchema(
+            task_id=task.task_id,
+            status=task.status.value,
+            message=task.message or "单股查询任务已接受",
+        )
+        return JSONResponse(status_code=202, content=accepted.model_dump())
     except ValueError as exc:
         raise HTTPException(
             status_code=400,
@@ -61,6 +65,39 @@ def analyze_single_stock(request: StockQueryAnalyzeRequest) -> StockQueryAnalyze
             status_code=500,
             detail={"error": "internal_error", "message": f"单股查询失败: {exc}"},
         ) from exc
+
+
+@router.get(
+    "/status/{task_id}",
+    response_model=StockQueryTaskStatusSchema,
+    responses={
+        200: {"description": "单股查询任务状态", "model": StockQueryTaskStatusSchema},
+        404: {"description": "任务不存在"},
+    },
+    summary="查询单股查询任务状态",
+    description="根据 task_id 查询单股查询任务状态；完成时返回 result。",
+)
+def get_single_stock_status(task_id: str) -> StockQueryTaskStatusSchema:
+    task_service = get_stock_query_task_service()
+    task = task_service.get_task(task_id)
+    if task is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "not_found", "message": f"未找到单股查询任务: {task_id}"},
+        )
+
+    result = StockQueryAnalyzeResponse(**task.result) if isinstance(task.result, dict) else None
+    return StockQueryTaskStatusSchema(
+        task_id=task.task_id,
+        status=task.status.value,
+        progress=task.progress,
+        message=task.message,
+        result=result,
+        error=task.error,
+        created_at=task.created_at.isoformat(),
+        started_at=task.started_at.isoformat() if task.started_at else None,
+        completed_at=task.completed_at.isoformat() if task.completed_at else None,
+    )
 
 
 @router.post(
@@ -206,9 +243,8 @@ def create_stock_deep_analysis_alert_rules(
     description="返回最近的单股查询历史，供前端历史入口恢复查看过去结果。",
 )
 def list_single_stock_history(limit: int = 20, stock_code: str | None = None) -> StockQueryHistoryListResponse:
-    db = get_theme_picker_db()
-    records = list_stock_query_records(db, limit=limit, stock_code=stock_code)
-    items = [_build_stock_query_history_item(db, record) for record in records]
+    task_service = get_stock_query_task_service()
+    items = [_build_stock_query_history_item(task) for task in task_service.list_tasks(limit=limit, stock_code=stock_code)]
     return StockQueryHistoryListResponse(items=items)
 
 
@@ -223,29 +259,29 @@ def list_single_stock_history(limit: int = 20, stock_code: str | None = None) ->
     description="根据 query_id 返回某次单股查询的完整历史结果。",
 )
 def get_single_stock_history(query_id: str) -> StockQueryHistoryItemSchema:
-    db = get_theme_picker_db()
-    record = get_stock_query_record(db, query_id)
-    if record is None:
+    task_service = get_stock_query_task_service()
+    task = task_service.get_task(query_id)
+    if task is None:
         raise HTTPException(
             status_code=404,
             detail={"error": "not_found", "message": f"未找到单股查询历史: {query_id}"},
         )
-    return _build_stock_query_history_item(db, record)
+    return _build_stock_query_history_item(task)
 
 
-def _build_stock_query_history_item(db, record) -> StockQueryHistoryItemSchema:
-    result_payload = db._safe_json_loads(record.result_payload) if record.result_payload else None
-    result = StockQueryAnalyzeResponse(**result_payload) if isinstance(result_payload, dict) else None
+def _build_stock_query_history_item(task) -> StockQueryHistoryItemSchema:
+    result = StockQueryAnalyzeResponse(**task.result) if isinstance(task.result, dict) else None
+    request_payload = task.request_payload if isinstance(task.request_payload, dict) else {}
     return StockQueryHistoryItemSchema(
-        query_id=record.query_id,
-        status=record.status,
-        query_text=record.query_text,
-        stock_code=record.stock_code,
-        stock_name=record.stock_name,
-        signal=record.signal,
-        error=record.error,
-        created_at=record.created_at.isoformat() if record.created_at else "",
-        completed_at=record.completed_at.isoformat() if record.completed_at else None,
+        query_id=task.task_id,
+        status=task.status.value if hasattr(task.status, "value") else str(task.status),
+        query_text=str(request_payload.get("query") or request_payload.get("stock_code") or request_payload.get("stock_name") or "") or None,
+        stock_code=(result.stock_code if result else None) or request_payload.get("stock_code"),
+        stock_name=(result.stock_name if result else None) or request_payload.get("stock_name"),
+        signal=result.signal if result else None,
+        error=task.error,
+        created_at=task.created_at.isoformat() if task.created_at else "",
+        completed_at=task.completed_at.isoformat() if task.completed_at else None,
         result=result,
     )
 

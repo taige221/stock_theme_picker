@@ -32,6 +32,7 @@ from theme_picker.infrastructure.persistence import (
     delete_stock_alert_rule,
     delete_stock_watchlist_item,
     get_stock_alert_rule,
+    list_stock_deep_analysis_records,
     get_stock_watchlist_item,
     get_theme_picker_db,
     list_stock_alert_rules,
@@ -266,7 +267,7 @@ def list_watchlist_stock_alert_events(
         stock_code=stock_code.strip().upper() if stock_code else None,
         unread_only=bool(unread_only),
     )
-    return StockAlertEventListResponse(items=[_build_stock_alert_event_item(record) for record in records])
+    return StockAlertEventListResponse(items=[_build_stock_alert_event_item(db, record) for record in records])
 
 
 @router.patch(
@@ -282,7 +283,7 @@ def mark_watchlist_stock_alert_event_read(event_id: int) -> StockAlertEventItemS
             status_code=404,
             detail={"error": "not_found", "message": f"未找到告警事件: {event_id}"},
         )
-    return _build_stock_alert_event_item(record)
+    return _build_stock_alert_event_item(db, record)
 
 
 @router.post(
@@ -366,7 +367,16 @@ def _build_stock_alert_rule_item(record) -> StockAlertRuleItemSchema:
     )
 
 
-def _build_stock_alert_event_item(record) -> StockAlertEventItemSchema:
+def _build_stock_alert_event_item(db, record) -> StockAlertEventItemSchema:
+    rule = get_stock_alert_rule(db, record.rule_id)
+    source_query_id = getattr(rule, "source_query_id", None)
+    linked_analysis_id = None
+    if source_query_id:
+        for analysis in list_stock_deep_analysis_records(db, stock_code=record.stock_code, limit=50):
+            if analysis.status == "completed" and analysis.source_query_id == source_query_id:
+                linked_analysis_id = analysis.analysis_id
+                break
+
     return StockAlertEventItemSchema(
         id=record.id,
         stock_code=record.stock_code,
@@ -377,6 +387,8 @@ def _build_stock_alert_event_item(record) -> StockAlertEventItemSchema:
         title=record.title,
         message=record.message,
         dedupe_key=record.dedupe_key,
+        source_query_id=source_query_id,
+        linked_analysis_id=linked_analysis_id,
         created_at=record.created_at.isoformat() if record.created_at else "",
         read_at=record.read_at.isoformat() if record.read_at else None,
     )

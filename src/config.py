@@ -711,6 +711,12 @@ class Config:
     agent_risk_override: bool = True  # Allow risk agent to veto buy signals
     agent_deep_research_budget: int = 30000  # Max token budget for deep research
     agent_deep_research_timeout: int = 180  # Max seconds for /research command before returning timeout
+    deep_analysis_llm_enabled: bool = True  # Enable real LLM generation for stock deep analysis
+    deep_analysis_litellm_model: str = ""  # Optional override model for stock deep analysis
+    deep_analysis_llm_timeout_seconds: int = 45  # Timeout budget for one deep-analysis LLM call
+    deep_analysis_llm_max_tokens: int = 2200  # Max tokens for structured deep-analysis output
+    deep_analysis_llm_reasoning_effort: str = "medium"  # none/minimal/low/medium/high/xhigh/default
+    deep_analysis_llm_verbosity: str = "low"  # low/medium/high
     agent_memory_enabled: bool = False  # Enable memory & calibration system
     agent_skill_autoweight: bool = True  # Auto-weight skills by backtest performance
     agent_skill_routing: str = "auto"  # Skill routing: 'auto' (regime-based) or 'manual'
@@ -906,9 +912,9 @@ class Config:
     # 全局总开关；关闭时返回 not_supported 并保持主流程无变化
     enable_fundamental_pipeline: bool = True
     # 基本面阶段总预算（秒）
-    fundamental_stage_timeout_seconds: float = 2.5
+    fundamental_stage_timeout_seconds: float = 25
     # 单能力源调用超时（秒）
-    fundamental_fetch_timeout_seconds: float = 1.2
+    fundamental_fetch_timeout_seconds: float = 12
     # 单能力失败重试次数（已包含首次）
     fundamental_retry_max: int = 1
     # 基本面上下文短 TTL（秒）
@@ -1255,7 +1261,7 @@ class Config:
         minimax_keys_str = os.getenv('MINIMAX_API_KEYS', '')
         minimax_api_keys = [k.strip() for k in minimax_keys_str.split(',') if k.strip()]
         
-        tavily_keys_str = os.getenv('TAVILY_API_KEYS', '')
+        tavily_keys_str = os.getenv('TAVILY_API_KEYS', '') or os.getenv('TAVILY_API_KEY', '')
         tavily_api_keys = [k.strip() for k in tavily_keys_str.split(',') if k.strip()]
         
         serpapi_keys_str = os.getenv('SERPAPI_API_KEYS', '')
@@ -1429,6 +1435,25 @@ class Config:
                 field_name='AGENT_DEEP_RESEARCH_TIMEOUT',
                 minimum=30,
             ),
+            deep_analysis_llm_enabled=parse_env_bool(
+                os.getenv('DEEP_ANALYSIS_LLM_ENABLED'),
+                default=True,
+            ),
+            deep_analysis_litellm_model=os.getenv('DEEP_ANALYSIS_LITELLM_MODEL', '').strip(),
+            deep_analysis_llm_timeout_seconds=parse_env_int(
+                os.getenv('DEEP_ANALYSIS_LLM_TIMEOUT_SECONDS'),
+                45,
+                field_name='DEEP_ANALYSIS_LLM_TIMEOUT_SECONDS',
+                minimum=5,
+            ),
+            deep_analysis_llm_max_tokens=parse_env_int(
+                os.getenv('DEEP_ANALYSIS_LLM_MAX_TOKENS'),
+                2200,
+                field_name='DEEP_ANALYSIS_LLM_MAX_TOKENS',
+                minimum=200,
+            ),
+            deep_analysis_llm_reasoning_effort=os.getenv('DEEP_ANALYSIS_LLM_REASONING_EFFORT', 'medium').strip() or 'medium',
+            deep_analysis_llm_verbosity=os.getenv('DEEP_ANALYSIS_LLM_VERBOSITY', 'low').strip() or 'low',
             agent_memory_enabled=os.getenv('AGENT_MEMORY_ENABLED', 'false').lower() == 'true',
             agent_skill_autoweight=(
                 os.getenv('AGENT_SKILL_AUTOWEIGHT')
@@ -1686,13 +1711,13 @@ class Config:
             enable_fundamental_pipeline=os.getenv('ENABLE_FUNDAMENTAL_PIPELINE', 'true').lower() == 'true',
             fundamental_stage_timeout_seconds=parse_env_float(
                 os.getenv('FUNDAMENTAL_STAGE_TIMEOUT_SECONDS'),
-                1.5,
+                25.0,
                 field_name='FUNDAMENTAL_STAGE_TIMEOUT_SECONDS',
                 minimum=0.0,
             ),
             fundamental_fetch_timeout_seconds=parse_env_float(
                 os.getenv('FUNDAMENTAL_FETCH_TIMEOUT_SECONDS'),
-                0.8,
+                12.0,
                 field_name='FUNDAMENTAL_FETCH_TIMEOUT_SECONDS',
                 minimum=0.0,
             ),

@@ -111,6 +111,11 @@ function dataCompletenessLabel(value?: string | null): string {
   return '待补充';
 }
 
+function priceLabel(value?: string | null): string {
+  if (value === 'daily_only') return '最新收盘';
+  return '现价';
+}
+
 function trendBandLabel(score?: number | null): string {
   if (score == null || Number.isNaN(score)) return '待判定';
   if (score >= 75) return '较强';
@@ -478,6 +483,10 @@ const ThemeStockPickerPage: React.FC = () => {
 
   const handleDeepAnalyze = (stockCode: string, stockName: string) => {
     navigate(`/chat?stock=${encodeURIComponent(stockCode)}&name=${encodeURIComponent(stockName)}`);
+  };
+
+  const handleSingleStockAnalyze = (stockCode: string, stockName: string) => {
+    navigate(`/stock-query?stock=${encodeURIComponent(stockCode)}&name=${encodeURIComponent(stockName)}`);
   };
 
   const applyResultToPage = (result: ThemePickerScanResponse) => {
@@ -984,7 +993,7 @@ const ThemeStockPickerPage: React.FC = () => {
 
                         <div className="mt-4 grid gap-3 sm:grid-cols-3">
                           <div className="rounded-2xl border border-border/60 bg-background/70 px-4 py-3">
-                            <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">现价</p>
+                            <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">{priceLabel(stock.dataCompleteness)}</p>
                             <p className="mt-2 font-mono text-lg font-semibold text-foreground">{formatNumber(stock.currentPrice)}</p>
                           </div>
                           <div className="rounded-2xl border border-border/60 bg-background/70 px-4 py-3">
@@ -1078,7 +1087,7 @@ const ThemeStockPickerPage: React.FC = () => {
                       <h3 className="text-xl font-semibold text-foreground">关键位置</h3>
                       <div className="mt-3 space-y-3 text-sm">
                         <div className="flex items-center justify-between gap-3">
-                          <Badge variant="default" className="border-0 px-3 py-1.5 text-sm">现价</Badge>
+                          <Badge variant="default" className="border-0 px-3 py-1.5 text-sm">{priceLabel(selectedStock.dataCompleteness)}</Badge>
                           <span className="font-mono text-lg text-foreground">{formatNumber(selectedStock.currentPrice)}</span>
                         </div>
                         <div className="flex items-center justify-between gap-3">
@@ -1155,7 +1164,14 @@ const ThemeStockPickerPage: React.FC = () => {
                     ) : null}
                   </Card>
 
-                  <div className="flex gap-3">
+                  <div className="flex flex-wrap gap-3">
+                    <Button
+                      variant="outline"
+                      className="rounded-2xl"
+                      onClick={() => handleSingleStockAnalyze(selectedStock.stockCode, selectedStock.stockName)}
+                    >
+                      前往单股分析
+                    </Button>
                     <Button
                       variant="primary"
                       className="rounded-2xl"

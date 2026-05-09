@@ -1,6 +1,7 @@
 import type React from 'react';
 import { useEffect, useEffectEvent, useMemo, useState } from 'react';
 import { Activity, Bell, CheckCheck, Layers3, RefreshCw, SquarePen, Star, Trash2, TrendingUp } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { createParsedApiError, getParsedApiError, type ParsedApiError } from '../api/error';
 import { watchlistApi, type StockAlertEventItem, type StockAlertLoopStatus, type StockAlertRuleItem, type StockWatchlistItem } from '../api/watchlist';
 import { ApiErrorAlert, AppPage, Badge, Button, Card, EmptyState, InlineAlert, Input } from '../components/common';
@@ -44,6 +45,29 @@ function alertEventVariant(ruleType: string, readAt?: string | null): 'warning' 
 function formatThreshold(value?: number | null): string {
   if (value === null || value === undefined || !Number.isFinite(value)) return '--';
   return value.toFixed(2);
+}
+
+function buildDeepAnalysisHref(params: {
+  analysisId?: string | null;
+  sourceQueryId?: string | null;
+  stockCode?: string | null;
+  stockName?: string | null;
+}): string | null {
+  const nextParams = new URLSearchParams();
+  if (params.analysisId) {
+    nextParams.set('analysisId', params.analysisId);
+  }
+  if (params.sourceQueryId) {
+    nextParams.set('queryId', params.sourceQueryId);
+  }
+  if (params.stockCode) {
+    nextParams.set('stock', params.stockCode);
+  }
+  if (params.stockName) {
+    nextParams.set('name', params.stockName);
+  }
+  const serialized = nextParams.toString();
+  return serialized ? `/deep-analysis?${serialized}` : null;
 }
 
 const WatchlistPage: React.FC = () => {
@@ -119,6 +143,15 @@ const WatchlistPage: React.FC = () => {
 
   const alertEnabledCount = useMemo(() => items.filter((item) => item.alertEnabled).length, [items]);
   const unreadEventCount = useMemo(() => alertEvents.filter((event) => !event.readAt).length, [alertEvents]);
+  const latestAnalysisBySourceQueryId = useMemo(() => {
+    const map = new Map<string, StockAlertEventItem['linkedAnalysisId']>();
+    for (const event of alertEvents) {
+      if (event.sourceQueryId && event.linkedAnalysisId && !map.has(event.sourceQueryId)) {
+        map.set(event.sourceQueryId, event.linkedAnalysisId);
+      }
+    }
+    return map;
+  }, [alertEvents]);
 
   const handleDeleteAlertRule = useEffectEvent(async (ruleId: number) => {
     setDeletingRuleId(ruleId);
@@ -495,18 +528,44 @@ const WatchlistPage: React.FC = () => {
                         <p className="mt-2 text-xs text-secondary-text">
                           {event.stockName} · {event.stockCode} · {formatDateTime(event.createdAt)}
                         </p>
+                        {event.sourceQueryId || event.linkedAnalysisId ? (
+                          <p className="mt-1 text-xs text-secondary-text">
+                            来源 queryId {event.sourceQueryId || '--'}
+                          </p>
+                        ) : null}
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="rounded-xl"
-                        isLoading={readingEventId === event.id}
-                        loadingText="处理中..."
-                        disabled={Boolean(event.readAt)}
-                        onClick={() => void handleMarkEventRead(event.id)}
-                      >
-                        标记已读
-                      </Button>
+                      <div className="flex shrink-0 items-center gap-2">
+                        {buildDeepAnalysisHref({
+                          analysisId: event.linkedAnalysisId,
+                          sourceQueryId: event.sourceQueryId,
+                          stockCode: event.stockCode,
+                          stockName: event.stockName,
+                        }) ? (
+                          <Link
+                            to={buildDeepAnalysisHref({
+                              analysisId: event.linkedAnalysisId,
+                              sourceQueryId: event.sourceQueryId,
+                              stockCode: event.stockCode,
+                              stockName: event.stockName,
+                            }) || '/deep-analysis'}
+                          >
+                            <Button variant="secondary" size="sm" className="rounded-xl">
+                              回看分析
+                            </Button>
+                          </Link>
+                        ) : null}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="rounded-xl"
+                          isLoading={readingEventId === event.id}
+                          loadingText="处理中..."
+                          disabled={Boolean(event.readAt)}
+                          onClick={() => void handleMarkEventRead(event.id)}
+                        >
+                          标记已读
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 ))
@@ -559,11 +618,33 @@ const WatchlistPage: React.FC = () => {
                         <p className="mt-1 text-xs text-secondary-text">扫描间隔 {Math.max(5, rule.scanIntervalMinutes || 5)} 分钟</p>
                         <p className="mt-1 text-xs text-secondary-text">更新于 {formatDateTime(rule.updatedAt)}</p>
                         <p className="mt-1 text-xs text-secondary-text">{rule.note || '当前没有备注'}</p>
+                        {rule.sourceQueryId ? (
+                          <p className="mt-1 text-xs text-secondary-text">来源 queryId {rule.sourceQueryId}</p>
+                        ) : null}
                       </div>
                       <div className="flex items-center gap-2">
                         <Badge variant={rule.enabled ? 'success' : 'default'} className="border-0 px-3 py-1">
                           {rule.enabled ? '已启用' : '已停用'}
                         </Badge>
+                        {buildDeepAnalysisHref({
+                          analysisId: rule.sourceQueryId ? (latestAnalysisBySourceQueryId.get(rule.sourceQueryId) ?? null) : null,
+                          sourceQueryId: rule.sourceQueryId,
+                          stockCode: rule.stockCode,
+                          stockName: rule.stockName,
+                        }) ? (
+                          <Link
+                            to={buildDeepAnalysisHref({
+                              analysisId: rule.sourceQueryId ? (latestAnalysisBySourceQueryId.get(rule.sourceQueryId) ?? null) : null,
+                              sourceQueryId: rule.sourceQueryId,
+                              stockCode: rule.stockCode,
+                              stockName: rule.stockName,
+                            }) || '/deep-analysis'}
+                          >
+                            <Button variant="secondary" size="sm" className="rounded-xl">
+                              回看分析
+                            </Button>
+                          </Link>
+                        ) : null}
                         <Button
                           variant="secondary"
                           size="sm"

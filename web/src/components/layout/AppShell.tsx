@@ -10,7 +10,7 @@ const NAV_ITEMS = [
   { to: '/theme-picker', label: '主题选股', icon: Sparkles },
   { to: '/stock-query', label: '单股查询', icon: Radar },
   { to: '/watchlist', label: '观察池', icon: WalletCards },
-  { to: '/chat', label: '深度分析', icon: Star },
+  { to: '/deep-analysis', label: '深度分析', icon: Star },
 ] as const;
 
 export const AppShell: React.FC = () => {

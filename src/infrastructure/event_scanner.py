@@ -8,16 +8,27 @@ Theme Event Scanner
 from __future__ import annotations
 
 import logging
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from theme_picker.domain.theme_event import (
     ThemeDefinitionSchema,
     ThemeEventSchema,
     ThemeNewsItemSchema,
 )
+from theme_picker.infrastructure.search_fallback_logging import emit_search_fallback_log
 from theme_picker.search_service import SearchResult, SearchService
 
 logger = logging.getLogger(__name__)
+_SEARCH_FALLBACK_TAG = "SEARCH_FALLBACK"
+
+
+def _emit_theme_news_fallback_log(payload: dict, *, level: str = "info") -> None:
+    enriched_payload = {"tag": _SEARCH_FALLBACK_TAG, **payload}
+    emit_search_fallback_log(
+        enriched_payload,
+        level=level,
+        mirror_logger=logger,
+    )
 
 
 class ThemeEventScanner:
@@ -32,6 +43,7 @@ class ThemeEventScanner:
         *,
         max_results_per_keyword: int = 5,
         days: int = 7,
+        log_context: Optional[Dict[str, Any]] = None,
     ) -> ThemeEventSchema:
         if self.search_service is None or not self.search_service.is_available:
             return ThemeEventSchema(
@@ -52,6 +64,7 @@ class ThemeEventScanner:
                     query=query,
                     max_results=max_results_per_keyword,
                     days=days,
+                    log_context=log_context,
                 )
             except Exception as exc:
                 logger.warning("主题扫描失败: theme=%s keyword=%s err=%s", theme.id, query, exc)
@@ -115,23 +128,77 @@ class ThemeEventScanner:
         query: str,
         max_results: int,
         days: int,
+        log_context: Optional[Dict[str, Any]] = None,
     ):
         """Run a generic keyword search through SearchService providers."""
         last_response = None
         providers = getattr(self.search_service, "_providers", []) or []
+        attempts = []
+        context = dict(log_context or {})
         for provider in providers:
             if not provider.is_available:
                 continue
-            response = provider.search(query, max_results=max_results, days=days)
+            provider_name = getattr(provider, "name", provider.__class__.__name__)
+            try:
+                response = provider.search(query, max_results=max_results, days=days)
+            except Exception as exc:
+                attempts.append(
+                    {
+                        "provider": provider_name,
+                        "status": "error",
+                        "error": str(exc),
+                    }
+                )
+                continue
             last_response = response
+            attempts.append(
+                {
+                    "provider": provider_name,
+                    "status": "success" if response.success and response.results else ("empty" if response.success else "failed"),
+                    "result_count": len(response.results or []),
+                    "response_provider": response.provider,
+                    "error": response.error_message,
+                }
+            )
             if response.success and response.results:
+                if len(attempts) > 1:
+                    _emit_theme_news_fallback_log(
+                        {
+                            "event": "theme_news_provider_fallback",
+                            "stage": "theme_news",
+                            "query": query,
+                            "days": days,
+                            "max_results": max_results,
+                            "fallback_used": True,
+                            "selected_provider": response.provider,
+                            "attempts": attempts,
+                            **context,
+                        }
+                    )
                 return response
-        return last_response or self.search_service.search_stock_price_fallback(
+        fallback_response = self.search_service.search_stock_price_fallback(
             stock_code=query,
             stock_name=query,
             max_attempts=1,
             max_results=max_results,
         )
+        _emit_theme_news_fallback_log(
+            {
+                "event": "theme_news_provider_fallback",
+                "stage": "theme_news",
+                "query": query,
+                "days": days,
+                "max_results": max_results,
+                "fallback_used": True,
+                "selected_provider": getattr(fallback_response, "provider", None) if fallback_response else None,
+                "attempts": attempts,
+                "fallback_response_success": bool(fallback_response and fallback_response.success),
+                "fallback_result_count": len(getattr(fallback_response, "results", []) or []) if fallback_response else 0,
+                **context,
+            },
+            level="warning",
+        )
+        return last_response or fallback_response
 
     @staticmethod
     def _merge_result(

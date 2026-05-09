@@ -217,6 +217,29 @@ class StockQueryNewsSummarySchema(BaseModel):
     sentiment: Optional[str] = None
 
 
+class StockQueryFundamentalBlockSchema(BaseModel):
+    status: Optional[str] = None
+    data: Dict[str, Any] = Field(default_factory=dict)
+    source_chain: List[Dict[str, Any]] = Field(default_factory=list)
+    errors: List[str] = Field(default_factory=list)
+
+
+class StockQueryFundamentalContextSchema(BaseModel):
+    market: Optional[str] = None
+    status: Optional[str] = None
+    coverage: Dict[str, str] = Field(default_factory=dict)
+    source_chain: List[Dict[str, Any]] = Field(default_factory=list)
+    errors: List[str] = Field(default_factory=list)
+    elapsed_ms: Optional[int] = None
+    valuation: StockQueryFundamentalBlockSchema = Field(default_factory=StockQueryFundamentalBlockSchema)
+    growth: StockQueryFundamentalBlockSchema = Field(default_factory=StockQueryFundamentalBlockSchema)
+    earnings: StockQueryFundamentalBlockSchema = Field(default_factory=StockQueryFundamentalBlockSchema)
+    institution: StockQueryFundamentalBlockSchema = Field(default_factory=StockQueryFundamentalBlockSchema)
+    capital_flow: StockQueryFundamentalBlockSchema = Field(default_factory=StockQueryFundamentalBlockSchema)
+    dragon_tiger: StockQueryFundamentalBlockSchema = Field(default_factory=StockQueryFundamentalBlockSchema)
+    boards: StockQueryFundamentalBlockSchema = Field(default_factory=StockQueryFundamentalBlockSchema)
+
+
 class StockQueryAnalyzeResponse(BaseModel):
     query_id: Optional[str] = None
     stock_code: str
@@ -244,10 +267,29 @@ class StockQueryAnalyzeResponse(BaseModel):
     theme_attributions: List[StockQueryThemeAttributionSchema] = Field(default_factory=list)
     themes: List[StockQueryThemeAttributionSchema] = Field(default_factory=list)
     stock_news_summary: Optional[StockQueryNewsSummarySchema] = None
+    fundamental_context: Optional[StockQueryFundamentalContextSchema] = None
     fundamental_coverage: Dict[str, str] = Field(default_factory=dict)
     fundamental_errors: List[str] = Field(default_factory=list)
     fundamental_details: Dict[str, Any] = Field(default_factory=dict)
     data_sources: Dict[str, Optional[str]] = Field(default_factory=dict)
+
+
+class StockQueryTaskAcceptedSchema(BaseModel):
+    task_id: str
+    status: str = Field(default="pending")
+    message: str
+
+
+class StockQueryTaskStatusSchema(BaseModel):
+    task_id: str
+    status: str
+    progress: int = Field(default=0, ge=0, le=100)
+    message: Optional[str] = None
+    result: Optional[StockQueryAnalyzeResponse] = None
+    error: Optional[str] = None
+    created_at: str
+    started_at: Optional[str] = None
+    completed_at: Optional[str] = None
 
 
 class StockQueryHistoryItemSchema(BaseModel):
@@ -399,6 +441,8 @@ class StockAlertEventItemSchema(BaseModel):
     title: str
     message: str
     dedupe_key: Optional[str] = None
+    source_query_id: Optional[str] = None
+    linked_analysis_id: Optional[str] = None
     created_at: str
     read_at: Optional[str] = None
 

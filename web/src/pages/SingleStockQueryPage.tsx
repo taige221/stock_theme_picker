@@ -1,5 +1,5 @@
 import type React from 'react';
-import { useEffect, useEffectEvent, useMemo, useState } from 'react';
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   Clock3,
@@ -14,7 +14,11 @@ import {
   stockQueryApi,
   type StockQueryAnalyzeResponse,
   type StockQueryBoardItem,
+  type StockQueryFundamentalBlock,
+  type StockQueryFundamentalContext,
+  type StockQueryFundamentalDetails,
   type StockQueryHistoryItem,
+  type StockQueryTaskStatus,
 } from '../api/stockQuery';
 import { watchlistApi, type StockAlertRuleItem, type StockWatchlistItem } from '../api/watchlist';
 import { ApiErrorAlert, AppPage, Badge, Button, Drawer, EmptyState, InlineAlert, Input } from '../components/common';
@@ -31,7 +35,9 @@ const FUNDAMENTAL_BLOCK_LABELS: Record<string, string> = {
   earnings: '盈利',
   institution: '机构',
   capital_flow: '资金流',
+  capitalFlow: '资金流',
   dragon_tiger: '龙虎榜',
+  dragonTiger: '龙虎榜',
   boards: '所属板块',
 };
 
@@ -207,6 +213,127 @@ function boardSourceLabel(source?: string, provider?: string): string {
   if (source === 'cache') return `缓存${provider ? ` · ${provider}` : ''}`;
   if (source === 'online') return `在线${provider ? ` · ${provider}` : ''}`;
   return provider || '--';
+}
+
+function formatSourceProvider(value?: unknown): string {
+  const text = typeof value === 'string' ? value.trim() : '';
+  if (!text) return '';
+  if (text === 'fundamental_pipeline') return '基本面聚合';
+  if (text === 'realtime_quote') return '实时估值';
+  if (text === 'text_supplement') return '文本补充';
+  if (text === 'akshare') return 'AkShare';
+  if (text === 'tencent') return '腾讯';
+  if (text === 'sina') return '新浪';
+  if (text === 'tushare') return 'Tushare';
+  if (text === 'eastmoney') return '东方财富';
+  if (text === 'cache') return '缓存';
+  if (text === 'online') return '在线';
+  return text;
+}
+
+function sourceChainSummary(sourceChain?: Array<Record<string, unknown>>): string {
+  if (!Array.isArray(sourceChain) || sourceChain.length === 0) return '--';
+  const labels: string[] = [];
+  for (const item of sourceChain) {
+    if (!item || typeof item !== 'object') continue;
+    const provider = formatSourceProvider(item.provider);
+    const result = typeof item.result === 'string' ? item.result.trim() : '';
+    const durationMs = typeof item.durationMs === 'number' ? item.durationMs : undefined;
+    const parts = [provider || undefined, result ? coverageStatusLabel(result) : undefined, typeof durationMs === 'number' ? `${durationMs}ms` : undefined]
+      .filter(Boolean);
+    const label = parts.join(' · ');
+    if (label && !labels.includes(label)) {
+      labels.push(label);
+    }
+  }
+  return labels.length > 0 ? labels.slice(0, 3).join(' / ') : '--';
+}
+
+function hasFundamentalBlockData(block?: StockQueryFundamentalBlock<unknown> | null): boolean {
+  if (!block || !block.data || typeof block.data !== 'object') return false;
+  return Object.values(block.data as Record<string, unknown>).some((value) => {
+    if (value === null || value === undefined) return false;
+    if (Array.isArray(value)) return value.length > 0;
+    if (typeof value === 'object') return Object.keys(value as Record<string, unknown>).length > 0;
+    if (typeof value === 'string') return value.trim().length > 0;
+    return true;
+  });
+}
+
+function fallbackFundamentalBlock<T extends object>(
+  data: T | undefined,
+  status?: string,
+): StockQueryFundamentalBlock<T> | undefined {
+  if (!data && !status) return undefined;
+  return {
+    status: status ?? (data ? 'ok' : 'failed'),
+    data,
+    sourceChain: [],
+    errors: [],
+  };
+}
+
+function buildFallbackFundamentalContext(
+  details?: StockQueryFundamentalDetails,
+  coverage?: Record<string, string>,
+  errors?: string[],
+): StockQueryFundamentalContext | null {
+  if (!details && !coverage && (!errors || errors.length === 0)) {
+    return null;
+  }
+
+  const nextCoverage = coverage ? { ...coverage } : {};
+  const context: StockQueryFundamentalContext = {
+    status: 'partial',
+    coverage: nextCoverage,
+    errors: errors ?? [],
+    sourceChain: [],
+  };
+
+  const valuation = fallbackFundamentalBlock(details?.valuation, nextCoverage.valuation);
+  const growth = fallbackFundamentalBlock(details?.growth, nextCoverage.growth);
+  const earnings = fallbackFundamentalBlock(details?.earnings, nextCoverage.earnings);
+  const institution = fallbackFundamentalBlock(details?.institution, nextCoverage.institution);
+  const capitalFlow = fallbackFundamentalBlock(details?.capitalFlow, nextCoverage.capitalFlow);
+  const dragonTiger = fallbackFundamentalBlock(details?.dragonTiger, nextCoverage.dragonTiger);
+  const boards = fallbackFundamentalBlock(details?.boards, nextCoverage.boards);
+
+  if (valuation) context.valuation = valuation;
+  if (growth) context.growth = growth;
+  if (earnings) context.earnings = earnings;
+  if (institution) context.institution = institution;
+  if (capitalFlow) context.capitalFlow = capitalFlow;
+  if (dragonTiger) context.dragonTiger = dragonTiger;
+  if (boards) context.boards = boards;
+
+  const blockKeys = [
+    ['valuation', valuation],
+    ['growth', growth],
+    ['earnings', earnings],
+    ['institution', institution],
+    ['capitalFlow', capitalFlow],
+    ['dragonTiger', dragonTiger],
+    ['boards', boards],
+  ] as const;
+
+  for (const [key, block] of blockKeys) {
+    if (!(key in nextCoverage) && block?.status) {
+      nextCoverage[key] = block.status;
+    }
+  }
+
+  const statuses = Object.values(nextCoverage);
+  if (statuses.length === 0) {
+    context.status = 'failed';
+  } else if (statuses.every((item) => item === 'ok' || item === 'full')) {
+    context.status = 'ok';
+  } else if (statuses.every((item) => item === 'not_supported')) {
+    context.status = 'not_supported';
+  } else if (statuses.some((item) => item === 'partial' || item === 'failed')) {
+    context.status = 'partial';
+  }
+
+  return context;
 }
 
 function newsSentimentLabel(value?: string): string {
@@ -439,6 +566,7 @@ const SingleStockQueryPage: React.FC = () => {
 
   const [query, setQuery] = useState(initialQuery);
   const [result, setResult] = useState<StockQueryAnalyzeResponse | null>(null);
+  const [queryTask, setQueryTask] = useState<StockQueryTaskStatus | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<ParsedApiError | null>(null);
   const [lastResolvedInput, setLastResolvedInput] = useState(initialQuery);
@@ -455,6 +583,7 @@ const SingleStockQueryPage: React.FC = () => {
   const [alertScanInterval, setAlertScanInterval] = useState<string>(String(MIN_ALERT_SCAN_INTERVAL_MINUTES));
   const [watchlistActionError, setWatchlistActionError] = useState<ParsedApiError | null>(null);
   const [watchlistActionMessage, setWatchlistActionMessage] = useState<string | null>(null);
+  const pollTimeoutRef = useRef<number | null>(null);
   const hasPendingInputChange = query.trim() !== (lastResolvedInput || '').trim();
 
   const loadHistory = useEffectEvent(async () => {
@@ -498,24 +627,86 @@ const SingleStockQueryPage: React.FC = () => {
     void loadWatchlist();
   }, []);
 
+  useEffect(() => () => {
+    if (pollTimeoutRef.current != null) {
+      window.clearTimeout(pollTimeoutRef.current);
+    }
+  }, []);
+
+  const applyAnalyzeResult = useEffectEvent(async (response: StockQueryAnalyzeResponse, resolvedInput: string) => {
+    setResult(response);
+    setCurrentHistoryId(response.queryId ?? null);
+    setLastResolvedInput(resolvedInput);
+    setQueryTask(null);
+    void loadStockAlertRules(response.stockCode);
+    void loadHistory();
+  });
+
+  const pollAnalyzeStatus = useEffectEvent(async (taskId: string, resolvedInput: string) => {
+    try {
+      const status = await stockQueryApi.getAnalyzeStatus(taskId);
+      setQueryTask(status);
+
+      if (status.status === 'completed' && status.result) {
+        await applyAnalyzeResult(status.result, resolvedInput);
+        setError(null);
+        setIsLoading(false);
+        pollTimeoutRef.current = null;
+        return;
+      }
+
+      if (status.status === 'failed') {
+        setError(createParsedApiError({
+          title: '单股查询失败',
+          message: status.error || status.message || '单股查询失败',
+          status: 500,
+        }));
+        setIsLoading(false);
+        pollTimeoutRef.current = null;
+        void loadHistory();
+        return;
+      }
+
+      pollTimeoutRef.current = window.setTimeout(() => {
+        void pollAnalyzeStatus(taskId, resolvedInput);
+      }, 3000);
+    } catch (requestError) {
+      setError(getParsedApiError(requestError));
+      setIsLoading(false);
+      pollTimeoutRef.current = null;
+    }
+  });
+
   const analyzeStock = useEffectEvent(async (rawInput: string) => {
     const normalized = rawInput.trim();
     if (!normalized) return;
 
+    if (pollTimeoutRef.current != null) {
+      window.clearTimeout(pollTimeoutRef.current);
+      pollTimeoutRef.current = null;
+    }
     setIsLoading(true);
     setError(null);
+    setQueryTask(null);
 
     try {
-      const response = await stockQueryApi.analyze({ query: normalized });
-      setResult(response);
-      setCurrentHistoryId(response.queryId ?? null);
-      setLastResolvedInput(normalized);
-      void loadStockAlertRules(response.stockCode);
-      void loadHistory();
+      const accepted = await stockQueryApi.analyze({ query: normalized });
+      setCurrentHistoryId(accepted.taskId);
+      setQueryTask({
+        taskId: accepted.taskId,
+        status: accepted.status,
+        progress: 0,
+        message: accepted.message,
+        createdAt: new Date().toISOString(),
+      });
+      await pollAnalyzeStatus(accepted.taskId, normalized);
     } catch (requestError) {
       setError(getParsedApiError(requestError));
-    } finally {
       setIsLoading(false);
+    } finally {
+      if (pollTimeoutRef.current == null) {
+        setIsLoading(false);
+      }
     }
   });
 
@@ -544,9 +735,22 @@ const SingleStockQueryPage: React.FC = () => {
       const detail = await stockQueryApi.getHistoryItem(item.queryId);
       const restoredResult = detail.result ?? item.result;
       if (restoredResult) {
-        setResult(restoredResult);
-        void loadStockAlertRules(restoredResult.stockCode);
+        await applyAnalyzeResult(restoredResult, restoreQuery);
       } else {
+        if (detail.status === 'pending' || detail.status === 'processing') {
+          setCurrentHistoryId(detail.queryId);
+          setQueryTask({
+            taskId: detail.queryId,
+            status: detail.status as StockQueryTaskStatus['status'],
+            progress: detail.status === 'processing' ? 15 : 0,
+            createdAt: detail.createdAt,
+            completedAt: detail.completedAt,
+          });
+          setIsLoading(true);
+          setHistoryOpen(false);
+          await pollAnalyzeStatus(detail.queryId, restoreQuery);
+          return;
+        }
         await analyzeStock(restoreQuery);
         return;
       }
@@ -573,18 +777,41 @@ const SingleStockQueryPage: React.FC = () => {
     return watchlistItems.some((item) => item.stockCode === result.stockCode);
   }, [result, watchlistItems]);
   const topTheme = themeAttributions[0] ?? null;
-  const fundamentalCoverageEntries = Object.entries(result?.fundamentalCoverage ?? {});
+  const fundamentalContext = useMemo(
+    () => result?.fundamentalContext ?? buildFallbackFundamentalContext(result?.fundamentalDetails, result?.fundamentalCoverage, result?.fundamentalErrors),
+    [result?.fundamentalContext, result?.fundamentalDetails, result?.fundamentalCoverage, result?.fundamentalErrors],
+  );
+  const fundamentalCoverageEntries = Object.entries(fundamentalContext?.coverage ?? {});
   const incompleteFundamentalEntries = fundamentalCoverageEntries.filter(([, status]) => status !== 'ok' && status !== 'full');
-  const fundamentalErrorPreview = (result?.fundamentalErrors ?? []).slice(0, 3);
-  const fundamentalDetails = result?.fundamentalDetails;
-  const boardItems = fundamentalDetails?.boards?.items ?? [];
-  const boardSource = fundamentalDetails?.boards?.source;
-  const boardProvider = fundamentalDetails?.boards?.provider;
-  const capitalFlow = fundamentalDetails?.capitalFlow?.stockFlow;
-  const dragonTiger = fundamentalDetails?.dragonTiger;
-  const growth = fundamentalDetails?.growth;
-  const earnings = fundamentalDetails?.earnings;
-  const institution = fundamentalDetails?.institution;
+  const fundamentalErrorPreview = (fundamentalContext?.errors ?? []).slice(0, 3);
+  const valuationBlock = fundamentalContext?.valuation;
+  const valuation = valuationBlock?.data;
+  const boardsBlock = fundamentalContext?.boards;
+  const boardItems = boardsBlock?.data?.items ?? [];
+  const boardSource = boardsBlock?.data?.source;
+  const boardProvider = boardsBlock?.data?.provider;
+  const capitalFlowBlock = fundamentalContext?.capitalFlow;
+  const capitalFlow = capitalFlowBlock?.data?.stockFlow;
+  const dragonTigerBlock = fundamentalContext?.dragonTiger;
+  const dragonTiger = dragonTigerBlock?.data;
+  const growthBlock = fundamentalContext?.growth;
+  const growth = growthBlock?.data;
+  const earningsBlock = fundamentalContext?.earnings;
+  const earnings = earningsBlock?.data;
+  const institutionBlock = fundamentalContext?.institution;
+  const institution = institutionBlock?.data;
+  const hasFundamentalBlocks = useMemo(() => {
+    if (!fundamentalContext) return false;
+    return [
+      valuationBlock,
+      growthBlock,
+      earningsBlock,
+      institutionBlock,
+      capitalFlowBlock,
+      dragonTigerBlock,
+      boardsBlock,
+    ].some((block) => hasFundamentalBlockData(block) || Boolean(block?.errors?.length));
+  }, [boardsBlock, capitalFlowBlock, dragonTigerBlock, earningsBlock, fundamentalContext, growthBlock, institutionBlock, valuationBlock]);
   const stockNewsSummary = result?.stockNewsSummary;
   const entryPlan = useMemo(() => (result ? buildEntryPlan(result) : null), [result]);
   const signalOverview = useMemo(
@@ -749,6 +976,14 @@ const SingleStockQueryPage: React.FC = () => {
               {watchlistActionError ? <ApiErrorAlert error={watchlistActionError} /> : null}
               {watchlistActionMessage ? (
                 <InlineAlert variant="success" title="观察池已更新" message={watchlistActionMessage} />
+              ) : null}
+
+              {isLoading && queryTask ? (
+                <InlineAlert
+                  variant="info"
+                  title="单股查询正在后台处理"
+                  message={queryTask.message || '正在获取日线、实时行情和基本面，请稍候。'}
+                />
               ) : null}
 
               {result && hasPendingInputChange ? (
@@ -1061,74 +1296,137 @@ const SingleStockQueryPage: React.FC = () => {
                     </div>
                   </div>
 
-                  {stockNewsSummary ? (
+                  {hasFundamentalBlocks ? (
                     <div className="rounded-[28px] border border-slate-800/80 bg-[#09192C] px-5 py-5">
                       <div className="flex flex-wrap items-start justify-between gap-4">
-                        <div className="max-w-3xl">
-                          <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Recent Catalyst</p>
-                          <h3 className="mt-1 text-2xl font-semibold text-white">近期催化 / 新闻摘要</h3>
+                        <div className="max-w-4xl">
+                          <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Fundamental Context</p>
+                          <h3 className="mt-1 text-2xl font-semibold text-white">基本面分块上下文</h3>
                           <p className="mt-3 max-w-4xl text-sm leading-7 text-slate-300">
-                            {stockNewsSummary.summary || '当前没有拿到足够清晰的新闻摘要。'}
+                            这里优先展示底层基本面拿到了什么、缺了什么、是否能直接作为交易判断依据，比近期催化更靠前。
                           </p>
                         </div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Badge variant={newsSentimentVariant(stockNewsSummary.sentiment)} className="border-0 px-3 py-1">
-                            {newsSentimentLabel(stockNewsSummary.sentiment)}
-                          </Badge>
-                          <Badge variant="default" className="border-0 px-3 py-1">
-                            {stockNewsSummary.provider || 'search'}
-                          </Badge>
-                        </div>
+                        <Badge variant={fundamentalContext?.status === 'ok' ? 'success' : 'warning'} className="border-0 px-3 py-1">
+                          {coverageStatusLabel(fundamentalContext?.status || 'partial')}
+                        </Badge>
                       </div>
 
-                      <div className="mt-5 grid gap-4 xl:grid-cols-[0.9fr_0.9fr_1.2fr]">
-                        <div className="rounded-[22px] border border-slate-800/80 bg-[#0C2236] px-4 py-4">
-                          <div className="flex items-center justify-between gap-3">
-                            <p className="text-sm font-semibold text-slate-100">正向催化</p>
-                            <span className="text-[11px] text-slate-500">辅助判断</span>
+                      <div className="mt-5 grid gap-3 xl:grid-cols-3">
+                        <FundamentalBlockCard
+                          title="估值"
+                          status={valuationBlock?.status}
+                          sourceChain={valuationBlock?.sourceChain}
+                          errors={valuationBlock?.errors}
+                        >
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            <MiniMetric label="PE" value={formatNumber(valuation?.peRatio)} tone="neutral" />
+                            <MiniMetric label="PB" value={formatNumber(valuation?.pbRatio)} tone="neutral" />
+                            <MiniMetric label="总市值" value={formatMoney(valuation?.totalMv)} tone="neutral" />
+                            <MiniMetric label="流通市值" value={formatMoney(valuation?.circMv)} tone="neutral" />
                           </div>
-                          <div className="mt-3 flex flex-wrap gap-2">
-                            {(stockNewsSummary.catalysts?.length ? stockNewsSummary.catalysts : ['暂无明确催化']).map((item) => (
-                              <span key={item} className="rounded-full border border-cyan/20 bg-cyan/10 px-3 py-2 text-xs font-medium text-slate-100">
-                                {item}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
+                        </FundamentalBlockCard>
 
-                        <div className="rounded-[22px] border border-slate-800/80 bg-[#1B1424] px-4 py-4">
-                          <div className="flex items-center justify-between gap-3">
-                            <p className="text-sm font-semibold text-slate-100">明确风险</p>
-                            <span className="text-[11px] text-slate-500">不进主信号</span>
+                        <FundamentalBlockCard
+                          title="成长"
+                          status={growthBlock?.status}
+                          sourceChain={growthBlock?.sourceChain}
+                          errors={growthBlock?.errors}
+                        >
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            <MiniMetric label="营收同比" value={formatPercent(growth?.revenueYoy, 1)} tone="neutral" />
+                            <MiniMetric label="净利同比" value={formatPercent(growth?.netProfitYoy, 1)} tone="neutral" />
+                            <MiniMetric label="ROE" value={formatPercent(growth?.roe, 1)} tone="neutral" />
+                            <MiniMetric label="毛利率" value={formatPercent(growth?.grossMargin, 1)} tone="neutral" />
                           </div>
-                          <div className="mt-3 flex flex-wrap gap-2">
-                            {(stockNewsSummary.riskEvents?.length ? stockNewsSummary.riskEvents : ['暂未识别明显利空']).map((item) => (
-                              <span key={item} className="rounded-full border border-danger/20 bg-danger/10 px-3 py-2 text-xs font-medium text-slate-100">
-                                {item}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
+                        </FundamentalBlockCard>
 
-                        <div className="rounded-[22px] border border-slate-800/80 bg-[#0C2236] px-4 py-4">
-                          <div className="flex items-center justify-between gap-3">
-                            <p className="text-sm font-semibold text-slate-100">最近三条标题</p>
-                            <span className="text-[11px] text-slate-500">只保留最相关结果</span>
+                        <FundamentalBlockCard
+                          title="盈利"
+                          status={earningsBlock?.status}
+                          sourceChain={earningsBlock?.sourceChain}
+                          errors={earningsBlock?.errors}
+                        >
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            <MiniMetric label="报告期" value={earnings?.financialReport?.reportDate ?? '--'} tone="neutral" />
+                            <MiniMetric label="股息率" value={formatPercent(earnings?.dividend?.ttmDividendYieldPct, 2)} tone="neutral" />
+                            <MiniMetric label="营收" value={formatMoney(earnings?.financialReport?.revenue)} tone="neutral" />
+                            <MiniMetric label="净利润" value={formatMoney(earnings?.financialReport?.netProfitParent)} tone="neutral" />
                           </div>
-                          <div className="mt-3 space-y-2">
-                            {(stockNewsSummary.headlines?.length ? stockNewsSummary.headlines : ['当前没有拿到明确的相关新闻标题。']).map((headline) => (
-                              <div key={headline} className="rounded-[18px] border border-slate-800/80 bg-slate-950/35 px-4 py-3">
-                                <p className="text-sm leading-6 text-slate-100">{headline}</p>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
+                          <p className="mt-3 text-xs leading-5 text-slate-400">
+                            {earnings?.forecastSummary || earnings?.quickReportSummary || '当前没有拿到明确的业绩预告摘要。'}
+                          </p>
+                        </FundamentalBlockCard>
                       </div>
 
-                      <div className="mt-4 rounded-[20px] border border-slate-800/80 bg-slate-950/25 px-4 py-3">
-                        <p className="text-xs leading-6 text-slate-400">
-                          这块只回答“最近有没有催化或风险”，不直接改变主信号、支撑位、突破位和试仓区。
-                        </p>
+                      <div className="mt-3 grid gap-3 xl:grid-cols-2">
+                        <FundamentalBlockCard
+                          title="机构"
+                          status={institutionBlock?.status}
+                          sourceChain={institutionBlock?.sourceChain}
+                          errors={institutionBlock?.errors}
+                        >
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            <MiniMetric label="机构持仓变化" value={formatPercent(institution?.institutionHoldingChange, 1)} tone="neutral" />
+                            <MiniMetric label="前十股东变化" value={formatPercent(institution?.top10HolderChange, 1)} tone="neutral" />
+                          </div>
+                          {institution?.textSummary ? (
+                            <p className="mt-3 text-xs leading-5 text-slate-300">
+                              文本补充{institution.textProvider ? ` · ${institution.textProvider}` : ''}：{institution.textSummary}
+                            </p>
+                          ) : null}
+                        </FundamentalBlockCard>
+
+                        <FundamentalBlockCard
+                          title="资金流"
+                          status={capitalFlowBlock?.status}
+                          sourceChain={capitalFlowBlock?.sourceChain}
+                          errors={capitalFlowBlock?.errors}
+                        >
+                          <div className="grid gap-3 sm:grid-cols-3">
+                            <MiniMetric label="主力净流入" value={formatMoney(capitalFlow?.mainNetInflow)} tone="neutral" />
+                            <MiniMetric label="5日净流入" value={formatMoney(capitalFlow?.inflow5d)} tone="neutral" />
+                            <MiniMetric label="10日净流入" value={formatMoney(capitalFlow?.inflow10d)} tone="neutral" />
+                          </div>
+                        </FundamentalBlockCard>
+                      </div>
+
+                      <div className="mt-3 grid gap-3 xl:grid-cols-[0.85fr_1.15fr]">
+                        <FundamentalBlockCard
+                          title="龙虎榜"
+                          status={dragonTigerBlock?.status}
+                          sourceChain={dragonTigerBlock?.sourceChain}
+                          errors={dragonTigerBlock?.errors}
+                        >
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            <MiniMetric
+                              label="近20日状态"
+                              value={dragonTiger?.isOnList ? `上榜 ${dragonTiger.recentCount ?? 0} 次` : '未识别到上榜'}
+                              tone="neutral"
+                            />
+                            <MiniMetric label="最近日期" value={dragonTiger?.latestDate ?? '--'} tone="neutral" />
+                          </div>
+                        </FundamentalBlockCard>
+
+                        <FundamentalBlockCard
+                          title="所属板块"
+                          status={boardsBlock?.status}
+                          sourceChain={boardsBlock?.sourceChain}
+                          errors={boardsBlock?.errors}
+                        >
+                          <p className="text-xs text-slate-400">板块来源 {boardSourceLabel(boardSource, boardProvider)}</p>
+                          {boardItems.length > 0 ? (
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              {boardItems.slice(0, 10).map((board) => (
+                                <div key={`${board.name}-${board.code ?? ''}`} className="rounded-full border border-cyan/20 bg-cyan/10 px-3 py-2">
+                                  <p className="text-sm font-medium text-slate-100">{board.name}</p>
+                                  {boardCaption(board) ? (
+                                    <p className="mt-1 text-[11px] text-slate-400">{boardCaption(board)}</p>
+                                  ) : null}
+                                </div>
+                              ))}
+                            </div>
+                          ) : null}
+                        </FundamentalBlockCard>
                       </div>
                     </div>
                   ) : null}
@@ -1248,7 +1546,11 @@ const SingleStockQueryPage: React.FC = () => {
 
               <div className="grid gap-3 sm:grid-cols-3">
                 <Link
-                  to={result ? `/chat?stock=${encodeURIComponent(result.stockCode)}&name=${encodeURIComponent(result.stockName)}` : '/chat'}
+                  to={
+                    result?.queryId
+                      ? `/deep-analysis?queryId=${encodeURIComponent(result.queryId)}&stock=${encodeURIComponent(result.stockCode)}&name=${encodeURIComponent(result.stockName)}`
+                      : '/deep-analysis'
+                  }
                   className="inline-flex items-center justify-center rounded-2xl border border-cyan/30 bg-primary-gradient px-4 py-3 text-sm font-medium text-white shadow-lg shadow-cyan/20 transition hover:brightness-105"
                 >
                   发起深度分析
@@ -1273,7 +1575,7 @@ const SingleStockQueryPage: React.FC = () => {
                 </button>
               </div>
 
-              <div className="grid gap-3 rounded-[24px] border border-slate-800/80 bg-[#0A1A2E] px-4 py-4 md:grid-cols-[minmax(0,220px)_1fr]">
+              <div className="flex flex-col gap-3 rounded-[24px] border border-slate-800/80 bg-[#0A1A2E] px-4 py-4 md:grid-cols-[minmax(0,220px)_1fr]">
                 <Input
                   label="告警扫描间隔(分钟)"
                   value={alertScanInterval}
@@ -1312,95 +1614,61 @@ const SingleStockQueryPage: React.FC = () => {
                     </div>
                   ) : null}
 
-                  {(boardItems.length > 0 || capitalFlow || dragonTiger || growth || earnings || institution) ? (
+                  {stockNewsSummary ? (
                     <div className="rounded-[24px] border border-slate-800/80 bg-[#0A1A2E] px-5 py-5">
                       <div className="flex flex-wrap items-center justify-between gap-3">
                         <div>
-                          <p className="text-xs uppercase tracking-[0.18em] text-slate-400">辅助摘要</p>
-                          <h4 className="mt-2 text-lg font-semibold text-white">板块与资金面</h4>
+                          <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Recent Catalyst</p>
+                          <h4 className="mt-2 text-lg font-semibold text-white">近期催化 / 新闻摘要</h4>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge variant={newsSentimentVariant(stockNewsSummary.sentiment)} className="border-0 px-3 py-1">
+                            {newsSentimentLabel(stockNewsSummary.sentiment)}
+                          </Badge>
+                          <Badge variant="default" className="border-0 px-3 py-1">
+                            {stockNewsSummary.provider || 'search'}
+                          </Badge>
                         </div>
                       </div>
 
-                      {boardItems.length > 0 ? (
-                        <div className="mt-4">
-                          <div className="flex items-center justify-between gap-3">
-                            <p className="text-sm font-semibold text-slate-100">所属板块</p>
-                            <span className="text-xs text-slate-400">{boardSourceLabel(boardSource, boardProvider)}</span>
-                          </div>
+                      <p className="mt-4 text-sm leading-7 text-slate-300">
+                        {stockNewsSummary.summary || '当前没有拿到足够清晰的新闻摘要。'}
+                      </p>
+
+                      <div className="mt-4 space-y-3">
+                        <div className="rounded-[20px] border border-slate-800/80 bg-[#0C2236] px-4 py-4">
+                          <p className="text-sm font-semibold text-slate-100">正向催化</p>
                           <div className="mt-3 flex flex-wrap gap-2">
-                            {boardItems.slice(0, 8).map((board) => (
-                              <div key={`${board.name}-${board.code ?? ''}`} className="rounded-full border border-cyan/20 bg-cyan/10 px-3 py-2">
-                                <p className="text-sm font-medium text-slate-100">{board.name}</p>
-                                {boardCaption(board) ? (
-                                  <p className="mt-1 text-[11px] text-slate-400">{boardCaption(board)}</p>
-                                ) : null}
+                            {(stockNewsSummary.catalysts?.length ? stockNewsSummary.catalysts : ['暂无明确催化']).map((item) => (
+                              <span key={item} className="rounded-full border border-cyan/20 bg-cyan/10 px-3 py-2 text-xs font-medium text-slate-100">
+                                {item}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="rounded-[20px] border border-slate-800/80 bg-[#1B1424] px-4 py-4">
+                          <p className="text-sm font-semibold text-slate-100">明确风险</p>
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {(stockNewsSummary.riskEvents?.length ? stockNewsSummary.riskEvents : ['暂未识别明显利空']).map((item) => (
+                              <span key={item} className="rounded-full border border-danger/20 bg-danger/10 px-3 py-2 text-xs font-medium text-slate-100">
+                                {item}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="rounded-[20px] border border-slate-800/80 bg-slate-950/35 px-4 py-4">
+                          <p className="text-sm font-semibold text-slate-100">最近三条标题</p>
+                          <div className="mt-3 space-y-2">
+                            {(stockNewsSummary.headlines?.length ? stockNewsSummary.headlines : ['当前没有拿到明确的相关新闻标题。']).map((headline) => (
+                              <div key={headline} className="rounded-[18px] border border-slate-800/80 bg-[#102744] px-4 py-3">
+                                <p className="text-sm leading-6 text-slate-100">{headline}</p>
                               </div>
                             ))}
                           </div>
                         </div>
-                      ) : null}
-
-                      {capitalFlow ? (
-                        <div className="mt-5 grid gap-3 sm:grid-cols-3">
-                          <MiniMetric label="主力净流入" value={formatMoney(capitalFlow.mainNetInflow)} tone="neutral" />
-                          <MiniMetric label="5日净流入" value={formatMoney(capitalFlow.inflow5d)} tone="neutral" />
-                          <MiniMetric label="10日净流入" value={formatMoney(capitalFlow.inflow10d)} tone="neutral" />
-                        </div>
-                      ) : null}
-
-                      {(dragonTiger || growth || earnings || institution) ? (
-                        <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                          {dragonTiger ? (
-                            <div className="rounded-[18px] border border-slate-800/80 bg-slate-950/35 px-4 py-4">
-                              <p className="text-sm font-semibold text-slate-100">龙虎榜</p>
-                              <p className="mt-2 text-sm text-slate-300">
-                                {dragonTiger.isOnList ? `近20日上榜 ${dragonTiger.recentCount ?? 0} 次` : '近20日未识别到上榜'}
-                              </p>
-                              <p className="mt-1 text-xs text-slate-400">最近日期 {dragonTiger.latestDate ?? '--'}</p>
-                            </div>
-                          ) : null}
-
-                          {growth ? (
-                            <div className="rounded-[18px] border border-slate-800/80 bg-slate-950/35 px-4 py-4">
-                              <p className="text-sm font-semibold text-slate-100">成长摘要</p>
-                              <p className="mt-2 text-sm text-slate-300">营收同比 {formatPercent(growth.revenueYoy, 1)}</p>
-                              <p className="mt-1 text-xs text-slate-400">净利同比 {formatPercent(growth.netProfitYoy, 1)} · ROE {formatPercent(growth.roe, 1)}</p>
-                            </div>
-                          ) : null}
-
-                          {earnings ? (
-                            <div className="rounded-[18px] border border-slate-800/80 bg-slate-950/35 px-4 py-4">
-                              <p className="text-sm font-semibold text-slate-100">盈利摘要</p>
-                              <p className="mt-2 text-sm text-slate-300">
-                                报告期 {earnings.financialReport?.reportDate ?? '--'} · 股息率 {formatPercent(earnings.dividend?.ttmDividendYieldPct, 2)}
-                              </p>
-                              <p className="mt-1 text-xs leading-5 text-slate-400">
-                                {earnings.forecastSummary || earnings.quickReportSummary || '当前没有拿到明确的业绩预告摘要。'}
-                              </p>
-                              {earnings.textSummary ? (
-                                <p className="mt-3 text-xs leading-5 text-slate-300">
-                                  文本补充{earnings.textProvider ? ` · ${earnings.textProvider}` : ''}：{earnings.textSummary}
-                                </p>
-                              ) : null}
-                            </div>
-                          ) : null}
-
-                          {institution ? (
-                            <div className="rounded-[18px] border border-slate-800/80 bg-slate-950/35 px-4 py-4">
-                              <p className="text-sm font-semibold text-slate-100">机构摘要</p>
-                              <p className="mt-2 text-sm text-slate-300">
-                                机构持仓变化 {formatPercent(institution.institutionHoldingChange, 1)}
-                              </p>
-                              <p className="mt-1 text-xs text-slate-400">前十股东变化 {formatPercent(institution.top10HolderChange, 1)}</p>
-                              {institution.textSummary ? (
-                                <p className="mt-3 text-xs leading-5 text-slate-300">
-                                  文本补充{institution.textProvider ? ` · ${institution.textProvider}` : ''}：{institution.textSummary}
-                                </p>
-                              ) : null}
-                            </div>
-                          ) : null}
-                        </div>
-                      ) : null}
+                      </div>
                     </div>
                   ) : null}
 
@@ -1420,7 +1688,9 @@ const SingleStockQueryPage: React.FC = () => {
                         <MiniMetric label="日线" value={sourceLabel(result?.dataSources.daily)} tone="neutral" />
                         <MiniMetric label="实时" value={sourceLabel(result?.dataSources.realtime)} tone="neutral" />
                         <MiniMetric label="筹码" value={sourceLabel(result?.dataSources.chip)} tone="neutral" />
-                        <MiniMetric label="基本面" value={sourceLabel(result?.dataSources.fundamental)} tone="neutral" />
+                        <MiniMetric label="基本面" value={sourceLabel(result?.dataSources.fundamental ?? fundamentalContext?.status)} tone="neutral" />
+                        <MiniMetric label="总状态" value={coverageStatusLabel(fundamentalContext?.status || '--')} tone="neutral" />
+                        <MiniMetric label="耗时" value={fundamentalContext?.elapsedMs ? `${fundamentalContext.elapsedMs}ms` : '--'} tone="neutral" />
                       </div>
 
                       <div className="mt-4 grid gap-3 sm:grid-cols-2">
@@ -1540,6 +1810,35 @@ type MiniMetricProps = {
   value: string;
   tone: StrategyTone | 'neutral';
 };
+
+type FundamentalBlockCardProps = {
+  title: string;
+  status?: string;
+  sourceChain?: Array<Record<string, unknown>>;
+  errors?: string[];
+  children?: React.ReactNode;
+};
+
+const FundamentalBlockCard: React.FC<FundamentalBlockCardProps> = ({ title, status, sourceChain, errors, children }) => (
+  <div className="rounded-[20px] border border-slate-800/80 bg-slate-950/35 px-4 py-4">
+    <div className="flex items-start justify-between gap-3">
+      <div>
+        <p className="text-sm font-semibold text-slate-100">{title}</p>
+        <p className="mt-1 text-xs text-slate-400">来源 {sourceChainSummary(sourceChain)}</p>
+      </div>
+      <Badge variant={status === 'ok' || status === 'full' ? 'success' : status === 'partial' ? 'warning' : 'default'} className="border-0 px-2 py-1">
+        {coverageStatusLabel(status || 'failed')}
+      </Badge>
+    </div>
+
+    <div className="mt-3 space-y-3">
+      {children}
+      {errors && errors.length > 0 ? (
+        <p className="text-xs leading-5 text-slate-400">错误: {errors.slice(0, 2).join(' | ')}</p>
+      ) : null}
+    </div>
+  </div>
+);
 
 const MiniMetric: React.FC<MiniMetricProps> = ({ label, value, tone }) => {
   const toneClass = tone === 'buy'

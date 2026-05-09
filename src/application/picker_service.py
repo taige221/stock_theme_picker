@@ -145,6 +145,12 @@ class ThemePickerService:
     @staticmethod
     def _build_pipeline(registry_service: ThemeRegistryService) -> ThemeAlertPipeline:
         config = get_theme_picker_config()
+        theme_news_search_service = SearchService(
+            tavily_keys=config.tavily_api_keys,
+            news_max_age_days=config.news_max_age_days,
+            news_strategy_profile=getattr(config, "news_strategy_profile", "short"),
+            searxng_public_instances_enabled=False,
+        ) if config.tavily_api_keys else None
         search_service = SearchService(
             bocha_keys=config.bocha_api_keys,
             tavily_keys=config.tavily_api_keys,
@@ -157,7 +163,7 @@ class ThemePickerService:
             news_max_age_days=config.news_max_age_days,
             news_strategy_profile=getattr(config, "news_strategy_profile", "short"),
         )
-        event_scanner = ThemeEventScanner(search_service=search_service)
+        event_scanner = ThemeEventScanner(search_service=theme_news_search_service or search_service)
         expansion_service = ThemeExpansionService(search_service=search_service)
         return ThemeAlertPipeline(
             registry_service=registry_service,
@@ -180,15 +186,17 @@ class ThemePickerService:
             )
         return {"items": items}
 
-    def scan(self, request) -> Dict[str, Any]:
+    def scan(self, request, *, task_id: Optional[str] = None) -> Dict[str, Any]:
         resolved = self._resolve_input_theme(request)
         mode = resolved["mode"]
         themes = resolved["themes"]
+        log_context = {"task_id": task_id} if task_id else None
 
         if mode == "direct":
             result = self._run_direct_board_replay(
                 themes,
                 max_expanded_candidates=request.max_candidates,
+                log_context=log_context,
             )
         else:
             result = self.pipeline.run(
@@ -196,6 +204,7 @@ class ThemePickerService:
                 extra_themes=themes,
                 max_expanded_candidates=request.max_candidates,
                 triggered_only=not request.include_untriggered,
+                log_context=log_context,
             )
 
         return self._build_response(request, themes, result)
@@ -290,6 +299,18 @@ class ThemePickerService:
                     changed = changed or selected_changed
                     repaired = repaired or selected_changed
                     key_levels_backfilled = key_levels_backfilled or selected_changed
+
+            for item in deduped_stocks:
+                if not isinstance(item, dict):
+                    continue
+                completeness_changed = cls._normalize_payload_data_completeness(item)
+                changed = changed or completeness_changed
+                repaired = repaired or completeness_changed
+
+            if isinstance(selected_stock, dict):
+                completeness_changed = cls._normalize_payload_data_completeness(selected_stock)
+                changed = changed or completeness_changed
+                repaired = repaired or completeness_changed
 
             for idx, item in enumerate(deduped_stocks, start=1):
                 if isinstance(item, dict):
@@ -565,6 +586,36 @@ class ThemePickerService:
         parts = snake_key.split("_")
         return parts[0] + "".join(part.capitalize() for part in parts[1:])
 
+    @classmethod
+    def _normalize_payload_data_completeness(cls, payload: Dict[str, Any]) -> bool:
+        if not isinstance(payload, dict):
+            return False
+
+        volume_ratio = cls._safe_float(payload.get("volume_ratio", payload.get("volumeRatio")))
+        turnover_rate = cls._safe_float(payload.get("turnover_rate", payload.get("turnoverRate")))
+        data_sources = payload.get("data_sources") or payload.get("dataSources") or {}
+        realtime_source = None
+        if isinstance(data_sources, dict):
+            realtime_source = data_sources.get("realtime")
+
+        if volume_ratio is not None and turnover_rate is not None:
+            normalized = "full_realtime"
+        elif realtime_source or volume_ratio is not None or turnover_rate is not None:
+            normalized = "partial_realtime"
+        else:
+            normalized = "daily_only"
+
+        for key in ("data_completeness", "dataCompleteness"):
+            if key not in payload:
+                continue
+            if payload.get(key) == normalized:
+                return False
+            payload[key] = normalized
+            return True
+
+        payload["data_completeness"] = normalized
+        return True
+
     @staticmethod
     def _calculate_bias(price: float, ma_value: Optional[float]) -> Optional[float]:
         if ma_value in (None, 0):
@@ -749,6 +800,7 @@ class ThemePickerService:
         direct_themes: List[ThemeDefinitionSchema],
         *,
         max_expanded_candidates: int,
+        log_context: Optional[Dict[str, Any]] = None,
     ) -> ThemeAlertResultSchema:
         result = ThemeAlertResultSchema(scanned_theme_ids=[theme.id for theme in direct_themes])
         for theme in direct_themes:
@@ -775,6 +827,11 @@ class ThemePickerService:
                 event,
                 stock_pool,
                 max_candidates=max_expanded_candidates,
+                log_context={
+                    **dict(log_context or {}),
+                    "theme_id": theme.id,
+                    "theme_name": theme.name,
+                },
             )
             signals = self.pipeline.signal_service.evaluate_theme(theme, event, candidate_pool)
             result.signals.extend(signals)
@@ -1177,11 +1234,19 @@ class ThemePickerService:
 
     @staticmethod
     def _derive_data_completeness(metrics: Dict[str, Any]) -> Optional[str]:
-        has_realtime = any(metrics.get(key) is not None for key in ("pct_chg", "volume_ratio", "turnover_rate"))
-        has_full = metrics.get("volume_ratio") is not None and metrics.get("turnover_rate") is not None
+        has_realtime_price = bool(metrics.get("realtime_price_used"))
+        has_volume_ratio = metrics.get("volume_ratio") is not None
+        has_turnover_rate = metrics.get("turnover_rate") is not None
+        has_legacy_realtime = has_volume_ratio or has_turnover_rate
+        has_full = has_volume_ratio and has_turnover_rate
+
+        if has_realtime_price and has_full:
+            return "full_realtime"
+        if has_realtime_price:
+            return "partial_realtime"
         if has_full:
             return "full_realtime"
-        if has_realtime:
+        if has_legacy_realtime:
             return "partial_realtime"
         return "daily_only"
 
