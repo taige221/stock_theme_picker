@@ -21,7 +21,7 @@ import {
   type StockDeepAnalysisItem,
   type StockDeepAnalysisMessage,
 } from '../api/stockQuery';
-import { ApiErrorAlert, AppPage, Badge, Button, Card, EmptyState, InlineAlert, Input } from '../components/common';
+import { ApiErrorAlert, AppPage, Badge, Button, Card, Drawer, EmptyState, InlineAlert, Input } from '../components/common';
 
 const MIN_ALERT_SCAN_INTERVAL_MINUTES = 5;
 
@@ -60,6 +60,14 @@ function actionVariant(value?: string | null): 'success' | 'warning' | 'danger' 
   return 'default';
 }
 
+function analysisStatusLabel(value?: string | null): string {
+  if (value === 'pending') return '排队中';
+  if (value === 'processing') return '生成中';
+  if (value === 'completed') return '已完成';
+  if (value === 'failed') return '失败';
+  return value || '待生成';
+}
+
 function coverageVariant(value?: string): string {
   if (value === 'ok' || value === 'full') return 'border-success/20 bg-success/10 text-foreground';
   if (value === 'partial') return 'border-warning/20 bg-warning/10 text-foreground';
@@ -91,18 +99,22 @@ const DeepAnalysisPage: React.FC = () => {
 
   const [analysis, setAnalysis] = useState<StockDeepAnalysisItem | null>(null);
   const [historyItems, setHistoryItems] = useState<StockDeepAnalysisItem[]>([]);
+  const [allHistoryItems, setAllHistoryItems] = useState<StockDeepAnalysisItem[]>([]);
   const [generatedRules, setGeneratedRules] = useState<StockAlertRuleItem[]>([]);
   const [scanInterval, setScanInterval] = useState(String(MIN_ALERT_SCAN_INTERVAL_MINUTES));
   const [followUp, setFollowUp] = useState('');
+  const [historyDrawerOpen, setHistoryDrawerOpen] = useState(false);
+  const [allHistoryLoading, setAllHistoryLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [chatLoading, setChatLoading] = useState(false);
   const [rulesLoading, setRulesLoading] = useState(false);
   const [regenerateLoading, setRegenerateLoading] = useState(false);
   const [error, setError] = useState<ParsedApiError | null>(null);
+  const [allHistoryError, setAllHistoryError] = useState<ParsedApiError | null>(null);
   const [chatError, setChatError] = useState<ParsedApiError | null>(null);
   const [rulesError, setRulesError] = useState<ParsedApiError | null>(null);
-  const lastLoadKeyRef = useRef('');
   const activeLoadRequestIdRef = useRef(0);
+  const pollTimeoutRef = useRef<number | null>(null);
 
   const tradePlan = analysis?.tradePlan;
   const levels = tradePlan?.levels;
@@ -118,85 +130,142 @@ const DeepAnalysisPage: React.FC = () => {
     [stockResult?.dataSources],
   );
   const analysisMessages = analysis?.messages ?? [];
+  const recentHistoryItems = useMemo(() => historyItems.slice(0, 5), [historyItems]);
 
-  const loadHistory = useCallback(async (stockCode: string, currentAnalysisId: string) => {
+  const loadHistory = useCallback(async (stockCode?: string, currentAnalysisId?: string) => {
     try {
-      const response = await stockQueryApi.getDeepAnalysisHistory(stockCode, 8);
-      setHistoryItems(response.items.filter((item) => item.analysisId !== currentAnalysisId));
+      const response = await stockQueryApi.getDeepAnalysisHistory(stockCode, stockCode ? 8 : 20);
+      setHistoryItems(
+        response.items.filter((item) => !currentAnalysisId || item.analysisId !== currentAnalysisId),
+      );
     } catch {
       setHistoryItems([]);
     }
   }, []);
 
+  const loadAllHistory = useCallback(async () => {
+    setAllHistoryLoading(true);
+    setAllHistoryError(null);
+    try {
+      const response = await stockQueryApi.getDeepAnalysisHistory(undefined, 50);
+      setAllHistoryItems(response.items);
+    } catch (requestError) {
+      setAllHistoryError(getParsedApiError(requestError));
+    } finally {
+      setAllHistoryLoading(false);
+    }
+  }, []);
+
+  const clearPollTimer = useCallback(() => {
+    if (pollTimeoutRef.current !== null) {
+      window.clearTimeout(pollTimeoutRef.current);
+      pollTimeoutRef.current = null;
+    }
+  }, []);
+
+  const applyAnalysisRecord = useCallback((nextAnalysis: StockDeepAnalysisItem) => {
+    setAnalysis(nextAnalysis);
+    if (nextAnalysis.stockCode) {
+      void loadHistory(nextAnalysis.stockCode, nextAnalysis.analysisId);
+    }
+  }, [loadHistory]);
+
+  const pollAnalysisUntilSettled = useCallback((targetAnalysisId: string) => {
+    clearPollTimer();
+    pollTimeoutRef.current = window.setTimeout(async () => {
+      try {
+        const nextAnalysis = await stockQueryApi.getDeepAnalysis(targetAnalysisId);
+        applyAnalysisRecord(nextAnalysis);
+        if (nextAnalysis.status === 'pending' || nextAnalysis.status === 'processing') {
+          pollAnalysisUntilSettled(targetAnalysisId);
+          return;
+        }
+        setLoading(false);
+      } catch (requestError) {
+        setError(getParsedApiError(requestError));
+        setLoading(false);
+      }
+    }, 3000);
+  }, [applyAnalysisRecord, clearPollTimer]);
+
+  useEffect(() => () => {
+    clearPollTimer();
+  }, [clearPollTimer]);
+
   useEffect(() => {
-    const loadKey = analysisId ? `analysis:${analysisId}` : queryId ? `query:${queryId}` : '';
-    if (!loadKey) {
-      lastLoadKeyRef.current = '';
+    if (!analysisId && !queryId) {
       activeLoadRequestIdRef.current = 0;
       setAnalysis(null);
-      setHistoryItems([]);
+      void loadHistory();
       setGeneratedRules([]);
       setLoading(false);
       setError(null);
+      clearPollTimer();
       return;
     }
-
-    if (lastLoadKeyRef.current === loadKey) {
-      return;
-    }
-    lastLoadKeyRef.current = loadKey;
 
     let cancelled = false;
     const requestId = activeLoadRequestIdRef.current + 1;
     activeLoadRequestIdRef.current = requestId;
+
     const run = async () => {
       setLoading(true);
       setError(null);
       setGeneratedRules([]);
-      try {
-        const nextAnalysis = analysisId
-          ? await stockQueryApi.getDeepAnalysis(analysisId)
-          : await stockQueryApi.createDeepAnalysis(queryId, false);
+      clearPollTimer();
 
-        if (cancelled) {
+      try {
+        if (analysisId) {
+          const nextAnalysis = await stockQueryApi.getDeepAnalysis(analysisId);
+          if (cancelled || activeLoadRequestIdRef.current !== requestId) {
+            return;
+          }
+          applyAnalysisRecord(nextAnalysis);
+          setLoading(false);
           return;
         }
 
-        setAnalysis(nextAnalysis);
-        if (!analysisId) {
-          const nextParams = new URLSearchParams();
-          nextParams.set('analysisId', nextAnalysis.analysisId);
-          if (nextAnalysis.sourceQueryId || queryId) {
-            nextParams.set('queryId', nextAnalysis.sourceQueryId || queryId);
-          }
-          if (nextAnalysis.stockCode || stockCodeHint) {
-            nextParams.set('stock', nextAnalysis.stockCode || stockCodeHint);
-          }
-          if (nextAnalysis.stockName || stockNameHint) {
-            nextParams.set('name', nextAnalysis.stockName || stockNameHint);
-          }
-          setSearchParams(nextParams, { replace: true });
+        const nextAnalysis = await stockQueryApi.createDeepAnalysis(queryId, false);
+        if (cancelled || activeLoadRequestIdRef.current !== requestId) {
+          return;
         }
-        void loadHistory(nextAnalysis.stockCode, nextAnalysis.analysisId);
+
+        applyAnalysisRecord(nextAnalysis);
+        const nextParams = new URLSearchParams();
+        nextParams.set('analysisId', nextAnalysis.analysisId);
+        if (nextAnalysis.sourceQueryId || queryId) {
+          nextParams.set('queryId', nextAnalysis.sourceQueryId || queryId);
+        }
+        if (nextAnalysis.stockCode || stockCodeHint) {
+          nextParams.set('stock', nextAnalysis.stockCode || stockCodeHint);
+        }
+        if (nextAnalysis.stockName || stockNameHint) {
+          nextParams.set('name', nextAnalysis.stockName || stockNameHint);
+        }
+        setSearchParams(nextParams, { replace: true });
+
+        if (nextAnalysis.status === 'pending' || nextAnalysis.status === 'processing') {
+          pollAnalysisUntilSettled(nextAnalysis.analysisId);
+          return;
+        }
+
+        setLoading(false);
       } catch (requestError) {
-        if (cancelled) {
+        if (cancelled || activeLoadRequestIdRef.current !== requestId) {
           return;
         }
         setAnalysis(null);
         setHistoryItems([]);
         setError(getParsedApiError(requestError));
-      } finally {
-        if (!cancelled && activeLoadRequestIdRef.current === requestId) {
-          setLoading(false);
-        }
+        setLoading(false);
       }
     };
 
-    run();
+    void run();
     return () => {
       cancelled = true;
     };
-  }, [analysisId, queryId, loadHistory, setSearchParams, stockCodeHint, stockNameHint]);
+  }, [analysisId, applyAnalysisRecord, clearPollTimer, loadHistory, pollAnalysisUntilSettled, queryId, setSearchParams, stockCodeHint, stockNameHint]);
 
   const handleRegenerate = async (): Promise<void> => {
     const targetQueryId = queryId || analysis?.sourceQueryId || '';
@@ -212,16 +281,19 @@ const DeepAnalysisPage: React.FC = () => {
 
     setRegenerateLoading(true);
     setError(null);
+    clearPollTimer();
     try {
       const nextAnalysis = await stockQueryApi.createDeepAnalysis(targetQueryId, true);
-      setAnalysis(nextAnalysis);
+      applyAnalysisRecord(nextAnalysis);
       setGeneratedRules([]);
-      lastLoadKeyRef.current = `analysis:${nextAnalysis.analysisId}`;
       const nextParams = new URLSearchParams(searchParams);
       nextParams.set('analysisId', nextAnalysis.analysisId);
       nextParams.set('queryId', targetQueryId);
       setSearchParams(nextParams, { replace: true });
-      loadHistory(nextAnalysis.stockCode, nextAnalysis.analysisId);
+      if (nextAnalysis.status === 'pending' || nextAnalysis.status === 'processing') {
+        setLoading(true);
+        pollAnalysisUntilSettled(nextAnalysis.analysisId);
+      }
     } catch (requestError) {
       setError(getParsedApiError(requestError));
     } finally {
@@ -282,6 +354,11 @@ const DeepAnalysisPage: React.FC = () => {
     navigate(`/deep-analysis?${nextParams.toString()}`);
   };
 
+  const handleOpenHistoryDrawer = async (): Promise<void> => {
+    setHistoryDrawerOpen(true);
+    await loadAllHistory();
+  };
+
   return (
     <AppPage className="max-w-[1680px] py-6">
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
@@ -301,7 +378,7 @@ const DeepAnalysisPage: React.FC = () => {
                   ) : null}
                   {analysis?.status ? (
                     <Badge variant="default" className="border-border/60 px-3 py-1">
-                      {analysis.status}
+                      {analysisStatusLabel(analysis.status)}
                     </Badge>
                   ) : null}
                   <Badge variant={generationMode === 'llm' ? 'success' : 'warning'} className="border-0 px-3 py-1">
@@ -358,8 +435,8 @@ const DeepAnalysisPage: React.FC = () => {
 
           {!queryId && !analysisId ? (
             <EmptyState
-              title="还没有深度分析上下文"
-              description="深度分析必须绑定一次已完成的单股查询。请先在单股查询页完成分析，再从结果页进入。"
+              title="深度分析历史"
+              description="这里可以直接查看已经生成过的深度分析历史。你也可以先在单股查询页发起新的深度分析，再回到这里持续跟踪。"
               icon={<BrainCircuit className="h-8 w-8" />}
               action={(
                 <Link to="/stock-query">
@@ -378,7 +455,27 @@ const DeepAnalysisPage: React.FC = () => {
             </Card>
           ) : null}
 
-          {analysis ? (
+          {analysis && analysis.status !== 'completed' ? (
+            <Card variant="bordered" padding="lg" className="rounded-[28px] border-border/60 bg-card/95">
+              <div className="flex items-center gap-3">
+                {analysis.status === 'failed' ? (
+                  <AlertTriangle className="h-5 w-5 text-danger" />
+                ) : (
+                  <RefreshCw className="h-5 w-5 animate-spin text-cyan" />
+                )}
+                <div>
+                  <p className="text-base font-semibold text-foreground">
+                    {analysis.status === 'failed' ? '深度分析生成失败' : '深度分析正在后台处理'}
+                  </p>
+                  <p className="mt-1 text-sm text-secondary-text">
+                    {analysis.error || '已经切到后台任务模式，可以离开当前页面，稍后再回来查看结果。'}
+                  </p>
+                </div>
+              </div>
+            </Card>
+          ) : null}
+
+          {analysis?.status === 'completed' ? (
             <>
               <section className="grid gap-6 lg:grid-cols-[minmax(0,1.35fr)_360px]">
                 <Card variant="bordered" padding="lg" className="rounded-[28px] border-border/60 bg-card/95">
@@ -640,16 +737,63 @@ const DeepAnalysisPage: React.FC = () => {
               </section>
             </>
           ) : null}
+
+          {!analysis && !loading && historyItems.length > 0 ? (
+            <Card variant="bordered" padding="lg" className="rounded-[28px] border-border/60 bg-card/95">
+              <div className="flex items-center gap-2">
+                <History className="h-4 w-4 text-cyan" />
+                <h2 className="text-xl font-semibold text-foreground">最近的深度分析</h2>
+              </div>
+              <div className="mt-4 flex justify-end">
+                <Button variant="outline" size="sm" className="rounded-2xl" onClick={() => void handleOpenHistoryDrawer()}>
+                  查看全部历史
+                </Button>
+              </div>
+              <p className="mt-3 text-sm leading-7 text-secondary-text">
+                点击任意一条历史记录，可以恢复查看当时的交易计划、追问记录和告警生成上下文。
+              </p>
+              <div className="mt-5 grid gap-3">
+                {historyItems.map((item) => (
+                  <button
+                    key={item.analysisId}
+                    type="button"
+                    onClick={() => void handleHistoryOpen(item)}
+                    className="block w-full rounded-2xl border border-border/60 bg-background/60 px-4 py-4 text-left transition hover:border-cyan/20 hover:bg-card"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex min-w-0 items-center gap-3">
+                        <p className="truncate text-sm font-medium text-foreground">
+                          {item.stockName} <span className="text-secondary-text">{item.stockCode}</span>
+                        </p>
+                        <Badge variant={item.status === 'completed' ? actionVariant(item.action) : 'default'} className="border-0 px-3 py-1">
+                          {item.status === 'completed' ? actionLabel(item.action) : analysisStatusLabel(item.status)}
+                        </Badge>
+                      </div>
+                      <span className="shrink-0 text-xs text-secondary-text">{formatTime(item.updatedAt || item.createdAt)}</span>
+                    </div>
+                    <p className="mt-2 text-sm leading-6 text-secondary-text">
+                      {item.summary || item.error || '点击恢复查看这次深度分析。'}
+                    </p>
+                  </button>
+                ))}
+              </div>
+            </Card>
+          ) : null}
         </div>
 
         <aside className="space-y-6">
           <Card variant="bordered" padding="lg" className="rounded-[28px] border-border/60 bg-card/95">
-            <div className="flex items-center gap-2">
-              <History className="h-4 w-4 text-cyan" />
-              <h2 className="text-xl font-semibold text-foreground">历史分析</h2>
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <History className="h-4 w-4 text-cyan" />
+                <h2 className="text-xl font-semibold text-foreground">历史分析</h2>
+              </div>
+              <Button variant="ghost" size="sm" className="rounded-2xl" onClick={() => void handleOpenHistoryDrawer()}>
+                全部历史
+              </Button>
             </div>
             <div className="mt-5 space-y-3">
-              {historyItems.length > 0 ? historyItems.map((item) => (
+              {recentHistoryItems.length > 0 ? recentHistoryItems.map((item) => (
                 <button
                   key={item.analysisId}
                   type="button"
@@ -657,14 +801,18 @@ const DeepAnalysisPage: React.FC = () => {
                   className="block w-full rounded-2xl border border-border/60 bg-background/60 px-4 py-4 text-left transition hover:border-cyan/20 hover:bg-card"
                 >
                   <div className="flex items-center justify-between gap-3">
-                    <p className="text-sm font-medium text-foreground">{actionLabel(item.action)}</p>
-                    <span className="text-xs text-secondary-text">{formatTime(item.createdAt)}</span>
+                    <p className="text-sm font-medium text-foreground">
+                      {item.status === 'completed' ? actionLabel(item.action) : analysisStatusLabel(item.status)}
+                    </p>
+                    <span className="text-xs text-secondary-text">{formatTime(item.updatedAt || item.createdAt)}</span>
                   </div>
-                  <p className="mt-2 text-xs leading-6 text-secondary-text">{item.summary || '无摘要'}</p>
+                  <p className="mt-2 text-xs leading-6 text-secondary-text">
+                    {item.summary || item.error || (item.status === 'processing' ? '正在生成结构化交易计划…' : '无摘要')}
+                  </p>
                 </button>
               )) : (
                 <p className="text-sm text-secondary-text">
-                  {analysis?.stockCode ? '这只股票还没有更多深度分析历史。' : '进入某次深度分析后，这里会显示该股票的历史判断。'}
+                  {analysis?.stockCode ? '这只股票还没有更多深度分析历史。' : '这里会显示最近的深度分析历史，支持直接恢复查看。'}
                 </p>
               )}
             </div>
@@ -700,6 +848,79 @@ const DeepAnalysisPage: React.FC = () => {
           ) : null}
         </aside>
       </div>
+
+      <Drawer
+        isOpen={historyDrawerOpen}
+        onClose={() => setHistoryDrawerOpen(false)}
+        title="深度分析历史"
+        width="max-w-xl"
+        side="right"
+      >
+        <div className="space-y-4">
+          {allHistoryError ? <ApiErrorAlert error={allHistoryError} /> : null}
+
+          {allHistoryLoading ? (
+            <InlineAlert
+              variant="info"
+              title="正在加载深度分析历史"
+              message="正在从后端读取最近的深度分析记录。"
+            />
+          ) : null}
+
+          {!allHistoryLoading && allHistoryItems.length === 0 ? (
+            <EmptyState
+              title="暂无深度分析历史"
+              description="完成几次深度分析后，这里会显示完整历史，方便你恢复查看和横向对比。"
+              icon={<Clock3 className="h-8 w-8" />}
+            />
+          ) : null}
+
+          <div className="space-y-3">
+            {allHistoryItems.map((item) => {
+              const active = item.analysisId === analysis?.analysisId;
+              return (
+                <div
+                  key={item.analysisId}
+                  className={[
+                    'rounded-2xl border px-4 py-4 transition-colors',
+                    active ? 'border-cyan/40 bg-cyan/6' : 'border-border/60 bg-background/70',
+                  ].join(' ')}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-base font-semibold text-foreground">
+                        {item.stockName} <span className="text-secondary-text">{item.stockCode}</span>
+                      </p>
+                      <p className="mt-1 text-sm text-secondary-text">{formatTime(item.updatedAt || item.createdAt)}</p>
+                    </div>
+                    <Badge variant={item.status === 'completed' ? actionVariant(item.action) : 'default'} className="border-0">
+                      {item.status === 'completed' ? actionLabel(item.action) : analysisStatusLabel(item.status)}
+                    </Badge>
+                  </div>
+
+                  <div className="mt-3 space-y-2 text-sm">
+                    <p className="text-secondary-text">{item.summary || item.error || '无摘要'}</p>
+                    <p className="text-secondary-text">来源 queryId {item.sourceQueryId || '--'}</p>
+                  </div>
+
+                  <div className="mt-4 flex items-center justify-end gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        void handleHistoryOpen(item);
+                        setHistoryDrawerOpen(false);
+                      }}
+                    >
+                      恢复查看
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </Drawer>
     </AppPage>
   );
 };

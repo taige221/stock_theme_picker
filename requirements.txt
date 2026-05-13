@@ -8,6 +8,7 @@ SQLAlchemy>=2.0
 tenacity>=9.0
 python-dotenv>=1.0
 newspaper3k>=0.2.8
+lxml_html_clean>=0.4
 fake-useragent>=1.5
 akshare>=1.16
 efinance>=0.5.5

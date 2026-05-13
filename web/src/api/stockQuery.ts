@@ -353,9 +353,11 @@ export const stockQueryApi = {
     return toCamelCase<StockDeepAnalysisItem>(response.data);
   },
 
-  async getDeepAnalysisHistory(stockCode: string, limit = 20): Promise<StockDeepAnalysisListResponse> {
+  async getDeepAnalysisHistory(stockCode?: string, limit = 20): Promise<StockDeepAnalysisListResponse> {
     const response = await apiClient.get<Record<string, unknown>>(
-      `/api/v1/stock-query/${encodeURIComponent(stockCode)}/deep-analysis-history`,
+      stockCode
+        ? `/api/v1/stock-query/${encodeURIComponent(stockCode)}/deep-analysis-history`
+        : '/api/v1/stock-query/deep-analysis-history',
       {
         params: { limit },
       },

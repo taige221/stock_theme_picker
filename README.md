@@ -145,6 +145,7 @@ cp .env.example .env
 - `ENABLE_EASTMONEY_PATCH`：是否启用 Eastmoney 兼容 patch
 - `THEME_BOARD_CACHE_TTL_SECONDS`：板块缓存时长
 - `THEME_EXPANSION_QUERY_TIMEOUT`：扩池查询超时
+- `THEME_NEWS_QUERY_TIMEOUT`：主题新闻扫描查询超时
 - `NEWS_MAX_AGE_DAYS`：新闻时间窗口
 - `NEWS_STRATEGY_PROFILE`：新闻策略窗口档位
 - `BIAS_THRESHOLD`：技术分析偏离阈值

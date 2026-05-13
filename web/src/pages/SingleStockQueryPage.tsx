@@ -1575,7 +1575,7 @@ const SingleStockQueryPage: React.FC = () => {
                 </button>
               </div>
 
-              <div className="flex flex-col gap-3 rounded-[24px] border border-slate-800/80 bg-[#0A1A2E] px-4 py-4 md:grid-cols-[minmax(0,220px)_1fr]">
+              <div className="flex flex-co gap-3 rounded-[24px] border border-slate-800/80 bg-[#0A1A2E] px-4 py-4 md:grid-cols-[minmax(0,220px)_1fr]">
                 <Input
                   label="告警扫描间隔(分钟)"
                   value={alertScanInterval}

@@ -7,6 +7,7 @@ Theme Event Scanner
 
 from __future__ import annotations
 
+import concurrent.futures
 import logging
 from typing import Any, Dict, List, Optional
 
@@ -15,6 +16,7 @@ from theme_picker.domain.theme_event import (
     ThemeEventSchema,
     ThemeNewsItemSchema,
 )
+from theme_picker.infrastructure.runtime import get_theme_picker_config
 from theme_picker.infrastructure.search_fallback_logging import emit_search_fallback_log
 from theme_picker.search_service import SearchResult, SearchService
 
@@ -36,6 +38,9 @@ class ThemeEventScanner:
 
     def __init__(self, search_service: Optional[SearchService] = None):
         self.search_service = search_service
+        self.query_timeout_seconds = float(
+            getattr(get_theme_picker_config(), "theme_news_query_timeout", 8.0) or 8.0
+        )
 
     def scan_theme(
         self,
@@ -139,8 +144,33 @@ class ThemeEventScanner:
             if not provider.is_available:
                 continue
             provider_name = getattr(provider, "name", provider.__class__.__name__)
+            executor: Optional[concurrent.futures.ThreadPoolExecutor] = None
             try:
-                response = provider.search(query, max_results=max_results, days=days)
+                executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+                future = executor.submit(
+                    provider.search,
+                    query,
+                    max_results=max_results,
+                    days=days,
+                )
+                response = future.result(timeout=self.query_timeout_seconds)
+            except concurrent.futures.TimeoutError:
+                attempts.append(
+                    {
+                        "provider": provider_name,
+                        "status": "timeout",
+                        "timeout_seconds": self.query_timeout_seconds,
+                    }
+                )
+                logger.warning(
+                    "主题新闻扫描超时: provider=%s query=%s timeout=%.1fs",
+                    provider_name,
+                    query,
+                    self.query_timeout_seconds,
+                )
+                if executor is not None:
+                    executor.shutdown(wait=False, cancel_futures=True)
+                continue
             except Exception as exc:
                 attempts.append(
                     {
@@ -149,7 +179,12 @@ class ThemeEventScanner:
                         "error": str(exc),
                     }
                 )
+                if executor is not None:
+                    executor.shutdown(wait=False, cancel_futures=True)
                 continue
+            finally:
+                if executor is not None:
+                    executor.shutdown(wait=False)
             last_response = response
             attempts.append(
                 {

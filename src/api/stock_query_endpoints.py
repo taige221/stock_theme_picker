@@ -26,6 +26,7 @@ from theme_picker.api.schemas import (
     StockQueryTaskStatusSchema,
 )
 from theme_picker.application.stock_deep_analysis_service import StockDeepAnalysisService
+from theme_picker.application.stock_deep_analysis_task_service import get_stock_deep_analysis_task_service
 from theme_picker.application.stock_query_task_service import get_stock_query_task_service
 
 router = APIRouter()
@@ -102,9 +103,10 @@ def get_single_stock_status(task_id: str) -> StockQueryTaskStatusSchema:
 
 @router.post(
     "/{query_id}/deep-analysis",
+    status_code=202,
     response_model=StockDeepAnalysisItemSchema,
     responses={
-        200: {"description": "单股深度分析结果", "model": StockDeepAnalysisItemSchema},
+        202: {"description": "单股深度分析任务已接受", "model": StockDeepAnalysisItemSchema},
         400: {"description": "请求参数错误"},
         404: {"description": "单股查询历史不存在"},
         500: {"description": "服务器错误"},
@@ -115,11 +117,13 @@ def get_single_stock_status(task_id: str) -> StockQueryTaskStatusSchema:
 def create_stock_deep_analysis(
     query_id: str,
     request: StockDeepAnalysisCreateRequest | None = None,
-) -> StockDeepAnalysisItemSchema:
+) -> JSONResponse:
     try:
+        task_service = get_stock_deep_analysis_task_service()
         service = StockDeepAnalysisService()
-        record = service.create_from_query(query_id, force_refresh=bool(request and request.force_refresh))
-        return _build_stock_deep_analysis_item(service, record, include_context=True)
+        record = task_service.submit(query_id, force_refresh=bool(request and request.force_refresh))
+        payload = _build_stock_deep_analysis_item(service, record, include_context=True)
+        return JSONResponse(status_code=202, content=payload.model_dump())
     except LookupError as exc:
         raise HTTPException(
             status_code=404,
@@ -156,6 +160,19 @@ def get_stock_deep_analysis(analysis_id: str) -> StockDeepAnalysisItemSchema:
             status_code=404,
             detail={"error": "not_found", "message": str(exc)},
         ) from exc
+
+
+@router.get(
+    "/deep-analysis-history",
+    response_model=StockDeepAnalysisListResponse,
+    summary="获取深度分析历史列表",
+)
+def list_all_stock_deep_analysis_history(limit: int = 20, stock_code: str | None = None) -> StockDeepAnalysisListResponse:
+    service = StockDeepAnalysisService()
+    records = service.list_history(stock_code=stock_code, limit=limit)
+    return StockDeepAnalysisListResponse(
+        items=[_build_stock_deep_analysis_item(service, record, include_context=False) for record in records]
+    )
 
 
 @router.get(

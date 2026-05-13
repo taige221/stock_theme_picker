@@ -895,6 +895,8 @@ class Config:
     circuit_breaker_cooldown: int = 300
     # 主题扩池单次在线搜索超时（秒）
     theme_expansion_query_timeout: float = 8.0
+    # 主题新闻扫描单次在线搜索超时（秒）
+    theme_news_query_timeout: float = 8.0
     # 主题板块结构化结果缓存 TTL（秒）
     theme_board_cache_ttl_seconds: int = 21600
     # 主题选股历史保留天数（<=0 表示不自动清理）
@@ -1672,6 +1674,12 @@ class Config:
                 os.getenv('THEME_EXPANSION_QUERY_TIMEOUT'),
                 8.0,
                 field_name='THEME_EXPANSION_QUERY_TIMEOUT',
+                minimum=1.0,
+            ),
+            theme_news_query_timeout=parse_env_float(
+                os.getenv('THEME_NEWS_QUERY_TIMEOUT'),
+                8.0,
+                field_name='THEME_NEWS_QUERY_TIMEOUT',
                 minimum=1.0,
             ),
             theme_board_cache_ttl_seconds=parse_env_int(

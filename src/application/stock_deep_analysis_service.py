@@ -31,12 +31,18 @@ class StockDeepAnalysisService:
         self.db = db or get_theme_picker_db()
         self.llm_adapter = llm_adapter or DeepAnalysisLLMAdapter()
 
-    def create_from_query(self, query_id: str, *, force_refresh: bool = False) -> Any:
+    def create_from_query(
+        self,
+        query_id: str,
+        *,
+        force_refresh: bool = False,
+        analysis_id: Optional[str] = None,
+    ) -> Any:
         query_id = str(query_id or "").strip()
         if not query_id:
             raise ValueError("query_id 不能为空")
 
-        if not force_refresh:
+        if not force_refresh and not analysis_id:
             existing = self._find_latest_by_query_id(query_id)
             if existing is not None:
                 return existing
@@ -52,7 +58,7 @@ class StockDeepAnalysisService:
         analysis_payload = self._build_analysis_payload(result_payload, query_id=query_id)
         return save_stock_deep_analysis_record(
             self.db,
-            analysis_id=uuid.uuid4().hex,
+            analysis_id=analysis_id or uuid.uuid4().hex,
             stock_code=analysis_payload["stock_code"],
             stock_name=analysis_payload["stock_name"],
             source_query_id=query_id,

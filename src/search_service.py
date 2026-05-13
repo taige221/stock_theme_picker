@@ -23,7 +23,6 @@ from typing import List, Dict, Any, Optional, Tuple
 from itertools import cycle
 from urllib.parse import parse_qsl, unquote, urlparse
 import requests
-from newspaper import Article, Config
 from tenacity import (
     retry,
     stop_after_attempt,
@@ -31,6 +30,14 @@ from tenacity import (
     retry_if_exception_type,
     before_sleep_log,
 )
+
+try:
+    from newspaper import Article, Config
+    _NEWSPAPER_IMPORT_ERROR: Optional[Exception] = None
+except Exception as exc:  # pragma: no cover - depends on optional runtime deps
+    Article = None  # type: ignore[assignment]
+    Config = None  # type: ignore[assignment]
+    _NEWSPAPER_IMPORT_ERROR = exc
 
 from theme_picker.data_provider.us_index_mapping import is_us_index_code
 from theme_picker.config import (
@@ -79,6 +86,13 @@ def fetch_url_content(url: str, timeout: int = 5) -> str:
     """
     获取 URL 网页正文内容 (使用 newspaper3k)
     """
+    if Article is None or Config is None:
+        logger.warning(
+            "newspaper3k 依赖不可用，跳过正文提取: %s",
+            _NEWSPAPER_IMPORT_ERROR,
+        )
+        return ""
+
     try:
         # 配置 newspaper3k
         config = Config()
