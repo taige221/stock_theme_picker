@@ -18,6 +18,7 @@ import { createParsedApiError, getParsedApiError, type ParsedApiError } from '..
 import {
   stockQueryApi,
   type StockAlertRuleItem,
+  type StockQueryContextSupplement,
   type StockDeepAnalysisItem,
   type StockDeepAnalysisMessage,
 } from '../api/stockQuery';
@@ -82,6 +83,11 @@ function roleBubbleClass(role: string): string {
   return 'border-purple/20 bg-purple/10 text-foreground';
 }
 
+function supplementItems(value?: string[] | null, fallback?: string[] | null): string[] {
+  const selected = (value?.length ? value : fallback) ?? [];
+  return selected.filter((item): item is string => typeof item === 'string' && item.trim().length > 0).slice(0, 4);
+}
+
 function ruleTypeLabel(value: string): string {
   if (value === 'support_retest') return '回踩试仓';
   if (value === 'breakout_confirm') return '突破确认';
@@ -119,6 +125,11 @@ const DeepAnalysisPage: React.FC = () => {
   const tradePlan = analysis?.tradePlan;
   const levels = tradePlan?.levels;
   const stockResult = analysis?.contextSnapshot?.stockQueryResult;
+  const contextSupplement = (analysis?.fundamental?.contextSupplement ?? stockResult?.stockContextSupplement ?? null) as StockQueryContextSupplement | null;
+  const conceptAttribution = contextSupplement?.conceptAttribution ?? null;
+  const profileHighlights = supplementItems(contextSupplement?.profile?.highlights, contextSupplement?.profile?.headlines);
+  const announcementHighlights = supplementItems(contextSupplement?.announcements?.highlights, contextSupplement?.announcements?.headlines);
+  const lockupHighlights = supplementItems(contextSupplement?.lockup?.highlights, contextSupplement?.lockup?.headlines);
   const generationMode = analysis?.contextSnapshot?.generationMode || 'deterministic';
   const generationModel = analysis?.contextSnapshot?.generationModel || '';
   const coverageEntries = useMemo(
@@ -566,6 +577,19 @@ const DeepAnalysisPage: React.FC = () => {
                       </div>
                     </div>
 
+                    {conceptAttribution?.conceptNames?.length ? (
+                      <div className="rounded-2xl border border-border/60 bg-background/60 p-4">
+                        <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">概念 / 题材归因</p>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {conceptAttribution.conceptNames.slice(0, 5).map((item) => (
+                            <Badge key={item} variant="default" className="border-border/60 bg-card/80 px-3 py-1">
+                              {item}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+
                     <InlineAlert
                       variant="info"
                       title="来源"
@@ -602,6 +626,32 @@ const DeepAnalysisPage: React.FC = () => {
                           ))}
                         </div>
                       </div>
+                      {(conceptAttribution || contextSupplement?.profile || contextSupplement?.announcements || contextSupplement?.lockup) ? (
+                        <div className="rounded-2xl border border-border/60 bg-background/60 p-4">
+                          <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">补充上下文</p>
+                          {conceptAttribution?.summary ? (
+                            <p className="mt-3 text-sm leading-7 text-foreground">{conceptAttribution.summary}</p>
+                          ) : null}
+                          <div className="mt-3 space-y-3">
+                            <DeepSupplementBlock
+                              title="公司画像"
+                              summary={contextSupplement?.profile?.summary}
+                              items={profileHighlights}
+                            />
+                            <DeepSupplementBlock
+                              title="近期公告"
+                              summary={contextSupplement?.announcements?.summary}
+                              items={announcementHighlights}
+                            />
+                            <DeepSupplementBlock
+                              title="解禁 / 风险"
+                              summary={contextSupplement?.lockup?.summary}
+                              items={lockupHighlights}
+                              danger
+                            />
+                          </div>
+                        </div>
+                      ) : null}
                     </div>
                   </Card>
 
@@ -922,6 +972,38 @@ const DeepAnalysisPage: React.FC = () => {
         </div>
       </Drawer>
     </AppPage>
+  );
+};
+
+type DeepSupplementBlockProps = {
+  title: string;
+  summary?: string | null;
+  items?: string[];
+  danger?: boolean;
+};
+
+const DeepSupplementBlock: React.FC<DeepSupplementBlockProps> = ({ title, summary, items = [], danger = false }) => {
+  if (!summary && items.length === 0) return null;
+  return (
+    <div className={`rounded-2xl border px-4 py-3 ${danger ? 'border-danger/15 bg-danger/5' : 'border-border/60 bg-card/80'}`}>
+      <p className="text-sm font-medium text-foreground">{title}</p>
+      {summary ? (
+        <p className="mt-2 text-sm leading-6 text-secondary-text">{summary}</p>
+      ) : null}
+      {items.length > 0 ? (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {items.map((item) => (
+            <Badge
+              key={item}
+              variant="default"
+              className={danger ? 'border-danger/20 bg-danger/10 px-3 py-1 text-foreground' : 'border-border/60 bg-background/60 px-3 py-1 text-foreground'}
+            >
+              {item}
+            </Badge>
+          ))}
+        </div>
+      ) : null}
+    </div>
   );
 };
 

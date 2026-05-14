@@ -1,5 +1,5 @@
 import type React from 'react';
-import { useEffect, useEffectEvent, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   Clock3,
@@ -27,6 +27,7 @@ const QUICK_QUERIES = [
   { label: '华丰科技', value: '688629.SH', note: '算力链中的高热度样本' },
   { label: '优博讯', value: '300531.SZ', note: '适合看异动与题材归因' },
   { label: '景旺电子', value: '603228.SH', note: '适合看趋势与支撑位' },
+  { label: '证券ETF', value: '512880.SH', note: '适合验证 ETF 查询链路' },
 ] as const;
 
 const FUNDAMENTAL_BLOCK_LABELS: Record<string, string> = {
@@ -159,9 +160,16 @@ function confidenceLabel(value: string): string {
 
 function relationTypeLabel(value: string): string {
   if (value === 'direct_stock_pool') return '股票池直连';
+  if (value === 'concept_board_match') return '概念板块映射';
   if (value === 'manual_map') return '人工映射';
   if (value === 'rule_map') return '规则映射';
   return value || '待判定';
+}
+
+function instrumentBadgeLabel(instrumentLabel?: string | null, instrumentType?: string | null): string | null {
+  if (instrumentLabel?.trim()) return instrumentLabel.trim();
+  if (instrumentType === 'etf') return 'ETF';
+  return null;
 }
 
 function sourceLabel(value?: string | null): string {
@@ -213,6 +221,11 @@ function boardSourceLabel(source?: string, provider?: string): string {
   if (source === 'cache') return `缓存${provider ? ` · ${provider}` : ''}`;
   if (source === 'online') return `在线${provider ? ` · ${provider}` : ''}`;
   return provider || '--';
+}
+
+function supplementItems(value?: string[] | null, fallback?: string[] | null): string[] {
+  const selected = (value?.length ? value : fallback) ?? [];
+  return selected.filter((item): item is string => typeof item === 'string' && item.trim().length > 0).slice(0, 4);
 }
 
 function formatSourceProvider(value?: unknown): string {
@@ -586,7 +599,7 @@ const SingleStockQueryPage: React.FC = () => {
   const pollTimeoutRef = useRef<number | null>(null);
   const hasPendingInputChange = query.trim() !== (lastResolvedInput || '').trim();
 
-  const loadHistory = useEffectEvent(async () => {
+  const loadHistory = async () => {
     setHistoryLoading(true);
     setHistoryError(null);
 
@@ -598,18 +611,18 @@ const SingleStockQueryPage: React.FC = () => {
     } finally {
       setHistoryLoading(false);
     }
-  });
+  };
 
-  const loadWatchlist = useEffectEvent(async () => {
+  const loadWatchlist = async () => {
     try {
       const response = await watchlistApi.listStocks();
       setWatchlistItems(response.items);
     } catch {
       // Ignore passive watchlist load failures on the stock page.
     }
-  });
+  };
 
-  const loadStockAlertRules = useEffectEvent(async (stockCode?: string) => {
+  const loadStockAlertRules = async (stockCode?: string) => {
     if (!stockCode) {
       setStockAlertRules([]);
       return;
@@ -620,7 +633,7 @@ const SingleStockQueryPage: React.FC = () => {
     } catch {
       // Ignore passive alert-rule load failures on the stock page.
     }
-  });
+  };
 
   useEffect(() => {
     void loadHistory();
@@ -633,16 +646,16 @@ const SingleStockQueryPage: React.FC = () => {
     }
   }, []);
 
-  const applyAnalyzeResult = useEffectEvent(async (response: StockQueryAnalyzeResponse, resolvedInput: string) => {
+  const applyAnalyzeResult = async (response: StockQueryAnalyzeResponse, resolvedInput: string) => {
     setResult(response);
     setCurrentHistoryId(response.queryId ?? null);
     setLastResolvedInput(resolvedInput);
     setQueryTask(null);
     void loadStockAlertRules(response.stockCode);
     void loadHistory();
-  });
+  };
 
-  const pollAnalyzeStatus = useEffectEvent(async (taskId: string, resolvedInput: string) => {
+  const pollAnalyzeStatus = async (taskId: string, resolvedInput: string) => {
     try {
       const status = await stockQueryApi.getAnalyzeStatus(taskId);
       setQueryTask(status);
@@ -675,9 +688,9 @@ const SingleStockQueryPage: React.FC = () => {
       setIsLoading(false);
       pollTimeoutRef.current = null;
     }
-  });
+  };
 
-  const analyzeStock = useEffectEvent(async (rawInput: string) => {
+  const analyzeStock = async (rawInput: string) => {
     const normalized = rawInput.trim();
     if (!normalized) return;
 
@@ -708,7 +721,7 @@ const SingleStockQueryPage: React.FC = () => {
         setIsLoading(false);
       }
     }
-  });
+  };
 
   useEffect(() => {
     setQuery(initialQuery);
@@ -777,6 +790,8 @@ const SingleStockQueryPage: React.FC = () => {
     return watchlistItems.some((item) => item.stockCode === result.stockCode);
   }, [result, watchlistItems]);
   const topTheme = themeAttributions[0] ?? null;
+  const stockContextSupplement = result?.stockContextSupplement ?? null;
+  const conceptAttribution = stockContextSupplement?.conceptAttribution ?? null;
   const fundamentalContext = useMemo(
     () => result?.fundamentalContext ?? buildFallbackFundamentalContext(result?.fundamentalDetails, result?.fundamentalCoverage, result?.fundamentalErrors),
     [result?.fundamentalContext, result?.fundamentalDetails, result?.fundamentalCoverage, result?.fundamentalErrors],
@@ -813,6 +828,18 @@ const SingleStockQueryPage: React.FC = () => {
     ].some((block) => hasFundamentalBlockData(block) || Boolean(block?.errors?.length));
   }, [boardsBlock, capitalFlowBlock, dragonTigerBlock, earningsBlock, fundamentalContext, growthBlock, institutionBlock, valuationBlock]);
   const stockNewsSummary = result?.stockNewsSummary;
+  const profileHighlights = supplementItems(
+    stockContextSupplement?.profile?.highlights,
+    stockContextSupplement?.profile?.headlines,
+  );
+  const announcementHighlights = supplementItems(
+    stockContextSupplement?.announcements?.highlights,
+    stockContextSupplement?.announcements?.headlines,
+  );
+  const lockupHighlights = supplementItems(
+    stockContextSupplement?.lockup?.highlights,
+    stockContextSupplement?.lockup?.headlines,
+  );
   const entryPlan = useMemo(() => (result ? buildEntryPlan(result) : null), [result]);
   const signalOverview = useMemo(
     () => (result && entryPlan ? buildSignalOverview(result, entryPlan) : null),
@@ -838,7 +865,7 @@ const SingleStockQueryPage: React.FC = () => {
     return buildHistoryComparison(result, previousSameStock);
   }, [previousSameStock, result]);
 
-  const handleAddToWatchlist = useEffectEvent(async () => {
+  const handleAddToWatchlist = async () => {
     if (!result) return;
     setWatchlistLoading(true);
     setWatchlistActionError(null);
@@ -862,9 +889,9 @@ const SingleStockQueryPage: React.FC = () => {
     } finally {
       setWatchlistLoading(false);
     }
-  });
+  };
 
-  const handleCreateDefaultAlerts = useEffectEvent(async () => {
+  const handleCreateDefaultAlerts = async () => {
     if (!result) return;
     setAlertRuleLoading(true);
     setWatchlistActionError(null);
@@ -907,7 +934,7 @@ const SingleStockQueryPage: React.FC = () => {
       setAlertRuleLoading(false);
       void loadWatchlist();
     }
-  });
+  };
 
   return (
     <AppPage className="!max-w-[1680px] px-3 md:px-5 lg:px-6">
@@ -927,9 +954,9 @@ const SingleStockQueryPage: React.FC = () => {
                   <Input
                     value={query}
                     onChange={(event) => setQuery(event.target.value)}
-                    placeholder="输入股票代码或名称，例如 688629.SH / 华丰科技"
+                    placeholder="输入股票或 ETF 代码/名称，例如 688629.SH / 512880.SH / 华丰科技"
                     className="h-12 rounded-2xl border-slate-700/80 bg-[#0A1A2E] text-slate-100 placeholder:text-slate-500"
-                    hint="支持股票代码和股票名称。查询成功后会自动写入后端历史，方便回看和恢复查看。"
+                    hint="支持股票与 ETF 代码/名称。查询成功后会自动写入后端历史，方便回看和恢复查看。"
                   />
                   <Button
                     type="submit"
@@ -1404,7 +1431,18 @@ const SingleStockQueryPage: React.FC = () => {
                               tone="neutral"
                             />
                             <MiniMetric label="最近日期" value={dragonTiger?.latestDate ?? '--'} tone="neutral" />
+                            <MiniMetric label="净买额" value={formatMoney(dragonTiger?.netBuyAmount)} tone="neutral" />
+                            <MiniMetric label="机构净买" value={formatMoney(dragonTiger?.institutionNetBuy)} tone="neutral" />
                           </div>
+                          {dragonTiger?.reason ? (
+                            <p className="text-xs leading-5 text-slate-300">上榜原因：{dragonTiger.reason}</p>
+                          ) : null}
+                          {dragonTiger?.buySeats?.length ? (
+                            <p className="text-xs leading-5 text-slate-400">买入席位：{dragonTiger.buySeats.slice(0, 3).join(' / ')}</p>
+                          ) : null}
+                          {dragonTiger?.sellSeats?.length ? (
+                            <p className="text-xs leading-5 text-slate-400">卖出席位：{dragonTiger.sellSeats.slice(0, 3).join(' / ')}</p>
+                          ) : null}
                         </FundamentalBlockCard>
 
                         <FundamentalBlockCard
@@ -1446,6 +1484,11 @@ const SingleStockQueryPage: React.FC = () => {
                 <div className="flex flex-wrap items-end gap-3">
                   <h4 className="text-3xl font-semibold text-white">{result?.stockName ?? '等待查询结果'}</h4>
                   <span className="text-sm text-slate-400">{result?.stockCode ?? '--'}</span>
+                  {instrumentBadgeLabel(result?.instrumentLabel, result?.instrumentType) ? (
+                    <Badge variant="info" className="border-0 px-3 py-1">
+                      {instrumentBadgeLabel(result?.instrumentLabel, result?.instrumentType)}
+                    </Badge>
+                  ) : null}
                 </div>
                 <div className="mt-5 flex flex-wrap items-end gap-3">
                   <p className="text-4xl font-semibold text-white">{formatNumber(result?.currentPrice)}</p>
@@ -1594,7 +1637,7 @@ const SingleStockQueryPage: React.FC = () => {
                 </div>
               </div>
 
-              {(topTheme || fundamentalCoverageEntries.length > 0) ? (
+              {(topTheme || conceptAttribution || stockContextSupplement || fundamentalCoverageEntries.length > 0) ? (
                 <div className="space-y-4">
                   {topTheme ? (
                     <div className="rounded-[24px] border border-slate-800/80 bg-[#0A1A2E] px-5 py-5">
@@ -1611,6 +1654,67 @@ const SingleStockQueryPage: React.FC = () => {
                         {confidenceLabel(topTheme.confidence)} · {relationTypeLabel(topTheme.relationType)}
                       </p>
                       <p className="mt-2 text-sm leading-6 text-slate-100">{topTheme.reason}</p>
+                      {topTheme.matchedBoards?.length ? (
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {topTheme.matchedBoards.slice(0, 4).map((item) => (
+                            <span key={item} className="rounded-full border border-cyan/20 bg-cyan/10 px-3 py-2 text-xs font-medium text-slate-100">
+                              {item}
+                            </span>
+                          ))}
+                        </div>
+                      ) : null}
+                      {conceptAttribution?.summary ? (
+                        <p className="mt-3 text-xs leading-6 text-slate-400">{conceptAttribution.summary}</p>
+                      ) : null}
+                    </div>
+                  ) : null}
+
+                  {(conceptAttribution || stockContextSupplement?.profile || stockContextSupplement?.announcements || stockContextSupplement?.lockup) ? (
+                    <div className="rounded-[24px] border border-slate-800/80 bg-[#0A1A2E] px-5 py-5">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Context Supplement</p>
+                          <h4 className="mt-2 text-lg font-semibold text-white">公司画像 / 公告 / 解禁</h4>
+                        </div>
+                        <Badge variant="default" className="border-0 px-3 py-1">
+                          {stockContextSupplement?.profile?.provider || stockContextSupplement?.announcements?.provider || 'search'}
+                        </Badge>
+                      </div>
+
+                      {conceptAttribution?.summary ? (
+                        <div className="mt-4 rounded-[20px] border border-slate-800/80 bg-[#0C2236] px-4 py-4">
+                          <p className="text-sm font-semibold text-slate-100">概念归因</p>
+                          <p className="mt-2 text-sm leading-6 text-slate-300">{conceptAttribution.summary}</p>
+                          {conceptAttribution.conceptNames?.length ? (
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              {conceptAttribution.conceptNames.slice(0, 5).map((item) => (
+                                <span key={item} className="rounded-full border border-cyan/20 bg-cyan/10 px-3 py-2 text-xs font-medium text-slate-100">
+                                  {item}
+                                </span>
+                              ))}
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : null}
+
+                      <div className="mt-4 space-y-3">
+                        <SupplementPanel
+                          title="公司画像"
+                          summary={stockContextSupplement?.profile?.summary}
+                          items={profileHighlights}
+                        />
+                        <SupplementPanel
+                          title="近期公告"
+                          summary={stockContextSupplement?.announcements?.summary}
+                          items={announcementHighlights}
+                        />
+                        <SupplementPanel
+                          title="解禁提示"
+                          summary={stockContextSupplement?.lockup?.summary}
+                          items={lockupHighlights}
+                          danger
+                        />
+                      </div>
                     </div>
                   ) : null}
 
@@ -1819,6 +1923,13 @@ type FundamentalBlockCardProps = {
   children?: React.ReactNode;
 };
 
+type SupplementPanelProps = {
+  title: string;
+  summary?: string | null;
+  items?: string[];
+  danger?: boolean;
+};
+
 const FundamentalBlockCard: React.FC<FundamentalBlockCardProps> = ({ title, status, sourceChain, errors, children }) => (
   <div className="rounded-[20px] border border-slate-800/80 bg-slate-950/35 px-4 py-4">
     <div className="flex items-start justify-between gap-3">
@@ -1839,6 +1950,30 @@ const FundamentalBlockCard: React.FC<FundamentalBlockCardProps> = ({ title, stat
     </div>
   </div>
 );
+
+const SupplementPanel: React.FC<SupplementPanelProps> = ({ title, summary, items = [], danger = false }) => {
+  if (!summary && items.length === 0) return null;
+  return (
+    <div className={`rounded-[20px] border px-4 py-4 ${danger ? 'border-danger/20 bg-[#1B1424]' : 'border-slate-800/80 bg-[#0C2236]'}`}>
+      <p className="text-sm font-semibold text-slate-100">{title}</p>
+      {summary ? (
+        <p className="mt-2 text-sm leading-6 text-slate-300">{summary}</p>
+      ) : null}
+      {items.length > 0 ? (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {items.map((item) => (
+            <span
+              key={item}
+              className={`rounded-full border px-3 py-2 text-xs font-medium ${danger ? 'border-danger/20 bg-danger/10 text-slate-100' : 'border-cyan/20 bg-cyan/10 text-slate-100'}`}
+            >
+              {item}
+            </span>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+};
 
 const MiniMetric: React.FC<MiniMetricProps> = ({ label, value, tone }) => {
   const toneClass = tone === 'buy'

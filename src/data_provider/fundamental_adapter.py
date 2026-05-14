@@ -261,6 +261,14 @@ def _extract_latest_row(df: pd.DataFrame, stock_code: str) -> Optional[pd.Series
     return df.iloc[0]
 
 
+def _pick_first_column(columns: List[Any], keywords: List[str]) -> Optional[Any]:
+    for col in columns:
+        col_s = str(col)
+        if any(keyword in col_s for keyword in keywords):
+            return col
+    return None
+
+
 class AkshareFundamentalAdapter:
     """AkShare adapter for fundamentals, capital flow and dragon-tiger signals."""
 
@@ -630,6 +638,11 @@ class AkshareFundamentalAdapter:
             "is_on_list": False,
             "recent_count": 0,
             "latest_date": None,
+            "reason": None,
+            "net_buy_amount": None,
+            "institution_net_buy": None,
+            "buy_seats": [],
+            "sell_seats": [],
             "source_chain": [],
             "errors": [],
         }
@@ -678,6 +691,59 @@ class AkshareFundamentalAdapter:
         result["latest_date"] = max(recent_dates).date().isoformat() if recent_dates else (
             max(parsed_dates).date().isoformat() if parsed_dates else None
         )
+        reason_col = _pick_first_column(list(matched.columns), ["上榜原因", "原因", "类型", "解读"])
+        if reason_col is not None:
+            reasons = []
+            for value in matched[reason_col].astype(str).tolist():
+                text = _safe_str(value)
+                if text and text not in reasons:
+                    reasons.append(text)
+            if reasons:
+                result["reason"] = "；".join(reasons[:2])
+
+        net_buy_col = _pick_first_column(list(matched.columns), ["净买额", "净额", "净买入"])
+        if net_buy_col is not None:
+            values = pd.to_numeric(matched[net_buy_col], errors="coerce").dropna()
+            if not values.empty:
+                result["net_buy_amount"] = float(values.iloc[0])
+
+        institution_col = _pick_first_column(list(matched.columns), ["机构净买", "机构买入净额", "机构净额"])
+        if institution_col is not None:
+            values = pd.to_numeric(matched[institution_col], errors="coerce").dropna()
+            if not values.empty:
+                result["institution_net_buy"] = float(values.iloc[0])
+
+        seat_name_col = _pick_first_column(
+            list(matched.columns),
+            ["营业部名称", "席位名称", "营业部", "买方营业部", "卖方营业部"],
+        )
+        buy_amt_col = _pick_first_column(list(matched.columns), ["买入金额", "买入额", "买入"])
+        sell_amt_col = _pick_first_column(list(matched.columns), ["卖出金额", "卖出额", "卖出"])
+        if seat_name_col is not None:
+            working = matched.copy()
+            working["_seat_name"] = working[seat_name_col].map(_safe_str)
+            if buy_amt_col is not None:
+                working["_buy_amt"] = pd.to_numeric(working[buy_amt_col], errors="coerce")
+                buy_rows = (
+                    working[working["_seat_name"] != ""]
+                    .dropna(subset=["_buy_amt"])
+                    .sort_values("_buy_amt", ascending=False)
+                )
+                result["buy_seats"] = [
+                    f"{row['_seat_name']} ({float(row['_buy_amt']):.0f})"
+                    for _, row in buy_rows.head(5).iterrows()
+                ]
+            if sell_amt_col is not None:
+                working["_sell_amt"] = pd.to_numeric(working[sell_amt_col], errors="coerce")
+                sell_rows = (
+                    working[working["_seat_name"] != ""]
+                    .dropna(subset=["_sell_amt"])
+                    .sort_values("_sell_amt", ascending=False)
+                )
+                result["sell_seats"] = [
+                    f"{row['_seat_name']} ({float(row['_sell_amt']):.0f})"
+                    for _, row in sell_rows.head(5).iterrows()
+                ]
         result["status"] = "ok"
         result["source_chain"].append(f"dragon_tiger:{source}")
         return result

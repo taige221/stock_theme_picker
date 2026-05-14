@@ -26,7 +26,12 @@ from theme_picker.data.stock_mapping import STOCK_NAME_MAP, is_meaningful_stock_
 from theme_picker.data_provider import DataFetcherManager
 from theme_picker.data_provider.base import normalize_stock_code
 from theme_picker.infrastructure.persistence import get_theme_picker_db, save_stock_query_record
-from theme_picker.infrastructure.stock_pool_service import build_stock_code_variants, canonicalize_stock_code
+from theme_picker.infrastructure.stock_query_logging import emit_stock_query_log
+from theme_picker.infrastructure.stock_pool_service import (
+    build_stock_code_variants,
+    canonicalize_stock_code,
+    is_etf_code,
+)
 from theme_picker.stock_analyzer import StockTrendAnalyzer
 
 _CODELIKE_RE = re.compile(
@@ -86,15 +91,26 @@ class StockQueryService:
         self.db = db or get_theme_picker_db()
 
     def analyze(self, request: Any, *, query_id: Optional[str] = None) -> Dict[str, Any]:
+        query_id = query_id or uuid.uuid4().hex
         stock_code = self._resolve_stock_code(request)
         requested_name = self._resolve_requested_name(request)
         stock_name = requested_name or stock_code
+        query_trace: Dict[str, Any] = {
+            "tag": "STOCK_QUERY",
+            "event": "stock_query_completed",
+            "query_id": query_id,
+            "query_text": self._resolve_query_text(request),
+            "stock_code": stock_code,
+            "stock_name": stock_name,
+        }
         if requested_name:
             stock_name = (
                 requested_name
                 or self.fetcher_manager.get_stock_name(stock_code, allow_realtime=False)
                 or stock_code
             )
+        instrument_type = self._infer_instrument_type(stock_code)
+        instrument_label = self._instrument_label(instrument_type)
 
         daily_df, daily_source = self._load_daily_data(stock_code, days=120)
         if daily_df is None or daily_df.empty:
@@ -116,17 +132,41 @@ class StockQueryService:
 
         chip_data = self._load_chip_distribution(stock_code)
         fundamental_context = self._load_fundamental_context(stock_code, quote=quote)
+        self._prime_stock_intel_bundle(
+            stock_code=stock_code,
+            stock_name=stock_name,
+            trace=query_trace,
+        )
         self._augment_fundamental_text_supplements(
             stock_code=stock_code,
             stock_name=stock_name,
             fundamental_context=fundamental_context,
+            trace=query_trace,
         )
         normalized_fundamental_context = self._normalize_fundamental_context(fundamental_context)
         stock_news_summary = self._load_stock_news_summary(
             stock_code=stock_code,
             stock_name=stock_name,
+            trace=query_trace,
         )
         valuation_snapshot = self._extract_valuation_snapshot(quote, normalized_fundamental_context)
+        board_items = self._extract_board_items(normalized_fundamental_context)
+        theme_attributions = self.theme_attribution_service.attribute(
+            stock_code,
+            board_items=board_items,
+        )
+        stock_context_supplement = self._load_stock_context_supplement(
+            stock_code=stock_code,
+            stock_name=stock_name,
+            fundamental_context=normalized_fundamental_context,
+            theme_attributions=theme_attributions,
+            trace=query_trace,
+        )
+        self._attach_stock_intel_trace(
+            stock_code=stock_code,
+            stock_name=stock_name,
+            trace=query_trace,
+        )
         signal_payload = self.signal_service.analyze(
             trend_result=trend_result,
             current_price=current_price,
@@ -136,9 +176,7 @@ class StockQueryService:
             chip_data=chip_data,
             fundamental_context=normalized_fundamental_context,
         )
-        theme_attributions = self.theme_attribution_service.attribute(stock_code)
 
-        query_id = query_id or uuid.uuid4().hex
         news_provider = None
         if isinstance(stock_news_summary, dict):
             news_provider = str(stock_news_summary.get("provider") or "").strip() or None
@@ -147,6 +185,8 @@ class StockQueryService:
             "query_id": query_id,
             "stock_code": stock_code,
             "stock_name": stock_name,
+            "instrument_type": instrument_type,
+            "instrument_label": instrument_label,
             "current_price": current_price,
             "pct_chg": pct_chg,
             "turnover_rate": turnover_rate,
@@ -170,6 +210,7 @@ class StockQueryService:
             "theme_attributions": theme_attributions,
             "themes": theme_attributions,
             "stock_news_summary": stock_news_summary,
+            "stock_context_supplement": stock_context_supplement,
             "fundamental_context": normalized_fundamental_context,
             "fundamental_coverage": self._extract_fundamental_coverage(normalized_fundamental_context),
             "fundamental_errors": self._extract_fundamental_errors(normalized_fundamental_context),
@@ -188,6 +229,23 @@ class StockQueryService:
             query_text=self._resolve_query_text(request),
             payload=payload,
         )
+        query_trace.update(
+            {
+                "status": "completed",
+                "stock_name": stock_name,
+                "signal": payload.get("signal"),
+                "trend_score": payload.get("trend_score"),
+                "data_sources": payload.get("data_sources") or {},
+                "fundamental_coverage": payload.get("fundamental_coverage") or {},
+                "fundamental_errors": (payload.get("fundamental_errors") or [])[:5],
+                "theme_attribution_count": len(theme_attributions),
+                "stock_context_keys": sorted((stock_context_supplement or {}).keys()),
+                "news_provider": news_provider,
+                "news_headline_count": len((stock_news_summary or {}).get("headlines") or []),
+                "instrument_type": instrument_type,
+            }
+        )
+        emit_stock_query_log(query_trace, mirror_logger=logger)
         return payload
 
     def _resolve_stock_code(self, request: Any) -> str:
@@ -265,6 +323,19 @@ class StockQueryService:
             pairs.append((canonical, str(name).strip()))
 
         return pairs
+
+    @staticmethod
+    def _infer_instrument_type(stock_code: str) -> str:
+        normalized = normalize_stock_code(stock_code)
+        if is_etf_code(normalized):
+            return "etf"
+        return "stock"
+
+    @staticmethod
+    def _instrument_label(instrument_type: str) -> str:
+        if instrument_type == "etf":
+            return "ETF"
+        return "股票"
 
     def _load_daily_data(self, stock_code: str, *, days: int = 120):
         stock_code_text = str(stock_code or "").strip().upper()
@@ -485,14 +556,26 @@ class StockQueryService:
         stock_code: str,
         stock_name: str,
         fundamental_context: Optional[Dict[str, Any]],
+        trace: Optional[Dict[str, Any]] = None,
     ) -> None:
         if not isinstance(fundamental_context, dict):
             return
+        trace_block = trace.setdefault("fundamental_text_supplement", {}) if isinstance(trace, dict) else None
         if not self.text_supplement_service.is_available:
+            if isinstance(trace_block, dict):
+                trace_block.update({"available": False, "status": "service_unavailable"})
             return
 
-        timeout_seconds = float(getattr(self.config, "stock_query_text_timeout_seconds", 2.0) or 0.0)
+        timeout_seconds = float(getattr(self.config, "stock_query_text_timeout_seconds", 10.0) or 0.0)
+        if isinstance(trace_block, dict):
+            trace_block.update({
+                "available": True,
+                "timeout_seconds": timeout_seconds,
+                "provider_attempted": self.text_supplement_service.provider_names,
+            })
         if timeout_seconds <= 0:
+            if isinstance(trace_block, dict):
+                trace_block["status"] = "disabled"
             return
 
         try:
@@ -501,10 +584,21 @@ class StockQueryService:
                 timeout_seconds=timeout_seconds,
                 task_name="stock-query-earnings-text",
             )
-        except Exception:
+        except Exception as exc:
             earnings_text = None
+            if isinstance(trace_block, dict):
+                trace_block["earnings"] = {"status": "error", "error": str(exc)}
         if isinstance(earnings_text, dict) and earnings_text:
             self._merge_fundamental_block_data(fundamental_context, "earnings", earnings_text)
+            if isinstance(trace_block, dict):
+                trace_block["earnings"] = {
+                    "status": "ok",
+                    "provider": earnings_text.get("provider") or earnings_text.get("text_provider"),
+                    "headline_count": len(earnings_text.get("headlines") or earnings_text.get("text_headlines") or []),
+                    "dimension": earnings_text.get("dimension"),
+                }
+        elif isinstance(trace_block, dict) and "earnings" not in trace_block:
+            trace_block["earnings"] = {"status": "empty"}
 
         try:
             institution_text = self._run_with_timeout(
@@ -512,22 +606,45 @@ class StockQueryService:
                 timeout_seconds=timeout_seconds,
                 task_name="stock-query-institution-text",
             )
-        except Exception:
+        except Exception as exc:
             institution_text = None
+            if isinstance(trace_block, dict):
+                trace_block["institution"] = {"status": "error", "error": str(exc)}
         if isinstance(institution_text, dict) and institution_text:
             self._merge_fundamental_block_data(fundamental_context, "institution", institution_text)
+            if isinstance(trace_block, dict):
+                trace_block["institution"] = {
+                    "status": "ok",
+                    "provider": institution_text.get("provider") or institution_text.get("text_provider"),
+                    "headline_count": len(institution_text.get("headlines") or institution_text.get("text_headlines") or []),
+                    "dimension": institution_text.get("dimension"),
+                }
+        elif isinstance(trace_block, dict) and "institution" not in trace_block:
+            trace_block["institution"] = {"status": "empty"}
 
     def _load_stock_news_summary(
         self,
         *,
         stock_code: str,
         stock_name: str,
+        trace: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
+        trace_block = trace.setdefault("news_summary", {}) if isinstance(trace, dict) else None
         if not self.text_supplement_service.is_available:
+            if isinstance(trace_block, dict):
+                trace_block.update({"available": False, "status": "service_unavailable"})
             return {}
 
-        timeout_seconds = float(getattr(self.config, "stock_query_news_timeout_seconds", 1.8) or 0.0)
+        timeout_seconds = float(getattr(self.config, "stock_query_news_timeout_seconds", 10.0) or 0.0)
+        if isinstance(trace_block, dict):
+            trace_block.update({
+                "available": True,
+                "timeout_seconds": timeout_seconds,
+                "provider_attempted": self.text_supplement_service.provider_names,
+            })
         if timeout_seconds <= 0:
+            if isinstance(trace_block, dict):
+                trace_block["status"] = "disabled"
             return {}
 
         try:
@@ -536,9 +653,240 @@ class StockQueryService:
                 timeout_seconds=timeout_seconds,
                 task_name="stock-query-news-summary",
             )
-        except Exception:
+        except Exception as exc:
             summary = None
+            if isinstance(trace_block, dict):
+                trace_block.update({"status": "error", "error": str(exc)})
+        if isinstance(summary, dict) and summary:
+            if isinstance(trace_block, dict):
+                trace_block.update(
+                    {
+                        "status": "ok",
+                        "provider": summary.get("provider"),
+                        "headline_count": len(summary.get("headlines") or []),
+                        "risk_event_count": len(summary.get("risk_events") or []),
+                        "dimensions": list(summary.get("dimensions") or []),
+                    }
+                )
+        elif isinstance(trace_block, dict) and "status" not in trace_block:
+            trace_block["status"] = "empty"
         return summary if isinstance(summary, dict) else {}
+
+    def _prime_stock_intel_bundle(
+        self,
+        *,
+        stock_code: str,
+        stock_name: str,
+        trace: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        if not self.text_supplement_service.is_available:
+            return
+
+        news_timeout = float(getattr(self.config, "stock_query_news_timeout_seconds", 10.0) or 0.0)
+        text_timeout = float(getattr(self.config, "stock_query_text_timeout_seconds", 10.0) or 0.0)
+        timeout_seconds = max(news_timeout, text_timeout)
+        if timeout_seconds <= 0:
+            return
+
+        trace_block = trace.setdefault("stock_intel_preload", {}) if isinstance(trace, dict) else None
+        if isinstance(trace_block, dict):
+            trace_block.update(
+                {
+                    "status": "running",
+                    "timeout_seconds": timeout_seconds,
+                    "provider_attempted": self.text_supplement_service.provider_names,
+                }
+            )
+
+        try:
+            bundle = self._run_with_timeout(
+                lambda: self.text_supplement_service.build_stock_intel_bundle(stock_code, stock_name),
+                timeout_seconds=timeout_seconds,
+                task_name="stock-query-stock-intel-bundle",
+            )
+        except Exception as exc:
+            if isinstance(trace_block, dict):
+                trace_block.update({"status": "error", "error": str(exc)})
+            return
+
+        if isinstance(trace_block, dict):
+            dimensions = (bundle or {}).get("dimensions") or {}
+            trace_block.update(
+                {
+                    "status": "ok",
+                    "dimension_count": len(dimensions) if isinstance(dimensions, dict) else 0,
+                    "providers_used": list((bundle or {}).get("providers_used") or []),
+                }
+            )
+
+    def _load_stock_context_supplement(
+        self,
+        *,
+        stock_code: str,
+        stock_name: str,
+        fundamental_context: Optional[Dict[str, Any]],
+        theme_attributions: List[Dict[str, Any]],
+        trace: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        supplement: Dict[str, Any] = {}
+        trace_block = trace.setdefault("context_supplement", {}) if isinstance(trace, dict) else None
+        concept_attribution = self._build_concept_attribution(fundamental_context, theme_attributions)
+        if concept_attribution:
+            supplement["concept_attribution"] = concept_attribution
+        if isinstance(trace_block, dict):
+            trace_block["concept_attribution"] = {
+                "status": "ok" if concept_attribution else "empty",
+                "concept_count": len((concept_attribution or {}).get("concept_names") or []),
+                "matched_theme_count": len((concept_attribution or {}).get("matched_themes") or []),
+            }
+
+        if not self.text_supplement_service.is_available:
+            if isinstance(trace_block, dict):
+                trace_block["available"] = False
+            return supplement
+
+        timeout_seconds = float(getattr(self.config, "stock_query_text_timeout_seconds", 10.0) or 0.0)
+        if isinstance(trace_block, dict):
+            trace_block.update({
+                "available": True,
+                "timeout_seconds": timeout_seconds,
+                "provider_attempted": self.text_supplement_service.provider_names,
+            })
+        if timeout_seconds <= 0:
+            if isinstance(trace_block, dict):
+                trace_block["status"] = "disabled"
+            return supplement
+
+        tasks = (
+            ("profile", lambda: self.text_supplement_service.get_profile_text(stock_code, stock_name)),
+            ("announcements", lambda: self.text_supplement_service.get_announcement_text(stock_code, stock_name)),
+            ("lockup", lambda: self.text_supplement_service.get_lockup_text(stock_code, stock_name)),
+        )
+        for key, loader in tasks:
+            try:
+                value = self._run_with_timeout(
+                    loader,
+                    timeout_seconds=timeout_seconds,
+                    task_name=f"stock-query-{key}-supplement",
+                )
+            except Exception as exc:
+                value = None
+                if isinstance(trace_block, dict):
+                    trace_block[key] = {"status": "error", "error": str(exc)}
+            if isinstance(value, dict) and value:
+                supplement[key] = value
+                if isinstance(trace_block, dict):
+                    trace_block[key] = {
+                        "status": "ok",
+                        "provider": value.get("provider"),
+                        "headline_count": len(value.get("headlines") or []),
+                        "highlight_count": len(value.get("highlights") or []),
+                        "dimension": value.get("dimension"),
+                    }
+            elif isinstance(trace_block, dict) and key not in trace_block:
+                trace_block[key] = {"status": "empty"}
+        return supplement
+
+    def _attach_stock_intel_trace(
+        self,
+        *,
+        stock_code: str,
+        stock_name: str,
+        trace: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        if not isinstance(trace, dict) or not self.text_supplement_service.is_available:
+            return
+        try:
+            bundle = self.text_supplement_service.build_stock_intel_bundle(stock_code, stock_name)
+        except Exception as exc:
+            trace["stock_intel"] = {"status": "error", "error": str(exc)}
+            return
+
+        dimensions = bundle.get("dimensions")
+        diagnostics: Dict[str, Any] = {}
+        if isinstance(dimensions, dict):
+            for name, block in dimensions.items():
+                if not isinstance(block, dict):
+                    continue
+                diagnostics[str(name)] = {
+                    "status": block.get("status"),
+                    "provider": block.get("provider"),
+                    "query": block.get("query"),
+                    "error": block.get("error"),
+                    "headline_count": len(block.get("headlines") or []),
+                }
+
+        trace["stock_intel"] = {
+            "status": "ok",
+            "provider_attempted": list(bundle.get("provider_attempted") or self.text_supplement_service.provider_names),
+            "providers_used": list(bundle.get("providers_used") or []),
+            "dimensions": diagnostics,
+        }
+
+    @staticmethod
+    def _extract_board_items(fundamental_context: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        if not isinstance(fundamental_context, dict):
+            return []
+        boards_block = fundamental_context.get("boards")
+        if not isinstance(boards_block, dict):
+            return []
+        boards_data = boards_block.get("data")
+        if not isinstance(boards_data, dict):
+            return []
+        items = boards_data.get("items")
+        if not isinstance(items, list):
+            return []
+        normalized: List[Dict[str, Any]] = []
+        for item in items:
+            if isinstance(item, dict):
+                normalized.append(dict(item))
+        return normalized
+
+    @staticmethod
+    def _build_concept_attribution(
+        fundamental_context: Optional[Dict[str, Any]],
+        theme_attributions: List[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        board_items = StockQueryService._extract_board_items(fundamental_context)
+        concept_names: List[str] = []
+        for item in board_items:
+            name = str(item.get("name") or "").strip()
+            if name and name not in concept_names:
+                concept_names.append(name)
+
+        matched_boards: List[str] = []
+        for item in theme_attributions:
+            if not isinstance(item, dict):
+                continue
+            for board_name in item.get("matched_boards") or []:
+                text = str(board_name or "").strip()
+                if text and text not in matched_boards:
+                    matched_boards.append(text)
+
+        summary_parts: List[str] = []
+        if concept_names:
+            summary_parts.append(f"所属概念/板块：{'、'.join(concept_names[:3])}")
+        if theme_attributions:
+            theme_names = []
+            for item in theme_attributions[:3]:
+                theme_name = str(item.get("theme_name") or "").strip()
+                if theme_name and theme_name not in theme_names:
+                    theme_names.append(theme_name)
+            if theme_names:
+                summary_parts.append(f"主题归因命中：{'、'.join(theme_names)}")
+        if matched_boards:
+            summary_parts.append(f"直接板块映射：{'、'.join(matched_boards[:3])}")
+
+        matched_theme_items = [dict(item) for item in theme_attributions if isinstance(item, dict)]
+        if not summary_parts and not matched_theme_items:
+            return {}
+        return {
+            "summary": "；".join(summary_parts) if summary_parts else "已生成辅助题材与概念板块归因。",
+            "primary_concept": concept_names[0] if concept_names else None,
+            "concept_names": concept_names[:8],
+            "matched_board_names": matched_boards[:8],
+            "matched_themes": matched_theme_items[:5],
+        }
 
     @staticmethod
     def _merge_fundamental_block_data(

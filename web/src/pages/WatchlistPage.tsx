@@ -1,5 +1,5 @@
 import type React from 'react';
-import { useEffect, useEffectEvent, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Activity, Bell, CheckCheck, Layers3, RefreshCw, SquarePen, Star, Trash2, TrendingUp } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { createParsedApiError, getParsedApiError, type ParsedApiError } from '../api/error';
@@ -47,6 +47,67 @@ function formatThreshold(value?: number | null): string {
   return value.toFixed(2);
 }
 
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === 'string' && item.trim().length > 0);
+}
+
+function formatPercent(value: number): string {
+  return `${(value * 100).toFixed(1)}%`;
+}
+
+function buildEventInsight(event: StockAlertEventItem): { summary: string; details: string[] } {
+  const payload = event.payload ?? {};
+  const details: string[] = [];
+
+  if (event.ruleType === 'support_retest') {
+    const currentPrice = typeof payload.currentPrice === 'number' ? payload.currentPrice : null;
+    const thresholdValue = typeof payload.thresholdValue === 'number' ? payload.thresholdValue : null;
+    const distanceRatio = typeof payload.distanceRatio === 'number' ? payload.distanceRatio : null;
+    if (currentPrice !== null && thresholdValue !== null) {
+      details.push(`当前价 ${formatThreshold(currentPrice)}，支撑位 ${formatThreshold(thresholdValue)}`);
+    }
+    if (distanceRatio !== null) {
+      details.push(`离支撑位约 ${formatPercent(distanceRatio)}`);
+    }
+    return {
+      summary: '价格重新靠近你的低吸观察位了，重点看能不能稳住，而不是机械接刀。',
+      details,
+    };
+  }
+
+  if (event.ruleType === 'breakout_confirm') {
+    const currentPrice = typeof payload.currentPrice === 'number' ? payload.currentPrice : null;
+    const thresholdValue = typeof payload.thresholdValue === 'number' ? payload.thresholdValue : null;
+    if (currentPrice !== null && thresholdValue !== null) {
+      details.push(`当前价 ${formatThreshold(currentPrice)}，确认位 ${formatThreshold(thresholdValue)}`);
+    }
+    return {
+      summary: '价格已经站上你设定的突破位了，下一步该盯的是量价延续，不是只看“站上过”。',
+      details,
+    };
+  }
+
+  if (event.ruleType === 'risk_event') {
+    const riskEvents = isStringArray(payload.riskEvents) ? payload.riskEvents.slice(0, 3) : [];
+    const headlines = isStringArray(payload.headlines) ? payload.headlines.slice(0, 2) : [];
+    if (riskEvents.length > 0) {
+      details.push(`风险项：${riskEvents.join('、')}`);
+    }
+    if (headlines.length > 0) {
+      details.push(`相关新闻：${headlines.join('；')}`);
+    }
+    return {
+      summary: '这不是价格信号，而是新闻层面的风险提醒，先确认事件真假和影响范围，再决定是否降预期或收缩仓位。',
+      details,
+    };
+  }
+
+  return {
+    summary: event.message,
+    details,
+  };
+}
+
 function buildDeepAnalysisHref(params: {
   analysisId?: string | null;
   sourceQueryId?: string | null;
@@ -90,7 +151,7 @@ const WatchlistPage: React.FC = () => {
   const [markingAllRead, setMarkingAllRead] = useState(false);
   const [runningScan, setRunningScan] = useState(false);
 
-  const loadWatchlist = useEffectEvent(async () => {
+  const loadWatchlist = async () => {
     setLoading(true);
     setError(null);
     try {
@@ -109,13 +170,13 @@ const WatchlistPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  });
+  };
 
   useEffect(() => {
     void loadWatchlist();
   }, []);
 
-  const handleDelete = useEffectEvent(async (stockCode: string) => {
+  const handleDelete = async (stockCode: string) => {
     setDeletingCode(stockCode);
     setActionError(null);
     setMessage(null);
@@ -128,7 +189,7 @@ const WatchlistPage: React.FC = () => {
     } finally {
       setDeletingCode(null);
     }
-  });
+  };
 
   const groups = useMemo(() => {
     const values = new Set<string>();
@@ -153,7 +214,7 @@ const WatchlistPage: React.FC = () => {
     return map;
   }, [alertEvents]);
 
-  const handleDeleteAlertRule = useEffectEvent(async (ruleId: number) => {
+  const handleDeleteAlertRule = async (ruleId: number) => {
     setDeletingRuleId(ruleId);
     setActionError(null);
     setMessage(null);
@@ -167,7 +228,7 @@ const WatchlistPage: React.FC = () => {
     } finally {
       setDeletingRuleId(null);
     }
-  });
+  };
 
   const startEditingRule = (rule: StockAlertRuleItem) => {
     setEditingRuleId(rule.id);
@@ -183,7 +244,7 @@ const WatchlistPage: React.FC = () => {
     setEditingNote('');
   };
 
-  const handleToggleAlertRule = useEffectEvent(async (rule: StockAlertRuleItem) => {
+  const handleToggleAlertRule = async (rule: StockAlertRuleItem) => {
     setSavingRuleId(rule.id);
     setActionError(null);
     setMessage(null);
@@ -203,9 +264,9 @@ const WatchlistPage: React.FC = () => {
     } finally {
       setSavingRuleId(null);
     }
-  });
+  };
 
-  const handleSaveRule = useEffectEvent(async (rule: StockAlertRuleItem) => {
+  const handleSaveRule = async (rule: StockAlertRuleItem) => {
     setSavingRuleId(rule.id);
     setActionError(null);
     setMessage(null);
@@ -241,9 +302,9 @@ const WatchlistPage: React.FC = () => {
     } finally {
       setSavingRuleId(null);
     }
-  });
+  };
 
-  const handleMarkEventRead = useEffectEvent(async (eventId: number) => {
+  const handleMarkEventRead = async (eventId: number) => {
     setReadingEventId(eventId);
     setActionError(null);
     setMessage(null);
@@ -256,9 +317,9 @@ const WatchlistPage: React.FC = () => {
     } finally {
       setReadingEventId(null);
     }
-  });
+  };
 
-  const handleMarkAllEventsRead = useEffectEvent(async () => {
+  const handleMarkAllEventsRead = async () => {
     setMarkingAllRead(true);
     setActionError(null);
     setMessage(null);
@@ -273,9 +334,9 @@ const WatchlistPage: React.FC = () => {
     } finally {
       setMarkingAllRead(false);
     }
-  });
+  };
 
-  const handleRunScanOnce = useEffectEvent(async () => {
+  const handleRunScanOnce = async () => {
     setRunningScan(true);
     setActionError(null);
     setMessage(null);
@@ -293,7 +354,7 @@ const WatchlistPage: React.FC = () => {
     } finally {
       setRunningScan(false);
     }
-  });
+  };
 
   return (
     <AppPage className="space-y-6 !max-w-[1680px] px-3 md:px-5 lg:px-6">
@@ -511,64 +572,58 @@ const WatchlistPage: React.FC = () => {
                   description="等后台扫描命中规则之后，这里会显示真实事件流。"
                 />
               ) : (
-                alertEvents.map((event) => (
-                  <div key={event.id} className="rounded-[22px] border border-border/60 bg-background/72 px-4 py-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <p className="text-sm font-semibold text-foreground">{event.title}</p>
-                          <Badge variant={alertEventVariant(event.ruleType, event.readAt)} className="border-0 px-3 py-1">
-                            {event.readAt ? '已读' : '未读'}
-                          </Badge>
-                          <Badge variant="default" className="border-0 px-3 py-1">
-                            {alertRuleLabel(event.ruleType)}
-                          </Badge>
-                        </div>
-                        <p className="mt-2 text-sm leading-6 text-secondary-text">{event.message}</p>
-                        <p className="mt-2 text-xs text-secondary-text">
-                          {event.stockName} · {event.stockCode} · {formatDateTime(event.createdAt)}
-                        </p>
-                        {event.sourceQueryId || event.linkedAnalysisId ? (
-                          <p className="mt-1 text-xs text-secondary-text">
-                            来源 queryId {event.sourceQueryId || '--'}
+                alertEvents.map((event) => {
+                  const insight = buildEventInsight(event);
+                  return (
+                    <div key={event.id} className="rounded-[22px] border border-border/60 bg-background/72 px-4 py-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="text-sm font-semibold text-foreground">{event.title}</p>
+                            <Badge variant={alertEventVariant(event.ruleType, event.readAt)} className="border-0 px-3 py-1">
+                              {event.readAt ? '已读' : '未读'}
+                            </Badge>
+                            <Badge variant="default" className="border-0 px-3 py-1">
+                              {alertRuleLabel(event.ruleType)}
+                            </Badge>
+                          </div>
+                          <p className="mt-2 text-sm leading-6 text-foreground">{insight.summary}</p>
+                          <p className="mt-2 text-sm leading-6 text-secondary-text">{event.message}</p>
+                          {insight.details.length > 0 ? (
+                            <div className="mt-3 rounded-2xl border border-border/50 bg-background/80 px-3 py-3">
+                              {insight.details.map((detail) => (
+                                <p key={detail} className="text-xs leading-6 text-secondary-text">
+                                  {detail}
+                                </p>
+                              ))}
+                            </div>
+                          ) : null}
+                          <p className="mt-2 text-xs text-secondary-text">
+                            {event.stockName} · {event.stockCode} · {formatDateTime(event.createdAt)}
                           </p>
-                        ) : null}
-                      </div>
-                      <div className="flex shrink-0 items-center gap-2">
-                        {buildDeepAnalysisHref({
-                          analysisId: event.linkedAnalysisId,
-                          sourceQueryId: event.sourceQueryId,
-                          stockCode: event.stockCode,
-                          stockName: event.stockName,
-                        }) ? (
-                          <Link
-                            to={buildDeepAnalysisHref({
-                              analysisId: event.linkedAnalysisId,
-                              sourceQueryId: event.sourceQueryId,
-                              stockCode: event.stockCode,
-                              stockName: event.stockName,
-                            }) || '/deep-analysis'}
+                          {event.sourceQueryId || event.linkedAnalysisId ? (
+                            <p className="mt-1 text-xs text-secondary-text">
+                              来源 queryId {event.sourceQueryId || '--'}
+                            </p>
+                          ) : null}
+                        </div>
+                        <div className="flex shrink-0 items-center gap-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="rounded-xl"
+                            isLoading={readingEventId === event.id}
+                            loadingText="处理中..."
+                            disabled={Boolean(event.readAt)}
+                            onClick={() => void handleMarkEventRead(event.id)}
                           >
-                            <Button variant="secondary" size="sm" className="rounded-xl">
-                              回看分析
-                            </Button>
-                          </Link>
-                        ) : null}
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="rounded-xl"
-                          isLoading={readingEventId === event.id}
-                          loadingText="处理中..."
-                          disabled={Boolean(event.readAt)}
-                          onClick={() => void handleMarkEventRead(event.id)}
-                        >
-                          标记已读
-                        </Button>
+                            标记已读
+                          </Button>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           </Card>

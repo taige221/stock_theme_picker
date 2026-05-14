@@ -206,6 +206,7 @@ class StockQueryThemeAttributionSchema(BaseModel):
     relation_type: str
     confidence: str
     reason: str
+    matched_boards: List[str] = Field(default_factory=list)
 
 
 class StockQueryNewsSummarySchema(BaseModel):
@@ -215,6 +216,28 @@ class StockQueryNewsSummarySchema(BaseModel):
     catalysts: List[str] = Field(default_factory=list)
     risk_events: List[str] = Field(default_factory=list)
     sentiment: Optional[str] = None
+
+
+class StockQueryTextSupplementSchema(BaseModel):
+    summary: Optional[str] = None
+    provider: Optional[str] = None
+    headlines: List[str] = Field(default_factory=list)
+    highlights: List[str] = Field(default_factory=list)
+
+
+class StockQueryConceptAttributionSchema(BaseModel):
+    summary: Optional[str] = None
+    primary_concept: Optional[str] = None
+    concept_names: List[str] = Field(default_factory=list)
+    matched_board_names: List[str] = Field(default_factory=list)
+    matched_themes: List[StockQueryThemeAttributionSchema] = Field(default_factory=list)
+
+
+class StockQueryContextSupplementSchema(BaseModel):
+    profile: Optional[StockQueryTextSupplementSchema] = None
+    announcements: Optional[StockQueryTextSupplementSchema] = None
+    lockup: Optional[StockQueryTextSupplementSchema] = None
+    concept_attribution: Optional[StockQueryConceptAttributionSchema] = None
 
 
 class StockQueryFundamentalBlockSchema(BaseModel):
@@ -244,6 +267,8 @@ class StockQueryAnalyzeResponse(BaseModel):
     query_id: Optional[str] = None
     stock_code: str
     stock_name: str
+    instrument_type: Optional[str] = None
+    instrument_label: Optional[str] = None
     current_price: Optional[float] = None
     pct_chg: Optional[float] = None
     turnover_rate: Optional[float] = None
@@ -267,6 +292,7 @@ class StockQueryAnalyzeResponse(BaseModel):
     theme_attributions: List[StockQueryThemeAttributionSchema] = Field(default_factory=list)
     themes: List[StockQueryThemeAttributionSchema] = Field(default_factory=list)
     stock_news_summary: Optional[StockQueryNewsSummarySchema] = None
+    stock_context_supplement: Optional[StockQueryContextSupplementSchema] = None
     fundamental_context: Optional[StockQueryFundamentalContextSchema] = None
     fundamental_coverage: Dict[str, str] = Field(default_factory=dict)
     fundamental_errors: List[str] = Field(default_factory=list)
@@ -298,6 +324,8 @@ class StockQueryHistoryItemSchema(BaseModel):
     query_text: Optional[str] = None
     stock_code: Optional[str] = None
     stock_name: Optional[str] = None
+    instrument_type: Optional[str] = None
+    instrument_label: Optional[str] = None
     signal: Optional[str] = None
     error: Optional[str] = None
     created_at: str
@@ -441,6 +469,7 @@ class StockAlertEventItemSchema(BaseModel):
     title: str
     message: str
     dedupe_key: Optional[str] = None
+    payload: Optional[dict] = None
     source_query_id: Optional[str] = None
     linked_analysis_id: Optional[str] = None
     created_at: str

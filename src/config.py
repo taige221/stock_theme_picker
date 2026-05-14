@@ -877,9 +877,9 @@ class Config:
     # 单股查询中筹码分布的最大等待时间（秒）；超时后直接降级，不阻塞首屏
     stock_query_chip_timeout_seconds: float = 2.5
     # 单股查询中文本情报补充的最大等待时间（秒）；超时后直接降级，不阻塞主结果
-    stock_query_text_timeout_seconds: float = 2.0
+    stock_query_text_timeout_seconds: float = 10.0
     # 单股查询中新闻摘要补充的最大等待时间（秒）；超时后直接降级，不阻塞主结果
-    stock_query_news_timeout_seconds: float = 1.8
+    stock_query_news_timeout_seconds: float = 10.0
     # 东财接口补丁开关
     enable_eastmoney_patch: bool = False
     # 实时行情数据源优先级（逗号分隔）
@@ -1266,7 +1266,7 @@ class Config:
         tavily_keys_str = os.getenv('TAVILY_API_KEYS', '') or os.getenv('TAVILY_API_KEY', '')
         tavily_api_keys = [k.strip() for k in tavily_keys_str.split(',') if k.strip()]
         
-        serpapi_keys_str = os.getenv('SERPAPI_API_KEYS', '')
+        serpapi_keys_str = os.getenv('SERPAPI_API_KEYS', '') or os.getenv('SERPAPI_API_KEY', '')
         serpapi_keys = [k.strip() for k in serpapi_keys_str.split(',') if k.strip()]
 
         brave_keys_str = os.getenv('BRAVE_API_KEYS', '')
@@ -1650,13 +1650,13 @@ class Config:
             ),
             stock_query_text_timeout_seconds=parse_env_float(
                 os.getenv('STOCK_QUERY_TEXT_TIMEOUT_SECONDS'),
-                2.0,
+                10.0,
                 field_name='STOCK_QUERY_TEXT_TIMEOUT_SECONDS',
                 minimum=0.0,
             ),
             stock_query_news_timeout_seconds=parse_env_float(
                 os.getenv('STOCK_QUERY_NEWS_TIMEOUT_SECONDS'),
-                1.8,
+                10.0,
                 field_name='STOCK_QUERY_NEWS_TIMEOUT_SECONDS',
                 minimum=0.0,
             ),

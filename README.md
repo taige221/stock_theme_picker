@@ -117,7 +117,7 @@ cp .env.example .env
 - `MINIMAX_API_KEYS`
 - `TAVILY_API_KEYS`：Tavily 搜索 API Keys，支持逗号分隔；也兼容单个 `TAVILY_API_KEY`
 - `BRAVE_API_KEYS`
-- `SERPAPI_API_KEYS`
+- `SERPAPI_API_KEYS`：SerpApi 搜索 API Keys，支持逗号分隔；也兼容单个 `SERPAPI_API_KEY`
 - `SEARXNG_BASE_URLS`
 - `SEARXNG_PUBLIC_INSTANCES_ENABLED`
 - `TICKFLOW_API_KEY`：TickFlow API Key，用于单股查询优先日 K 数据源

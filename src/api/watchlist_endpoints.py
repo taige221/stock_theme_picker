@@ -371,6 +371,7 @@ def _build_stock_alert_event_item(db, record) -> StockAlertEventItemSchema:
     rule = get_stock_alert_rule(db, record.rule_id)
     source_query_id = getattr(rule, "source_query_id", None)
     linked_analysis_id = None
+    payload = db._safe_json_loads(getattr(record, "payload_json", None))
     if source_query_id:
         for analysis in list_stock_deep_analysis_records(db, stock_code=record.stock_code, limit=50):
             if analysis.status == "completed" and analysis.source_query_id == source_query_id:
@@ -387,6 +388,7 @@ def _build_stock_alert_event_item(db, record) -> StockAlertEventItemSchema:
         title=record.title,
         message=record.message,
         dedupe_key=record.dedupe_key,
+        payload=payload if isinstance(payload, dict) else None,
         source_query_id=source_query_id,
         linked_analysis_id=linked_analysis_id,
         created_at=record.created_at.isoformat() if record.created_at else "",

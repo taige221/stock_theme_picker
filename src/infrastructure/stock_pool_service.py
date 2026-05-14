@@ -11,11 +11,30 @@ from typing import Iterable, List, Optional
 
 from theme_picker.domain.theme_event import ThemeDefinitionSchema
 
+ETF_SH_PREFIXES = ("51", "52", "56", "58")
+ETF_SZ_PREFIXES = ("15", "16", "18")
+
+
+def is_etf_code(base_code: str) -> bool:
+    """Return True when a 6-digit CN code looks like an exchange-traded ETF."""
+    return bool(
+        base_code
+        and base_code.isdigit()
+        and len(base_code) == 6
+        and base_code.startswith((*ETF_SH_PREFIXES, *ETF_SZ_PREFIXES))
+    )
+
 
 def infer_exchange_suffix(base_code: str) -> Optional[str]:
     """Infer a CN exchange suffix from a 6-digit base code."""
     if not base_code or not base_code.isdigit():
         return None
+
+    if is_etf_code(base_code):
+        if base_code.startswith(ETF_SH_PREFIXES):
+            return ".SH"
+        if base_code.startswith(ETF_SZ_PREFIXES):
+            return ".SZ"
 
     if base_code.startswith(("600", "601", "603", "605", "688", "689", "900")):
         return ".SH"

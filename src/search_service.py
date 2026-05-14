@@ -255,6 +255,12 @@ class BaseSearchProvider(ABC):
                 logger.info(f"[{self._name}] 搜索 '{query}' 成功，返回 {len(response.results)} 条结果，耗时 {response.search_time:.2f}s")
             else:
                 self._record_error(api_key)
+                logger.warning(
+                    "[%s] 搜索 '%s' 失败: %s",
+                    self._name,
+                    query,
+                    response.error_message or "unknown error",
+                )
 
             return response
 
@@ -1711,7 +1717,7 @@ class SearXNGSearchProvider(BaseSearchProvider):
     PUBLIC_INSTANCES_CACHE_TTL_SECONDS = 3600
     PUBLIC_INSTANCES_STALE_REFRESH_BACKOFF_SECONDS = 60
     PUBLIC_INSTANCES_POOL_LIMIT = 20
-    PUBLIC_INSTANCES_MAX_ATTEMPTS = 3
+    PUBLIC_INSTANCES_MAX_ATTEMPTS = 1
     PUBLIC_INSTANCES_TIMEOUT_SECONDS = 5
     SELF_HOSTED_TIMEOUT_SECONDS = 10
 
@@ -2025,14 +2031,14 @@ class SearXNGSearchProvider(BaseSearchProvider):
             return "未知来源"
 
     def search(self, query: str, max_results: int = 5, days: int = 7) -> SearchResponse:
-        """Execute SearXNG search with instance rotation and per-request failover."""
+        """Execute one SearXNG search attempt without internal retries."""
         start_time = time.time()
         if self._base_urls:
             candidates = self._rotate_candidates(
                 self._base_urls,
-                max_attempts=len(self._base_urls),
+                max_attempts=1,
             )
-            retry_enabled = True
+            retry_enabled = False
             timeout = self.SELF_HOSTED_TIMEOUT_SECONDS
             empty_error = "SearXNG 未配置可用实例"
         elif self._use_public_instances:

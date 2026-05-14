@@ -295,6 +295,8 @@ def _build_stock_query_history_item(task) -> StockQueryHistoryItemSchema:
         query_text=str(request_payload.get("query") or request_payload.get("stock_code") or request_payload.get("stock_name") or "") or None,
         stock_code=(result.stock_code if result else None) or request_payload.get("stock_code"),
         stock_name=(result.stock_name if result else None) or request_payload.get("stock_name"),
+        instrument_type=result.instrument_type if result else None,
+        instrument_label=result.instrument_label if result else None,
         signal=result.signal if result else None,
         error=task.error,
         created_at=task.created_at.isoformat() if task.created_at else "",

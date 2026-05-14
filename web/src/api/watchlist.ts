@@ -46,6 +46,7 @@ export interface StockAlertEventItem {
   title: string;
   message: string;
   dedupeKey?: string | null;
+  payload?: Record<string, unknown> | null;
   sourceQueryId?: string | null;
   linkedAnalysisId?: string | null;
   createdAt: string;

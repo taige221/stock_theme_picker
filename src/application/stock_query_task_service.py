@@ -24,6 +24,7 @@ from theme_picker.infrastructure.persistence import (
     list_stock_query_records,
     save_stock_query_record,
 )
+from theme_picker.infrastructure.stock_query_logging import emit_stock_query_log
 
 logger = logging.getLogger(__name__)
 
@@ -270,6 +271,20 @@ class StockQueryTaskService:
                 task.completed_at = datetime.now()
                 failed_snapshot = self._copy_task(task)
             self._persist_task(failed_snapshot)
+            emit_stock_query_log(
+                {
+                    "tag": "STOCK_QUERY",
+                    "event": "stock_query_failed",
+                    "query_id": task_id,
+                    "query_text": request_payload.get("query") or request_payload.get("stock_code") or request_payload.get("stock_name"),
+                    "stock_code": request_payload.get("stock_code"),
+                    "stock_name": request_payload.get("stock_name"),
+                    "status": "failed",
+                    "error": str(exc),
+                },
+                level="warning",
+                mirror_logger=logger,
+            )
         finally:
             self._trim_memory_tasks()
 

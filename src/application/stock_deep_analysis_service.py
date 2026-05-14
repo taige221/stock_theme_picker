@@ -247,6 +247,7 @@ class StockDeepAnalysisService:
             "coverage": result.get("fundamental_coverage") or (result.get("fundamental_context") or {}).get("coverage") or {},
             "details": result.get("fundamental_details") or self._extract_fundamental_details_from_context(result.get("fundamental_context")) or {},
             "errors": result.get("fundamental_errors") or (result.get("fundamental_context") or {}).get("errors") or [],
+            "context_supplement": result.get("stock_context_supplement") or {},
             "assessment": self._fundamental_assessment(result),
         }
         risk = {
@@ -456,13 +457,29 @@ class StockDeepAnalysisService:
         items = list(result.get("excluded_reasons") or [])
         news = result.get("stock_news_summary") or {}
         items.extend(news.get("risk_events") or [])
+        context_supplement = result.get("stock_context_supplement") or {}
+        lockup = context_supplement.get("lockup") if isinstance(context_supplement, dict) else {}
+        announcements = context_supplement.get("announcements") if isinstance(context_supplement, dict) else {}
+        for label in (lockup.get("highlights") or [])[:2] if isinstance(lockup, dict) else []:
+            text = str(label or "").strip()
+            if text:
+                items.append(f"需核对解禁/减持风险：{text}")
+        for label in (announcements.get("highlights") or [])[:2] if isinstance(announcements, dict) else []:
+            text = str(label or "").strip()
+            if text in {"问询", "监管", "减持", "诉讼", "停牌"}:
+                items.append(f"近期公告存在敏感事项：{text}")
         if pct_chg is not None and pct_chg >= 7:
             items.append("短线涨幅偏大，当前位置追高的盈亏比不足")
         if current is not None and current > levels["trial_price"] * 1.05:
             items.append("当前价格距离试仓价带较远，需要等待回踩确认")
         if not items:
             items.append("暂无明确负面事件，但仍需跟踪主题热度和量价变化")
-        return items[:6]
+        deduped: List[str] = []
+        for item in items:
+            text = str(item or "").strip()
+            if text and text not in deduped:
+                deduped.append(text)
+        return deduped[:6]
 
     @staticmethod
     def _build_position_plan(action: str) -> Dict[str, Any]:
@@ -483,9 +500,33 @@ class StockDeepAnalysisService:
     @staticmethod
     def _fundamental_assessment(result: Dict[str, Any]) -> str:
         coverage = result.get("fundamental_coverage") or (result.get("fundamental_context") or {}).get("coverage") or {}
-        available = [key for key, value in coverage.items() if value and value != "missing"]
-        if available:
-            return f"已覆盖 {len(available)} 个基本面模块，适合作为交易计划的辅助验证。"
+        available = [key for key, value in coverage.items() if value in {"ok", "full"}]
+        partial = [key for key, value in coverage.items() if value == "partial"]
+        failed = [key for key, value in coverage.items() if value in {"failed", "not_supported"}]
+        supplement = result.get("stock_context_supplement") or {}
+        supplement_blocks = [
+            key
+            for key in ("profile", "announcements", "lockup", "concept_attribution")
+            if isinstance(supplement, dict) and supplement.get(key)
+        ]
+
+        if available or partial:
+            parts: List[str] = []
+            if available:
+                parts.append(f"结构化已完整覆盖 {len(available)} 个模块")
+            if partial:
+                parts.append(f"另有 {len(partial)} 个模块仅部分可用")
+            if failed:
+                parts.append(f"{len(failed)} 个模块仍缺失或超时")
+            if supplement_blocks:
+                parts.append(f"并补充了 {len(supplement_blocks)} 类文本上下文")
+            return "，".join(parts) + "。基本面可作为辅助验证，但不宜替代技术与风控判断。"
+
+        if supplement_blocks:
+            return (
+                f"结构化基本面覆盖不足，但已补充 {len(supplement_blocks)} 类文本上下文；"
+                "更适合做题材、公告和风险校验，不适合作为重仓依据。"
+            )
         return "当前基本面结构化覆盖不足，深度分析不应把基本面作为重仓依据。"
 
     @staticmethod

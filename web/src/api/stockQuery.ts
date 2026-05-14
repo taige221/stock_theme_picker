@@ -16,6 +16,7 @@ export interface StockQueryThemeAttribution {
   relationType: string;
   confidence: StockQueryThemeConfidence | string;
   reason: string;
+  matchedBoards?: string[];
 }
 
 export interface StockQueryNewsSummary {
@@ -56,6 +57,33 @@ export interface StockQueryDragonTigerDetails {
   isOnList?: boolean;
   recentCount?: number;
   latestDate?: string | null;
+  reason?: string | null;
+  netBuyAmount?: number | null;
+  institutionNetBuy?: number | null;
+  buySeats?: string[];
+  sellSeats?: string[];
+}
+
+export interface StockQueryTextSupplement {
+  summary?: string;
+  provider?: string;
+  headlines?: string[];
+  highlights?: string[];
+}
+
+export interface StockQueryConceptAttribution {
+  summary?: string;
+  primaryConcept?: string | null;
+  conceptNames?: string[];
+  matchedBoardNames?: string[];
+  matchedThemes?: StockQueryThemeAttribution[];
+}
+
+export interface StockQueryContextSupplement {
+  profile?: StockQueryTextSupplement | null;
+  announcements?: StockQueryTextSupplement | null;
+  lockup?: StockQueryTextSupplement | null;
+  conceptAttribution?: StockQueryConceptAttribution | null;
 }
 
 export interface StockQueryGrowthDetails {
@@ -138,6 +166,8 @@ export interface StockQueryAnalyzeResponse {
   queryId?: string | null;
   stockCode: string;
   stockName: string;
+  instrumentType?: string | null;
+  instrumentLabel?: string | null;
   currentPrice?: number | null;
   pctChg?: number | null;
   turnoverRate?: number | null;
@@ -161,6 +191,7 @@ export interface StockQueryAnalyzeResponse {
   themeAttributions?: StockQueryThemeAttribution[];
   themes?: StockQueryThemeAttribution[];
   stockNewsSummary?: StockQueryNewsSummary | null;
+  stockContextSupplement?: StockQueryContextSupplement | null;
   fundamentalContext?: StockQueryFundamentalContext | null;
   fundamentalCoverage?: Record<string, string>;
   fundamentalErrors?: string[];
@@ -192,6 +223,8 @@ export interface StockQueryHistoryItem {
   queryText?: string | null;
   stockCode?: string | null;
   stockName?: string | null;
+  instrumentType?: string | null;
+  instrumentLabel?: string | null;
   signal?: string | null;
   error?: string | null;
   createdAt: string;
@@ -247,6 +280,7 @@ export interface StockDeepAnalysisFundamental {
   coverage?: Record<string, string>;
   details?: StockQueryFundamentalDetails;
   errors?: string[];
+  contextSupplement?: StockQueryContextSupplement | null;
   assessment?: string;
 }
 
