@@ -17,6 +17,7 @@ if str(PARENT_DIR) not in sys.path:
     sys.path.insert(0, str(PARENT_DIR))
 
 from theme_picker.api.endpoints import router as theme_picker_router  # noqa: E402
+from theme_picker.api.market_endpoints import router as market_router  # noqa: E402
 from theme_picker.api.stock_query_endpoints import router as stock_query_router  # noqa: E402
 from theme_picker.api.watchlist_endpoints import router as watchlist_router  # noqa: E402
 from theme_picker.application.stock_alert_loop_service import StockAlertLoopService  # noqa: E402
@@ -64,6 +65,12 @@ app.include_router(
     stock_query_router,
     prefix="/api/v1/stock-query",
     tags=["stock-query"],
+)
+
+app.include_router(
+    market_router,
+    prefix="/api/v1/market",
+    tags=["market"],
 )
 
 app.include_router(

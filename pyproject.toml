@@ -26,6 +26,7 @@ dependencies = [
   "yfinance>=0.2.50",
   "baostock>=0.8.9",
   "pytdx>=1.72",
+  "mootdx>=0.10",
   "litellm>=1.79",
   "tavily-python>=0.7",
   "google-search-results>=2.4",

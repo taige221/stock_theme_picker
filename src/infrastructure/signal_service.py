@@ -25,10 +25,11 @@ from theme_picker.domain.theme_event import (
     ThemeSignalRuleSchema,
     ThemeStockSignalSchema,
 )
+from theme_picker.infrastructure.daily_bar_service import get_daily_bar_resolver
 from theme_picker.stock_analyzer import StockTrendAnalyzer, TrendAnalysisResult
 from theme_picker.infrastructure.persistence import get_theme_picker_db
 from theme_picker.infrastructure.runtime import get_theme_picker_config
-from theme_picker.infrastructure.stock_pool_service import build_stock_code_variants, canonicalize_stock_code
+from theme_picker.infrastructure.stock_pool_service import canonicalize_stock_code
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +56,7 @@ class ThemeSignalService:
     def __init__(self, enable_realtime: Optional[bool] = None):
         self.db = get_theme_picker_db()
         self.fetcher_manager = DataFetcherManager()
+        self.daily_bar_resolver = get_daily_bar_resolver()
         self.trend_analyzer = StockTrendAnalyzer()
         config = get_theme_picker_config()
         self.enable_realtime = config.enable_realtime_quote if enable_realtime is None else enable_realtime
@@ -114,11 +116,11 @@ class ThemeSignalService:
         code = canonicalize_stock_code(stock_code)
         end_date = datetime.now().date()
         start_date = end_date - timedelta(days=90)
-        bars = self._load_or_fetch_bars(code, start_date, end_date)
-        if not bars:
+        df = self._load_or_fetch_bars(code, start_date, end_date)
+        if df is None or df.empty:
             return None
 
-        df = pd.DataFrame([bar.to_dict() for bar in bars]).sort_values("date").reset_index(drop=True)
+        df = df.sort_values("date").reset_index(drop=True)
         if len(df) < 20:
             return None
 
@@ -380,38 +382,18 @@ class ThemeSignalService:
         start_date,
         end_date,
     ):
-        bars = self._get_cached_bars(stock_code, start_date, end_date)
-        if bars:
-            return bars
-
         try:
-            df, source = self.fetcher_manager.get_daily_data(stock_code, days=90)
+            result = self.daily_bar_resolver.resolve_daily_bars(
+                stock_code,
+                bars=90,
+                start_date=start_date,
+                end_date=end_date,
+                minimum_rows=20,
+            )
         except Exception as exc:
             logger.debug("主题技术层在线补数失败: code=%s err=%s", stock_code, exc)
-            return []
-
-        if df is None or df.empty:
-            return []
-
-        storage_code = canonicalize_stock_code(stock_code)
-        try:
-            self.db.save_daily_data(df, code=storage_code, data_source=source)
-        except Exception as exc:
-            logger.debug("主题技术层写入补数失败: code=%s err=%s", storage_code, exc)
-
-        return self._get_cached_bars(storage_code, start_date, end_date)
-
-    def _get_cached_bars(
-        self,
-        stock_code: str,
-        start_date,
-        end_date,
-    ):
-        for candidate in build_stock_code_variants(stock_code):
-            bars = self.db.get_data_range(candidate, start_date, end_date)
-            if bars:
-                return bars
-        return []
+            return pd.DataFrame()
+        return result.frame
 
     def _check_prequalification(
         self,
