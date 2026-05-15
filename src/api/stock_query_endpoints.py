@@ -9,6 +9,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 
 from theme_picker.api.schemas import (
+    EtfMarketSnapshotResponse,
     StockAlertRuleItemSchema,
     StockAlertRuleListResponse,
     StockDeepAnalysisAlertRulesRequest,
@@ -25,6 +26,7 @@ from theme_picker.api.schemas import (
     StockQueryTaskAcceptedSchema,
     StockQueryTaskStatusSchema,
 )
+from theme_picker.application.etf_market_service import get_etf_market_service
 from theme_picker.application.stock_deep_analysis_service import StockDeepAnalysisService
 from theme_picker.application.stock_deep_analysis_task_service import get_stock_deep_analysis_task_service
 from theme_picker.application.stock_query_task_service import get_stock_query_task_service
@@ -99,6 +101,36 @@ def get_single_stock_status(task_id: str) -> StockQueryTaskStatusSchema:
         started_at=task.started_at.isoformat() if task.started_at else None,
         completed_at=task.completed_at.isoformat() if task.completed_at else None,
     )
+
+
+@router.get(
+    "/etf-market/{stock_code}",
+    response_model=EtfMarketSnapshotResponse,
+    responses={
+        200: {"description": "ETF 市场快照", "model": EtfMarketSnapshotResponse},
+        400: {"description": "请求参数错误"},
+        500: {"description": "服务器错误"},
+    },
+    summary="获取 ETF 市场快照",
+    description="通过 mootdx 和腾讯财经获取 ETF 的实时行情、盘口和最近日线，绕开东财链路。",
+)
+def get_etf_market_snapshot(stock_code: str, bars: int = 20) -> EtfMarketSnapshotResponse:
+    try:
+        service = get_etf_market_service()
+        payload = service.get_snapshot(stock_code, bars=bars)
+        return EtfMarketSnapshotResponse(**payload)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "validation_error", "message": str(exc)},
+        ) from exc
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail={"error": "internal_error", "message": f"ETF 市场快照失败: {exc}"},
+        ) from exc
 
 
 @router.post(

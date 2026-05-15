@@ -337,6 +337,90 @@ class StockQueryHistoryListResponse(BaseModel):
     items: List[StockQueryHistoryItemSchema] = Field(default_factory=list)
 
 
+class EtfMarketBarSchema(BaseModel):
+    datetime: str
+    open: Optional[float] = None
+    high: Optional[float] = None
+    low: Optional[float] = None
+    close: Optional[float] = None
+    volume: Optional[float] = None
+    amount: Optional[float] = None
+
+
+class EtfMarketQuoteSchema(BaseModel):
+    name: Optional[str] = None
+    price: Optional[float] = None
+    last_close: Optional[float] = None
+    open: Optional[float] = None
+    high: Optional[float] = None
+    low: Optional[float] = None
+    change_amount: Optional[float] = None
+    change_pct: Optional[float] = None
+    amount_wan: Optional[float] = None
+    turnover_rate: Optional[float] = None
+    pe_ttm: Optional[float] = None
+    amplitude_pct: Optional[float] = None
+    total_market_value_yi: Optional[float] = None
+    float_market_value_yi: Optional[float] = None
+    pb: Optional[float] = None
+    limit_up: Optional[float] = None
+    limit_down: Optional[float] = None
+    volume_ratio: Optional[float] = None
+    pe_static: Optional[float] = None
+    trade_time: Optional[str] = None
+    volume: Optional[float] = None
+    amount: Optional[float] = None
+    server_time: Optional[str] = None
+    bid1: Optional[float] = None
+    ask1: Optional[float] = None
+    bid_vol1: Optional[float] = None
+    ask_vol1: Optional[float] = None
+    raw_source: Optional[str] = None
+
+
+class EtfMarketSnapshotResponse(BaseModel):
+    stock_code: str
+    base_code: str
+    stock_name: str
+    instrument_type: str
+    instrument_label: str
+    quote: EtfMarketQuoteSchema
+    daily_bars: List[EtfMarketBarSchema] = Field(default_factory=list)
+    order_book: EtfMarketQuoteSchema
+    data_sources: Dict[str, Optional[str]] = Field(default_factory=dict)
+    errors: List[str] = Field(default_factory=list)
+
+
+class MarketDailyBarSchema(BaseModel):
+    date: Optional[str] = None
+    datetime: Optional[str] = None
+    open: Optional[float] = None
+    high: Optional[float] = None
+    low: Optional[float] = None
+    close: Optional[float] = None
+    volume: Optional[float] = None
+    amount: Optional[float] = None
+    pct_chg: Optional[float] = None
+    ma5: Optional[float] = None
+    ma10: Optional[float] = None
+    ma20: Optional[float] = None
+    volume_ratio: Optional[float] = None
+
+
+class MarketDailyBarsResponse(BaseModel):
+    stock_code: str
+    base_code: str
+    instrument_type: str
+    instrument_label: str
+    requested_bars: int
+    returned_bars: int
+    latest_trade_date: Optional[str] = None
+    data_source: str
+    cache_status: str
+    daily_bars: List[MarketDailyBarSchema] = Field(default_factory=list)
+    errors: List[str] = Field(default_factory=list)
+
+
 class StockDeepAnalysisCreateRequest(BaseModel):
     force_refresh: bool = Field(default=False, description="是否忽略已有结果并重新生成")
 

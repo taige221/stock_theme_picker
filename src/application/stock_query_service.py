@@ -7,11 +7,11 @@ Single Stock Query Service
 
 from __future__ import annotations
 
+import logging
+import os
 import re
 import threading
 import uuid
-import logging
-import os
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
@@ -25,10 +25,10 @@ from theme_picker.data.stock_index_loader import get_stock_name_index_map
 from theme_picker.data.stock_mapping import STOCK_NAME_MAP, is_meaningful_stock_name
 from theme_picker.data_provider import DataFetcherManager
 from theme_picker.data_provider.base import normalize_stock_code
+from theme_picker.infrastructure.daily_bar_service import get_daily_bar_resolver
 from theme_picker.infrastructure.persistence import get_theme_picker_db, save_stock_query_record
 from theme_picker.infrastructure.stock_query_logging import emit_stock_query_log
 from theme_picker.infrastructure.stock_pool_service import (
-    build_stock_code_variants,
     canonicalize_stock_code,
     is_etf_code,
 )
@@ -39,17 +39,6 @@ _CODELIKE_RE = re.compile(
     re.IGNORECASE,
 )
 _A_SHARE_LIKE_RE = re.compile(r"^\d{6}(?:\.(?:SH|SZ|BJ))?$", re.IGNORECASE)
-_STOCK_QUERY_A_SHARE_DAILY_ROUTE = (
-    "TickFlowFetcher",
-    "AkshareFetcher:sina",
-    "AkshareFetcher:tencent",
-    "TushareFetcher",
-)
-_STOCK_QUERY_UNPROXY_FETCHERS = {
-    "TushareFetcher",
-    "EfinanceFetcher",
-    "AkshareFetcher",
-}
 _PROXY_ENV_KEYS = (
     "HTTP_PROXY",
     "HTTPS_PROXY",
@@ -89,6 +78,7 @@ class StockQueryService:
             or StockThemeAttributionService(registry_service=self.registry_service)
         )
         self.db = db or get_theme_picker_db()
+        self.daily_bar_resolver = get_daily_bar_resolver()
 
     def analyze(self, request: Any, *, query_id: Optional[str] = None) -> Dict[str, Any]:
         query_id = query_id or uuid.uuid4().hex
@@ -342,128 +332,29 @@ class StockQueryService:
         if not _A_SHARE_LIKE_RE.match(stock_code_text):
             return self.fetcher_manager.get_daily_data(stock_code, days=days)
 
-        normalized_code = normalize_stock_code(stock_code)
         timeout_seconds = float(
             getattr(self.config, "stock_query_daily_fetch_timeout_seconds", 8.0) or 0.0
         )
-        errors: List[str] = []
-
-        for route_name in _STOCK_QUERY_A_SHARE_DAILY_ROUTE:
-            try:
-                daily_df = self._run_with_timeout(
-                    lambda current_route=route_name: self._fetch_single_stock_daily_route(
-                        current_route,
-                        normalized_code,
-                        days=days,
-                    ),
-                    timeout_seconds=timeout_seconds,
-                    task_name=f"single_stock_daily:{route_name}",
-                    without_proxy=(
-                        bool(getattr(self.config, "stock_query_daily_unproxy_enabled", True))
-                        and self._is_unproxy_daily_route(route_name)
-                    ),
-                )
-                if daily_df is not None and not daily_df.empty:
-                    return daily_df, route_name
-            except Exception as exc:
-                logger.warning("单股查询日线源失败: code=%s source=%s error=%s", stock_code, route_name, exc)
-                errors.append(f"{route_name}: {exc}")
-
-        if bool(getattr(self.config, "stock_query_allow_daily_cache_fallback", True)):
-            cached = self._load_cached_daily_data(stock_code, days=days)
-            if cached is not None:
-                logger.warning("单股查询在线日线全部失败，退回本地缓存: code=%s", stock_code)
-                return cached, "stock_daily_cache_fallback"
-
-        if errors:
-            raise ValueError(f"未获取到 {stock_code} 的日线数据: {' | '.join(errors[:4])}")
-        raise ValueError(f"未获取到 {stock_code} 的日线数据")
-
-    def _fetch_single_stock_daily_route(self, route_name: str, stock_code: str, *, days: int) -> pd.DataFrame:
-        if route_name == "TickFlowFetcher":
-            return self._fetch_tickflow_daily_data(stock_code, days=days)
-        if route_name == "AkshareFetcher:sina":
-            return self._fetch_akshare_daily_data(stock_code, source="sina", days=days)
-        if route_name == "AkshareFetcher:tencent":
-            return self._fetch_akshare_daily_data(stock_code, source="tencent", days=days)
-        if route_name == "TushareFetcher":
-            return self._fetch_named_fetcher_daily_data("TushareFetcher", stock_code, days=days)
-        raise ValueError(f"未知单股日线路由: {route_name}")
-
-    def _fetch_tickflow_daily_data(self, stock_code: str, *, days: int) -> pd.DataFrame:
-        fetcher = self.fetcher_manager._get_tickflow_fetcher()
-        if fetcher is None:
-            raise ValueError("TickFlow API key 未配置或 TickFlow 初始化失败")
-        return fetcher.get_daily_data(stock_code, days=days)
-
-    def _fetch_akshare_daily_data(self, stock_code: str, *, source: str, days: int) -> pd.DataFrame:
-        fetcher = self._get_named_fetcher("AkshareFetcher")
-        if fetcher is None:
-            raise ValueError("AkshareFetcher 不可用")
-
-        start_date, end_date = self._resolve_daily_date_window(days)
-        if source == "sina":
-            raw_df = fetcher._fetch_stock_data_sina(stock_code, start_date, end_date)
-        elif source == "tencent":
-            raw_df = fetcher._fetch_stock_data_tx(stock_code, start_date, end_date)
-        else:
-            raise ValueError(f"未知 Akshare 日线子源: {source}")
-
-        normalized_df = fetcher._normalize_data(raw_df, stock_code)
-        cleaned_df = fetcher._clean_data(normalized_df)
-        return fetcher._calculate_indicators(cleaned_df)
-
-    def _fetch_named_fetcher_daily_data(self, fetcher_name: str, stock_code: str, *, days: int) -> pd.DataFrame:
-        fetcher = self._get_named_fetcher(fetcher_name)
-        if fetcher is None:
-            raise ValueError(f"{fetcher_name} 不可用")
-        return fetcher.get_daily_data(stock_code, days=days)
-
-    def _get_named_fetcher(self, fetcher_name: str):
-        for fetcher in self.fetcher_manager._get_fetchers_snapshot():
-            if fetcher.name == fetcher_name:
-                return fetcher
-        return None
-
-    @staticmethod
-    def _resolve_daily_date_window(days: int) -> tuple[str, str]:
-        end_date = datetime.now().strftime("%Y-%m-%d")
-        start_dt = datetime.strptime(end_date, "%Y-%m-%d") - timedelta(days=days * 2)
-        return start_dt.strftime("%Y-%m-%d"), end_date
-
-    @staticmethod
-    def _is_unproxy_daily_route(route_name: str) -> bool:
-        fetcher_name = route_name.split(":", 1)[0]
-        return fetcher_name in _STOCK_QUERY_UNPROXY_FETCHERS
-
-    def _load_cached_daily_data(self, stock_code: str, *, days: int = 120) -> Optional[pd.DataFrame]:
-        end_date = datetime.now().date()
-        start_date = end_date - timedelta(days=max(days * 2, 240))
-        best_rows: List[Any] = []
-
-        for candidate in build_stock_code_variants(stock_code):
-            try:
-                rows = self.db.get_data_range(candidate, start_date, end_date)
-            except Exception:
-                continue
-            if len(rows) > len(best_rows):
-                best_rows = rows
-
-        if not best_rows:
-            return None
-
-        latest_row_date = max((row.date for row in best_rows if getattr(row, "date", None)), default=None)
-        if latest_row_date is None:
-            return None
-
-        stale_days = (end_date - latest_row_date).days
-        if len(best_rows) < 30 or stale_days > 21:
-            return None
-
-        frame = pd.DataFrame([row.to_dict() for row in best_rows])
-        if frame.empty:
-            return None
-        return frame.sort_values("date").reset_index(drop=True)
+        allow_stale_fallback = bool(
+            getattr(self.config, "stock_query_allow_daily_cache_fallback", True)
+        )
+        without_proxy = bool(
+            getattr(self.config, "stock_query_daily_unproxy_enabled", True)
+        )
+        result = self._run_with_timeout(
+            lambda: self.daily_bar_resolver.resolve_daily_bars(
+                stock_code,
+                bars=days,
+                minimum_rows=min(30, max(1, days)),
+                allow_stale_fallback=allow_stale_fallback,
+                without_proxy=without_proxy,
+            ),
+            timeout_seconds=timeout_seconds,
+            task_name="single_stock_daily:wrapped_daily_bar",
+        )
+        if result.frame is None or result.frame.empty:
+            raise ValueError(f"未获取到 {stock_code} 的日线数据")
+        return result.frame, result.data_source
 
     def _load_chip_distribution(self, stock_code: str):
         timeout_seconds = float(getattr(self.config, "stock_query_chip_timeout_seconds", 2.5) or 0.0)
