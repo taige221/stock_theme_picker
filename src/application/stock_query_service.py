@@ -335,11 +335,19 @@ class StockQueryService:
         timeout_seconds = float(
             getattr(self.config, "stock_query_daily_fetch_timeout_seconds", 8.0) or 0.0
         )
+        allow_stale_fallback = bool(
+            getattr(self.config, "stock_query_allow_daily_cache_fallback", True)
+        )
+        without_proxy = bool(
+            getattr(self.config, "stock_query_daily_unproxy_enabled", True)
+        )
         result = self._run_with_timeout(
             lambda: self.daily_bar_resolver.resolve_daily_bars(
                 stock_code,
                 bars=days,
                 minimum_rows=min(30, max(1, days)),
+                allow_stale_fallback=allow_stale_fallback,
+                without_proxy=without_proxy,
             ),
             timeout_seconds=timeout_seconds,
             task_name="single_stock_daily:wrapped_daily_bar",

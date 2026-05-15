@@ -6,6 +6,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta
 import logging
+import os
+from threading import Lock
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
@@ -25,6 +27,16 @@ DEFAULT_ONLINE_DAILY_BAR_COUNT = 240
 MAX_ONLINE_DAILY_BAR_COUNT = 2000
 DEFAULT_MIN_ROWS = 30
 MARKET_CLOSE_CUTOFF = time(hour=15, minute=0)
+_PROXY_ENV_KEYS = (
+    "HTTP_PROXY",
+    "HTTPS_PROXY",
+    "ALL_PROXY",
+    "http_proxy",
+    "https_proxy",
+    "all_proxy",
+)
+_NO_PROXY_ENV_KEYS = ("NO_PROXY", "no_proxy")
+_PROXY_ENV_LOCK = Lock()
 
 
 @dataclass
@@ -189,6 +201,8 @@ class DailyBarResolver:
         start_date: Optional[date] = None,
         end_date: Optional[date] = None,
         minimum_rows: int = DEFAULT_MIN_ROWS,
+        allow_stale_fallback: bool = True,
+        without_proxy: bool = False,
     ) -> DailyBarResolveResult:
         canonical_code = canonicalize_stock_code(stock_code)
         base_code = normalize_stock_code(canonical_code)
@@ -232,11 +246,12 @@ class DailyBarResolver:
             )
 
         try:
-            online_frame, online_source = self.provider.fetch_online_daily_bars(
+            online_frame, online_source = self._fetch_online_frame(
                 canonical_code,
                 start_date=target_start_date,
                 end_date=target_end_date,
                 bars=max(requested_bars, self.default_fetch_bars),
+                without_proxy=without_proxy,
             )
         except Exception as exc:
             logger.warning("统一日K在线补数失败: code=%s error=%s", canonical_code, exc)
@@ -245,6 +260,18 @@ class DailyBarResolver:
             online_source = "wrapped_daily_bar:mootdx"
 
         merged_frame = self._merge_frames(cached_frame, online_frame)
+        online_has_rows = online_frame is not None and not online_frame.empty
+        merged_complete = (
+            not merged_frame.empty
+            and self._is_cache_complete(
+                merged_frame,
+                requested_bars=requested_bars,
+                expected_latest_date=expected_latest_date,
+                minimum_rows=minimum_rows,
+                explicit_start_date=explicit_start_date,
+                requested_start_date=target_start_date,
+            )
+        )
         if not merged_frame.empty:
             self._save_merged_frame(merged_frame, canonical_code, data_source=online_source)
             final_frame = self._finalize_frame(
@@ -254,20 +281,34 @@ class DailyBarResolver:
                 end_date=target_end_date,
             )
             latest_trade_date = self._frame_latest_date(final_frame)
-            cache_status = "seeded" if cached_frame.empty else "merged"
-            return DailyBarResolveResult(
-                stock_code=canonical_code,
-                base_code=base_code,
-                instrument_type=instrument_type,
-                instrument_label=instrument_label,
-                frame=final_frame,
-                data_source=online_source,
-                cache_status=cache_status,
-                latest_trade_date=latest_trade_date,
-                errors=errors,
-            )
+            if cached_frame.empty:
+                cache_status = "seeded" if merged_complete else "seeded_partial"
+                return DailyBarResolveResult(
+                    stock_code=canonical_code,
+                    base_code=base_code,
+                    instrument_type=instrument_type,
+                    instrument_label=instrument_label,
+                    frame=final_frame,
+                    data_source=online_source,
+                    cache_status=cache_status,
+                    latest_trade_date=latest_trade_date,
+                    errors=errors,
+                )
+            if online_has_rows:
+                cache_status = "merged" if merged_complete else "merged_partial"
+                return DailyBarResolveResult(
+                    stock_code=canonical_code,
+                    base_code=base_code,
+                    instrument_type=instrument_type,
+                    instrument_label=instrument_label,
+                    frame=final_frame,
+                    data_source=online_source,
+                    cache_status=cache_status,
+                    latest_trade_date=latest_trade_date,
+                    errors=errors,
+                )
 
-        if not cached_frame.empty:
+        if not cached_frame.empty and allow_stale_fallback:
             final_frame = self._finalize_frame(
                 cached_frame,
                 requested_bars=requested_bars,
@@ -288,6 +329,34 @@ class DailyBarResolver:
             )
 
         raise ValueError(f"未获取到 {canonical_code} 的日线数据")
+
+    def _fetch_online_frame(
+        self,
+        stock_code: str,
+        *,
+        start_date: Optional[date],
+        end_date: Optional[date],
+        bars: int,
+        without_proxy: bool,
+    ) -> tuple[pd.DataFrame, str]:
+        env_snapshot: Dict[str, Optional[str]] = {}
+        lock = _PROXY_ENV_LOCK if without_proxy else None
+        if lock is not None:
+            lock.acquire()
+        try:
+            if without_proxy:
+                env_snapshot = self._disable_proxy_env_for_attempt()
+            return self.provider.fetch_online_daily_bars(
+                stock_code,
+                start_date=start_date,
+                end_date=end_date,
+                bars=bars,
+            )
+        finally:
+            if without_proxy:
+                self._restore_proxy_env_after_attempt(env_snapshot)
+            if lock is not None:
+                lock.release()
 
     @staticmethod
     def _supports_symbol(base_code: str) -> bool:
@@ -454,6 +523,25 @@ class DailyBarResolver:
             return float(value)
         except (TypeError, ValueError):
             return None
+
+    @staticmethod
+    def _disable_proxy_env_for_attempt() -> Dict[str, Optional[str]]:
+        snapshot: Dict[str, Optional[str]] = {}
+        for key in (*_PROXY_ENV_KEYS, *_NO_PROXY_ENV_KEYS):
+            snapshot[key] = os.environ.get(key)
+        for key in _PROXY_ENV_KEYS:
+            os.environ.pop(key, None)
+        os.environ["NO_PROXY"] = "*"
+        os.environ["no_proxy"] = "*"
+        return snapshot
+
+    @staticmethod
+    def _restore_proxy_env_after_attempt(snapshot: Dict[str, Optional[str]]) -> None:
+        for key, value in snapshot.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
 
 
 _DAILY_BAR_RESOLVER: Optional[DailyBarResolver] = None
