@@ -8,6 +8,18 @@ export interface StockQueryAnalyzeRequest {
   query?: string;
   stockCode?: string;
   stockName?: string;
+  strategy?: string;
+}
+
+export interface StockQueryStrategyDecision {
+  key: string;
+  label: string;
+  matched: boolean;
+  signal: string;
+  pattern?: string | null;
+  biasMa10?: number | null;
+  selectedReasons?: string[];
+  excludedReasons?: string[];
 }
 
 export interface StockQueryThemeAttribution {
@@ -168,6 +180,8 @@ export interface StockQueryAnalyzeResponse {
   stockName: string;
   instrumentType?: string | null;
   instrumentLabel?: string | null;
+  strategy?: string;
+  strategyLabel?: string | null;
   currentPrice?: number | null;
   pctChg?: number | null;
   turnoverRate?: number | null;
@@ -188,6 +202,7 @@ export interface StockQueryAnalyzeResponse {
   buySignal?: string | null;
   selectedReasons: string[];
   excludedReasons: string[];
+  strategyDecisions?: StockQueryStrategyDecision[];
   themeAttributions?: StockQueryThemeAttribution[];
   themes?: StockQueryThemeAttribution[];
   stockNewsSummary?: StockQueryNewsSummary | null;
@@ -234,6 +249,97 @@ export interface StockQueryHistoryItem {
 
 export interface StockQueryHistoryListResponse {
   items: StockQueryHistoryItem[];
+}
+
+export interface EtfMarketBar {
+  datetime: string;
+  open?: number | null;
+  high?: number | null;
+  low?: number | null;
+  close?: number | null;
+  volume?: number | null;
+  amount?: number | null;
+}
+
+export interface EtfMarketQuote {
+  name?: string | null;
+  price?: number | null;
+  lastClose?: number | null;
+  open?: number | null;
+  high?: number | null;
+  low?: number | null;
+  changeAmount?: number | null;
+  changePct?: number | null;
+  amountWan?: number | null;
+  turnoverRate?: number | null;
+  peTtm?: number | null;
+  amplitudePct?: number | null;
+  totalMarketValueYi?: number | null;
+  floatMarketValueYi?: number | null;
+  pb?: number | null;
+  limitUp?: number | null;
+  limitDown?: number | null;
+  volumeRatio?: number | null;
+  peStatic?: number | null;
+  tradeTime?: string | null;
+  volume?: number | null;
+  amount?: number | null;
+  serverTime?: string | null;
+  bid1?: number | null;
+  ask1?: number | null;
+  bidVol1?: number | null;
+  askVol1?: number | null;
+  rawSource?: string | null;
+}
+
+export interface EtfMarketProfile {
+  fundFullName?: string | null;
+  fundType?: string | null;
+  trackingTarget?: string | null;
+  performanceBenchmark?: string | null;
+  investmentObjective?: string | null;
+}
+
+export interface EtfMarketHolding {
+  rank?: number | null;
+  stockCode?: string | null;
+  stockName?: string | null;
+  weightPct?: number | null;
+  sharesWan?: number | null;
+  marketValueWan?: number | null;
+  reportPeriod?: string | null;
+}
+
+export interface EtfMarketSnapshotResponse {
+  queryId?: string | null;
+  stockCode: string;
+  baseCode: string;
+  stockName: string;
+  instrumentType: string;
+  instrumentLabel: string;
+  quote: EtfMarketQuote;
+  dailyBars: EtfMarketBar[];
+  orderBook: EtfMarketQuote;
+  profile: EtfMarketProfile;
+  topHoldings: EtfMarketHolding[];
+  dataSources: Record<string, string | null | undefined>;
+  errors: string[];
+}
+
+export interface EtfQueryHistoryItem {
+  queryId: string;
+  status: string;
+  queryText?: string | null;
+  stockCode?: string | null;
+  stockName?: string | null;
+  error?: string | null;
+  createdAt: string;
+  completedAt?: string | null;
+  result?: EtfMarketSnapshotResponse | null;
+}
+
+export interface EtfQueryHistoryListResponse {
+  items: EtfQueryHistoryItem[];
 }
 
 export interface StockDeepAnalysisMessage {
@@ -348,6 +454,7 @@ export const stockQueryApi = {
       query: payload.query,
       stock_code: payload.stockCode,
       stock_name: payload.stockName,
+      strategy: payload.strategy,
     });
     return toCamelCase<StockQueryTaskAccepted>(response.data);
   },
@@ -370,6 +477,31 @@ export const stockQueryApi = {
   async getHistoryItem(queryId: string): Promise<StockQueryHistoryItem> {
     const response = await apiClient.get<Record<string, unknown>>(`/api/v1/stock-query/history/${queryId}`);
     return toCamelCase<StockQueryHistoryItem>(response.data);
+  },
+
+  async getEtfMarketSnapshot(stockCode: string, bars = 60): Promise<EtfMarketSnapshotResponse> {
+    const response = await apiClient.get<Record<string, unknown>>(
+      `/api/v1/stock-query/etf-market/${encodeURIComponent(stockCode)}`,
+      {
+        params: { bars },
+      },
+    );
+    return toCamelCase<EtfMarketSnapshotResponse>(response.data);
+  },
+
+  async getEtfHistory(limit = 20, stockCode?: string): Promise<EtfQueryHistoryListResponse> {
+    const response = await apiClient.get<Record<string, unknown>>('/api/v1/stock-query/etf-history', {
+      params: {
+        limit,
+        stock_code: stockCode,
+      },
+    });
+    return toCamelCase<EtfQueryHistoryListResponse>(response.data);
+  },
+
+  async getEtfHistoryItem(queryId: string): Promise<EtfQueryHistoryItem> {
+    const response = await apiClient.get<Record<string, unknown>>(`/api/v1/stock-query/etf-history/${queryId}`);
+    return toCamelCase<EtfQueryHistoryItem>(response.data);
   },
 
   async createDeepAnalysis(queryId: string, forceRefresh = false): Promise<StockDeepAnalysisItem> {

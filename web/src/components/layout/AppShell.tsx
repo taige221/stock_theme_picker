@@ -1,5 +1,5 @@
 import type React from 'react';
-import { Bell, LayoutGrid, Radar, Sparkles, Star, WalletCards } from 'lucide-react';
+import { Bell, Layers3, LayoutGrid, Radar, Sparkles, Star, WalletCards } from 'lucide-react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { ThemeToggle } from '../theme/ThemeToggle';
 import { Badge } from '../common';
@@ -9,6 +9,7 @@ const NAV_ITEMS = [
   { to: '/', label: '工作台', icon: LayoutGrid },
   { to: '/theme-picker', label: '主题选股', icon: Sparkles },
   { to: '/stock-query', label: '单股查询', icon: Radar },
+  { to: '/etf-query', label: 'ETF 查询', icon: Layers3 },
   { to: '/watchlist', label: '观察池', icon: WalletCards },
   { to: '/deep-analysis', label: '深度分析', icon: Star },
 ] as const;

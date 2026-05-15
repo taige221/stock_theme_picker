@@ -186,6 +186,7 @@ class StockQueryAnalyzeRequest(BaseModel):
     query: Optional[str] = Field(None, description="股票代码或股票名称")
     stock_code: Optional[str] = Field(None, description="显式股票代码")
     stock_name: Optional[str] = Field(None, description="显式股票名称")
+    strategy: str = Field(default="auto", description="策略视角：auto / pullback / breakout / trend_follow / holding")
 
     @model_validator(mode="after")
     def validate_input_presence(self):
@@ -197,6 +198,8 @@ class StockQueryAnalyzeRequest(BaseModel):
             ]
         ):
             raise ValueError("query、stock_code、stock_name 至少需要提供一个")
+        if self.strategy not in {"auto", "pullback", "breakout", "trend_follow", "holding"}:
+            raise ValueError("strategy 仅支持 auto、pullback、breakout、trend_follow、holding")
         return self
 
 
@@ -263,12 +266,25 @@ class StockQueryFundamentalContextSchema(BaseModel):
     boards: StockQueryFundamentalBlockSchema = Field(default_factory=StockQueryFundamentalBlockSchema)
 
 
+class StockQueryStrategyDecisionSchema(BaseModel):
+    key: str
+    label: str
+    matched: bool = False
+    signal: str
+    pattern: Optional[str] = None
+    bias_ma10: Optional[float] = None
+    selected_reasons: List[str] = Field(default_factory=list)
+    excluded_reasons: List[str] = Field(default_factory=list)
+
+
 class StockQueryAnalyzeResponse(BaseModel):
     query_id: Optional[str] = None
     stock_code: str
     stock_name: str
     instrument_type: Optional[str] = None
     instrument_label: Optional[str] = None
+    strategy: str = "auto"
+    strategy_label: Optional[str] = None
     current_price: Optional[float] = None
     pct_chg: Optional[float] = None
     turnover_rate: Optional[float] = None
@@ -289,6 +305,7 @@ class StockQueryAnalyzeResponse(BaseModel):
     buy_signal: Optional[str] = None
     selected_reasons: List[str] = Field(default_factory=list)
     excluded_reasons: List[str] = Field(default_factory=list)
+    strategy_decisions: List[StockQueryStrategyDecisionSchema] = Field(default_factory=list)
     theme_attributions: List[StockQueryThemeAttributionSchema] = Field(default_factory=list)
     themes: List[StockQueryThemeAttributionSchema] = Field(default_factory=list)
     stock_news_summary: Optional[StockQueryNewsSummarySchema] = None
@@ -337,6 +354,22 @@ class StockQueryHistoryListResponse(BaseModel):
     items: List[StockQueryHistoryItemSchema] = Field(default_factory=list)
 
 
+class EtfQueryHistoryItemSchema(BaseModel):
+    query_id: str
+    status: str
+    query_text: Optional[str] = None
+    stock_code: Optional[str] = None
+    stock_name: Optional[str] = None
+    error: Optional[str] = None
+    created_at: str
+    completed_at: Optional[str] = None
+    result: Optional["EtfMarketSnapshotResponse"] = None
+
+
+class EtfQueryHistoryListResponse(BaseModel):
+    items: List[EtfQueryHistoryItemSchema] = Field(default_factory=list)
+
+
 class EtfMarketBarSchema(BaseModel):
     datetime: str
     open: Optional[float] = None
@@ -378,7 +411,26 @@ class EtfMarketQuoteSchema(BaseModel):
     raw_source: Optional[str] = None
 
 
+class EtfMarketProfileSchema(BaseModel):
+    fund_full_name: Optional[str] = None
+    fund_type: Optional[str] = None
+    tracking_target: Optional[str] = None
+    performance_benchmark: Optional[str] = None
+    investment_objective: Optional[str] = None
+
+
+class EtfMarketHoldingSchema(BaseModel):
+    rank: Optional[int] = None
+    stock_code: Optional[str] = None
+    stock_name: Optional[str] = None
+    weight_pct: Optional[float] = None
+    shares_wan: Optional[float] = None
+    market_value_wan: Optional[float] = None
+    report_period: Optional[str] = None
+
+
 class EtfMarketSnapshotResponse(BaseModel):
+    query_id: Optional[str] = None
     stock_code: str
     base_code: str
     stock_name: str
@@ -387,6 +439,8 @@ class EtfMarketSnapshotResponse(BaseModel):
     quote: EtfMarketQuoteSchema
     daily_bars: List[EtfMarketBarSchema] = Field(default_factory=list)
     order_book: EtfMarketQuoteSchema
+    profile: EtfMarketProfileSchema = Field(default_factory=EtfMarketProfileSchema)
+    top_holdings: List[EtfMarketHoldingSchema] = Field(default_factory=list)
     data_sources: Dict[str, Optional[str]] = Field(default_factory=dict)
     errors: List[str] = Field(default_factory=list)
 

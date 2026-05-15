@@ -127,6 +127,27 @@ class StockQueryHistory(Base):
     )
 
 
+class EtfQueryHistory(Base):
+    __tablename__ = "etf_query_history"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    query_id = Column(String(64), nullable=False, unique=True, index=True)
+    status = Column(String(20), nullable=False, index=True, default="completed")
+    query_text = Column(String(128), nullable=True, index=True)
+    stock_code = Column(String(16), nullable=True, index=True)
+    stock_name = Column(String(64), nullable=True)
+    error = Column(Text)
+    request_payload = Column(Text, nullable=False)
+    result_payload = Column(Text)
+    created_at = Column(DateTime, default=datetime.now, index=True)
+    completed_at = Column(DateTime, nullable=True, index=True)
+
+    __table_args__ = (
+        Index("ix_etf_query_history_created", "created_at"),
+        Index("ix_etf_query_history_stock_created", "stock_code", "created_at"),
+    )
+
+
 class StockBelongBoardsCache(Base):
     __tablename__ = "stock_belong_boards_cache"
 
@@ -636,6 +657,74 @@ class DatabaseManager:
         if stock_code:
             stmt = stmt.where(StockQueryHistory.stock_code == stock_code)
         stmt = stmt.order_by(desc(StockQueryHistory.created_at)).limit(max(1, limit))
+        with self.session_scope() as session:
+            return list(session.execute(stmt).scalars().all())
+
+    def save_etf_query_history(
+        self,
+        *,
+        query_id: str,
+        status: str,
+        request_payload: Dict[str, Any],
+        query_text: Optional[str] = None,
+        stock_code: Optional[str] = None,
+        stock_name: Optional[str] = None,
+        result_payload: Optional[Dict[str, Any]] = None,
+        error: Optional[str] = None,
+        created_at: Optional[datetime] = None,
+        completed_at: Optional[datetime] = None,
+    ) -> int:
+        values = {
+            "query_id": query_id,
+            "status": status,
+            "query_text": query_text,
+            "stock_code": stock_code,
+            "stock_name": stock_name,
+            "error": error,
+            "request_payload": self._safe_json_dumps(request_payload or {}),
+            "result_payload": self._safe_json_dumps(result_payload) if result_payload is not None else None,
+            "created_at": created_at or datetime.now(),
+            "completed_at": completed_at,
+        }
+        with self.session_scope() as session:
+            stmt = sqlite_insert(EtfQueryHistory).values(values)
+            excluded = stmt.excluded
+            session.execute(
+                stmt.on_conflict_do_update(
+                    index_elements=["query_id"],
+                    set_={
+                        "status": excluded.status,
+                        "query_text": excluded.query_text,
+                        "stock_code": excluded.stock_code,
+                        "stock_name": excluded.stock_name,
+                        "error": excluded.error,
+                        "request_payload": excluded.request_payload,
+                        "result_payload": excluded.result_payload,
+                        "created_at": excluded.created_at,
+                        "completed_at": excluded.completed_at,
+                    },
+                )
+            )
+        return 1
+
+    def get_etf_query_history(self, query_id: str) -> Optional[EtfQueryHistory]:
+        with self.session_scope() as session:
+            return session.execute(
+                select(EtfQueryHistory)
+                .where(EtfQueryHistory.query_id == query_id)
+                .limit(1)
+            ).scalars().first()
+
+    def list_etf_query_history(
+        self,
+        *,
+        limit: int = 20,
+        stock_code: Optional[str] = None,
+    ) -> List[EtfQueryHistory]:
+        stmt = select(EtfQueryHistory)
+        if stock_code:
+            stmt = stmt.where(EtfQueryHistory.stock_code == stock_code)
+        stmt = stmt.order_by(desc(EtfQueryHistory.created_at)).limit(max(1, limit))
         with self.session_scope() as session:
             return list(session.execute(stmt).scalars().all())
 

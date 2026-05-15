@@ -94,6 +94,7 @@ class StockQueryTaskService:
             "query": getattr(request, "query", None),
             "stock_code": getattr(request, "stock_code", None),
             "stock_name": getattr(request, "stock_name", None),
+            "strategy": getattr(request, "strategy", None),
         }
 
     @staticmethod

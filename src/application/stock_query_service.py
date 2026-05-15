@@ -84,6 +84,7 @@ class StockQueryService:
         query_id = query_id or uuid.uuid4().hex
         stock_code = self._resolve_stock_code(request)
         requested_name = self._resolve_requested_name(request)
+        strategy = self._resolve_strategy(request)
         stock_name = requested_name or stock_code
         query_trace: Dict[str, Any] = {
             "tag": "STOCK_QUERY",
@@ -92,6 +93,7 @@ class StockQueryService:
             "query_text": self._resolve_query_text(request),
             "stock_code": stock_code,
             "stock_name": stock_name,
+            "strategy": strategy,
         }
         if requested_name:
             stock_name = (
@@ -165,6 +167,7 @@ class StockQueryService:
             turnover_rate=turnover_rate,
             chip_data=chip_data,
             fundamental_context=normalized_fundamental_context,
+            strategy=strategy,
         )
 
         news_provider = None
@@ -177,6 +180,8 @@ class StockQueryService:
             "stock_name": stock_name,
             "instrument_type": instrument_type,
             "instrument_label": instrument_label,
+            "strategy": signal_payload.get("strategy") or strategy,
+            "strategy_label": signal_payload.get("strategy_label"),
             "current_price": current_price,
             "pct_chg": pct_chg,
             "turnover_rate": turnover_rate,
@@ -197,6 +202,7 @@ class StockQueryService:
             "buy_signal": trend_result.buy_signal.value,
             "selected_reasons": signal_payload["selected_reasons"],
             "excluded_reasons": signal_payload["excluded_reasons"],
+            "strategy_decisions": signal_payload.get("strategy_decisions") or [],
             "theme_attributions": theme_attributions,
             "themes": theme_attributions,
             "stock_news_summary": stock_news_summary,
@@ -224,6 +230,7 @@ class StockQueryService:
                 "status": "completed",
                 "stock_name": stock_name,
                 "signal": payload.get("signal"),
+                "strategy": payload.get("strategy") or strategy,
                 "trend_score": payload.get("trend_score"),
                 "data_sources": payload.get("data_sources") or {},
                 "fundamental_coverage": payload.get("fundamental_coverage") or {},
@@ -326,6 +333,11 @@ class StockQueryService:
         if instrument_type == "etf":
             return "ETF"
         return "股票"
+
+    @staticmethod
+    def _resolve_strategy(request: Any) -> str:
+        strategy = str(getattr(request, "strategy", "auto") or "auto").strip().lower()
+        return strategy or "auto"
 
     def _load_daily_data(self, stock_code: str, *, days: int = 120):
         stock_code_text = str(stock_code or "").strip().upper()
@@ -1064,6 +1076,7 @@ class StockQueryService:
             "query": getattr(request, "query", None),
             "stock_code": getattr(request, "stock_code", None),
             "stock_name": getattr(request, "stock_name", None),
+            "strategy": getattr(request, "strategy", None),
         }
 
     @staticmethod

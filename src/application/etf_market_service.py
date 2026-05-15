@@ -3,12 +3,16 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 import json
 import logging
+import re
 import urllib.request
 from typing import Any, Dict, List, Optional
 
+import akshare as ak
 from mootdx.quotes import Quotes
+import requests
 
 from theme_picker.data_provider.base import normalize_stock_code
 from theme_picker.infrastructure.daily_bar_service import get_daily_bar_resolver
@@ -18,6 +22,8 @@ logger = logging.getLogger(__name__)
 
 _TENCENT_QUOTE_URL = "http://qt.gtimg.cn/q="
 _TENCENT_USER_AGENT = "Mozilla/5.0"
+_ETF_PROFILE_URL = "https://fundf10.eastmoney.com/jbgk_{code}.html"
+_ETF_PROFILE_USER_AGENT = "Mozilla/5.0"
 
 
 class EtfMarketService:
@@ -34,7 +40,10 @@ class EtfMarketService:
         quote_payload: Dict[str, Any] = {}
         order_book_payload: Dict[str, Any] = {}
         kline_payload: List[Dict[str, Any]] = []
+        profile_payload: Dict[str, Any] = {}
+        top_holdings_payload: List[Dict[str, Any]] = []
         daily_bar_source = "wrapped_daily_bar:mootdx"
+        quote_source = "tencent"
 
         try:
             quote_payload = self._fetch_tencent_quote(base_code)
@@ -61,6 +70,18 @@ class EtfMarketService:
             logger.warning("ETF mootdx 盘口失败: code=%s error=%s", base_code, exc)
             errors.append(f"mootdx quote failed: {exc}")
 
+        try:
+            profile_payload = self._fetch_etf_profile(base_code)
+        except Exception as exc:
+            logger.warning("ETF 档案信息失败: code=%s error=%s", base_code, exc)
+            errors.append(f"etf profile failed: {exc}")
+
+        try:
+            top_holdings_payload = self._fetch_top_holdings(base_code)
+        except Exception as exc:
+            logger.warning("ETF 重仓股失败: code=%s error=%s", base_code, exc)
+            errors.append(f"etf top holdings failed: {exc}")
+
         if not quote_payload and order_book_payload:
             quote_payload = {
                 "name": order_book_payload.get("name"),
@@ -78,6 +99,8 @@ class EtfMarketService:
         if not quote_payload and not order_book_payload and not kline_payload:
             raise ValueError(f"未获取到 {canonical_code} 的 ETF 市场数据")
 
+        quote_source = self._resolve_quote_source(quote_payload)
+
         response: Dict[str, Any] = {
             "stock_code": canonical_code,
             "base_code": base_code,
@@ -87,14 +110,25 @@ class EtfMarketService:
             "quote": quote_payload,
             "daily_bars": kline_payload,
             "order_book": order_book_payload,
+            "profile": profile_payload,
+            "top_holdings": top_holdings_payload,
             "data_sources": {
-                "quote": "tencent",
+                "quote": quote_source,
                 "daily_bars": daily_bar_source,
                 "order_book": "mootdx",
+                "profile": "eastmoney_fund_archive",
+                "top_holdings": "eastmoney_fund_portfolio",
             },
             "errors": errors,
         }
         return response
+
+    @staticmethod
+    def _resolve_quote_source(quote_payload: Dict[str, Any]) -> str:
+        raw_source = str((quote_payload or {}).get("raw_source") or "").strip()
+        if raw_source:
+            return raw_source
+        return "unknown"
 
     def _normalize_etf_code(self, stock_code: str) -> str:
         normalized = normalize_stock_code(stock_code)
@@ -140,6 +174,69 @@ class EtfMarketService:
             "trade_time": fields[30] or None,
             "raw_source": "tencent",
         }
+
+    def _fetch_etf_profile(self, base_code: str) -> Dict[str, Any]:
+        response = requests.get(
+            _ETF_PROFILE_URL.format(code=base_code),
+            headers={"User-Agent": _ETF_PROFILE_USER_AGENT},
+            timeout=10,
+        )
+        response.raise_for_status()
+        html = response.text
+        text_lines = [
+            line.strip()
+            for line in re.split(r"[\r\n]+", re.sub(r"<[^>]+>", "\n", html))
+            if line and line.strip()
+        ]
+        if not text_lines:
+            return {}
+
+        def _next_value(label: str) -> Optional[str]:
+            for idx, item in enumerate(text_lines):
+                if item == label:
+                    for candidate in text_lines[idx + 1 : idx + 6]:
+                        if candidate and candidate != label:
+                            return candidate.strip()
+            return None
+
+        return {
+            "fund_full_name": _next_value("基金全称"),
+            "fund_type": _next_value("基金类型"),
+            "tracking_target": _next_value("跟踪标的"),
+            "performance_benchmark": _next_value("业绩比较基准"),
+            "investment_objective": _next_value("投资目标"),
+        }
+
+    def _fetch_top_holdings(self, base_code: str) -> List[Dict[str, Any]]:
+        current_year = datetime.now().year
+        frames = []
+        for year in (current_year, current_year - 1, current_year - 2):
+            try:
+                frame = ak.fund_portfolio_hold_em(symbol=base_code, date=str(year))
+            except Exception:
+                continue
+            if frame is not None and not frame.empty:
+                frames.append(frame)
+                break
+
+        if not frames:
+            return []
+
+        frame = frames[0].copy()
+        rows: List[Dict[str, Any]] = []
+        for _, row in frame.head(10).iterrows():
+            rows.append(
+                {
+                    "rank": self._safe_int(row.get("序号")),
+                    "stock_code": self._safe_text(row.get("股票代码")),
+                    "stock_name": self._safe_text(row.get("股票名称")),
+                    "weight_pct": self._safe_float(row.get("占净值比例")),
+                    "shares_wan": self._safe_float(row.get("持股数")),
+                    "market_value_wan": self._safe_float(row.get("持仓市值")),
+                    "report_period": self._safe_text(row.get("季度")),
+                }
+            )
+        return rows
 
     def _fetch_mootdx_quote(self, base_code: str) -> Dict[str, Any]:
         client = Quotes.factory(market="std")
@@ -198,6 +295,15 @@ class EtfMarketService:
             return None
         try:
             return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def _safe_int(value: Any) -> Optional[int]:
+        if value in (None, "", "--"):
+            return None
+        try:
+            return int(float(value))
         except (TypeError, ValueError):
             return None
 

@@ -7,6 +7,7 @@ from typing import Any
 
 from theme_picker.storage import (
     DatabaseManager,
+    EtfQueryHistory,
     StockAlertEvent,
     StockAlertRule,
     StockDeepAnalysisHistory,
@@ -55,6 +56,18 @@ def get_stock_query_record(db: DatabaseManager, query_id: str):
 
 def list_stock_query_records(db: DatabaseManager, *, limit: int = 20, stock_code: str | None = None):
     return db.list_stock_query_history(limit=limit, stock_code=stock_code)
+
+
+def save_etf_query_record(db: DatabaseManager, **kwargs: Any) -> None:
+    db.save_etf_query_history(**kwargs)
+
+
+def get_etf_query_record(db: DatabaseManager, query_id: str):
+    return db.get_etf_query_history(query_id)
+
+
+def list_etf_query_records(db: DatabaseManager, *, limit: int = 20, stock_code: str | None = None):
+    return db.list_etf_query_history(limit=limit, stock_code=stock_code)
 
 
 def save_stock_belong_boards_cache(db: DatabaseManager, **kwargs: Any) -> None:
@@ -149,6 +162,7 @@ def list_stock_deep_analysis_messages(db: DatabaseManager, *, analysis_id: str, 
 
 
 __all__ = [
+    "EtfQueryHistory",
     "StockQueryHistory",
     "StockAlertEvent",
     "StockAlertRule",
@@ -158,10 +172,13 @@ __all__ = [
     "ThemePickerTaskHistory",
     "get_theme_picker_db",
     "save_stock_query_record",
+    "save_etf_query_record",
     "save_task_history",
     "get_stock_query_record",
+    "get_etf_query_record",
     "get_task_history",
     "list_stock_query_records",
+    "list_etf_query_records",
     "save_stock_belong_boards_cache",
     "get_stock_belong_boards_cache",
     "upsert_stock_watchlist_item",

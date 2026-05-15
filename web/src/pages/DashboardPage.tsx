@@ -35,6 +35,12 @@ const actionCards = [
     icon: Radar,
   },
   {
+    title: 'ETF 查询',
+    description: '把 ETF 当成独立载体，优先看价量、涨跌停区间和最近日线状态。',
+    to: '/etf-query',
+    icon: Layers3,
+  },
+  {
     title: '观察池',
     description: '把高价值股票和主题沉淀下来，做长期跟踪和提醒。',
     to: '/watchlist',

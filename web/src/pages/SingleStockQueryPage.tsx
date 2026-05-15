@@ -21,7 +21,7 @@ import {
   type StockQueryTaskStatus,
 } from '../api/stockQuery';
 import { watchlistApi, type StockAlertRuleItem, type StockWatchlistItem } from '../api/watchlist';
-import { ApiErrorAlert, AppPage, Badge, Button, Drawer, EmptyState, InlineAlert, Input } from '../components/common';
+import { ApiErrorAlert, AppPage, Badge, Button, Drawer, EmptyState, InlineAlert, Input, Select } from '../components/common';
 
 const QUICK_QUERIES = [
   { label: '华丰科技', value: '688629.SH', note: '算力链中的高热度样本' },
@@ -43,6 +43,13 @@ const FUNDAMENTAL_BLOCK_LABELS: Record<string, string> = {
 };
 
 const MIN_ALERT_SCAN_INTERVAL_MINUTES = 5;
+const STRATEGY_OPTIONS = [
+  { value: 'auto', label: '自动决策' },
+  { value: 'pullback', label: '低吸回踩' },
+  { value: 'breakout', label: '突破确认' },
+  { value: 'trend_follow', label: '趋势跟随' },
+  { value: 'holding', label: '趋势持有' },
+] as const;
 
 type StrategyTone = 'buy' | 'breakout' | 'warn';
 
@@ -145,10 +152,17 @@ function formatHistoryTime(value: string): string {
 
 function signalBadgeVariant(signal: string): 'success' | 'info' | 'warning' | 'danger' | 'default' {
   if (signal === '短线异动') return 'danger';
+  if (signal === '趋势跟随') return 'success';
   if (signal === '持有候选') return 'warning';
   if (signal === '低吸观察') return 'info';
   if (signal === '不宜追高' || signal === '仅观察') return 'default';
   return 'success';
+}
+
+function strategySignalTone(signal: string): StrategyTone {
+  if (signal === '短线异动') return 'breakout';
+  if (signal === '不宜追高' || signal === '仅观察') return 'warn';
+  return 'buy';
 }
 
 function confidenceLabel(value: string): string {
@@ -387,6 +401,8 @@ function buildEntryPlan(result: StockQueryAnalyzeResponse): EntryPlan {
     headline = '靠近支撑可分批试仓';
   } else if (result.signal === '持有候选') {
     headline = '支撑未破，可回踩承接';
+  } else if (result.signal === '趋势跟随') {
+    headline = '趋势延续，适合轻仓跟随';
   } else if (result.signal === '短线异动') {
     headline = '只做突破确认，不做盘中追涨';
   }
@@ -543,6 +559,10 @@ function buildSignalOverview(result: StockQueryAnalyzeResponse, plan: EntryPlan)
     score += 8;
     label = '回踩承接';
     description = '趋势结构仍在，优先等回踩支撑后的承接买点。';
+  } else if (result.signal === '趋势跟随') {
+    score += 6;
+    label = '顺势跟随';
+    description = '趋势延续结构更强，允许用更轻的仓位沿趋势跟随。';
   } else if (result.signal === '低吸观察') {
     score += 4;
     label = '低吸优先';
@@ -578,6 +598,7 @@ const SingleStockQueryPage: React.FC = () => {
   }, [location.search]);
 
   const [query, setQuery] = useState(initialQuery);
+  const [strategy, setStrategy] = useState<string>('auto');
   const [result, setResult] = useState<StockQueryAnalyzeResponse | null>(null);
   const [queryTask, setQueryTask] = useState<StockQueryTaskStatus | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -648,6 +669,7 @@ const SingleStockQueryPage: React.FC = () => {
 
   const applyAnalyzeResult = async (response: StockQueryAnalyzeResponse, resolvedInput: string) => {
     setResult(response);
+    setStrategy(response.strategy || 'auto');
     setCurrentHistoryId(response.queryId ?? null);
     setLastResolvedInput(resolvedInput);
     setQueryTask(null);
@@ -703,7 +725,7 @@ const SingleStockQueryPage: React.FC = () => {
     setQueryTask(null);
 
     try {
-      const accepted = await stockQueryApi.analyze({ query: normalized });
+      const accepted = await stockQueryApi.analyze({ query: normalized, strategy });
       setCurrentHistoryId(accepted.taskId);
       setQueryTask({
         taskId: accepted.taskId,
@@ -980,6 +1002,19 @@ const SingleStockQueryPage: React.FC = () => {
                   </Button>
                 </div>
 
+                <div className="grid gap-3 xl:grid-cols-[280px_minmax(0,1fr)]">
+                  <Select
+                    value={strategy}
+                    onChange={setStrategy}
+                    options={STRATEGY_OPTIONS.map((item) => ({ value: item.value, label: item.label }))}
+                    label="策略视角"
+                    className="max-w-[320px]"
+                  />
+                  <div className="rounded-2xl border border-slate-700/80 bg-[#0E1F36] px-4 py-3 text-sm leading-6 text-slate-300">
+                    自动模式会并行评估低吸回踩、突破确认、趋势跟随和趋势持有；如果你已经知道自己只想看某一种买点，可以直接锁定对应策略。
+                  </div>
+                </div>
+
                 <div className="flex flex-wrap gap-3">
                   {QUICK_QUERIES.map((item) => (
                     <button
@@ -1034,6 +1069,9 @@ const SingleStockQueryPage: React.FC = () => {
                             <Badge variant={signalBadgeVariant(result.signal)} className="border-0 px-3 py-1">
                               {result.signal}
                             </Badge>
+                            <Badge variant="default" className="border border-cyan/20 bg-cyan/10 px-3 py-1 text-xs text-cyan-100">
+                              {result.strategyLabel || '自动决策'}
+                            </Badge>
                             <Badge variant="default" className="border border-slate-700/80 bg-slate-950/35 px-3 py-1 text-xs text-slate-100">
                               {result.trendStatus || result.pattern || '等待结构确认'}
                             </Badge>
@@ -1060,6 +1098,43 @@ const SingleStockQueryPage: React.FC = () => {
                           </div>
                         ))}
                       </div>
+
+                      {result.strategyDecisions && result.strategyDecisions.length > 0 ? (
+                        <div className="rounded-[24px] border border-slate-700/80 bg-slate-950/30 p-4">
+                          <div className="flex items-center justify-between gap-3">
+                            <div>
+                              <p className="text-xs uppercase tracking-[0.16em] text-slate-400">Strategy Matrix</p>
+                              <p className="mt-2 text-sm text-slate-300">同一只票在不同策略视角下，会给出不同的买点判断。</p>
+                            </div>
+                          </div>
+                          <div className="mt-4 grid gap-3 xl:grid-cols-2">
+                            {result.strategyDecisions.map((decision) => (
+                              <div
+                                key={decision.key}
+                                className={`rounded-[20px] border px-4 py-4 ${
+                                  decision.matched
+                                    ? strategyToneClasses(strategySignalTone(decision.signal))
+                                    : 'border-slate-700/80 bg-[#0B2038] text-slate-200'
+                                }`}
+                              >
+                                <div className="flex items-center justify-between gap-3">
+                                  <p className="text-sm font-semibold text-white">{decision.label}</p>
+                                  <Badge variant={signalBadgeVariant(decision.signal)} className="border-0 px-2.5 py-1 text-[11px]">
+                                    {decision.signal}
+                                  </Badge>
+                                </div>
+                                <p className="mt-2 text-sm leading-6 text-slate-200">
+                                  {(decision.matched ? decision.selectedReasons : decision.excludedReasons)?.[0]
+                                    ?? (decision.matched ? '当前更适合从这套策略视角切入。' : '当前还不满足这套策略的出手条件。')}
+                                </p>
+                                {decision.pattern ? (
+                                  <p className="mt-3 text-xs uppercase tracking-[0.14em] text-slate-400">{decision.pattern}</p>
+                                ) : null}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
                     </div>
                   ) : (
                     <div className="space-y-5">

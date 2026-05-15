@@ -18,6 +18,14 @@ from theme_picker.stock_analyzer import TrendAnalysisResult
 class StockSignalService:
     """Derive a stock-first signal from trend, quote, chip, and fundamental context."""
 
+    STRATEGY_LABELS = {
+        "auto": "自动决策",
+        "pullback": "低吸回踩",
+        "breakout": "突破确认",
+        "trend_follow": "趋势跟随",
+        "holding": "趋势持有",
+    }
+
     def __init__(self):
         self.config = get_config()
 
@@ -31,14 +39,18 @@ class StockSignalService:
         turnover_rate: Optional[float],
         chip_data: Optional[ChipDistribution] = None,
         fundamental_context: Optional[Dict[str, Any]] = None,
+        strategy: str = "auto",
     ) -> Dict[str, Any]:
-        signal = self._derive_signal(
+        metrics = self._build_metrics(
             trend_result=trend_result,
             current_price=current_price,
             pct_chg=pct_chg,
             volume_ratio=volume_ratio,
             turnover_rate=turnover_rate,
         )
+        strategy_decisions = self._build_strategy_decisions(metrics)
+        decision = self._select_primary_decision(strategy_decisions, strategy)
+        signal = str(decision.get("signal") or "仅观察")
         support = self._pick_support_level(
             current_price=current_price,
             support_levels=trend_result.support_levels,
@@ -50,6 +62,7 @@ class StockSignalService:
             resistance_levels=trend_result.resistance_levels,
         )
         selected_reasons = self._build_selected_reasons(
+            strategy_key=str(decision.get("key") or strategy or "auto"),
             signal=signal,
             trend_result=trend_result,
             current_price=current_price,
@@ -58,6 +71,7 @@ class StockSignalService:
             chip_data=chip_data,
         )
         excluded_reasons = self._build_excluded_reasons(
+            strategy_key=str(decision.get("key") or strategy or "auto"),
             signal=signal,
             trend_result=trend_result,
             pct_chg=pct_chg,
@@ -65,21 +79,30 @@ class StockSignalService:
             chip_data=chip_data,
             fundamental_context=fundamental_context,
         )
-        metrics = {
-            "pct_chg": self._safe_float(pct_chg),
-            "bias_ma10": self._safe_float(trend_result.bias_ma10),
-        }
         pattern = self._derive_pattern(signal, metrics)
+        normalized_decisions = self._decorate_strategy_decisions(
+            strategy_decisions=strategy_decisions,
+            trend_result=trend_result,
+            current_price=current_price,
+            pct_chg=pct_chg,
+            volume_ratio=volume_ratio,
+            turnover_rate=turnover_rate,
+            chip_data=chip_data,
+            fundamental_context=fundamental_context,
+        )
         return {
+            "strategy": strategy,
+            "strategy_label": self.STRATEGY_LABELS.get(strategy, strategy),
             "signal": signal,
             "pattern": pattern,
             "support": support,
             "pressure": pressure,
             "selected_reasons": selected_reasons,
             "excluded_reasons": excluded_reasons,
+            "strategy_decisions": normalized_decisions,
         }
 
-    def _derive_signal(
+    def _build_metrics(
         self,
         *,
         trend_result: TrendAnalysisResult,
@@ -87,7 +110,7 @@ class StockSignalService:
         pct_chg: Optional[float],
         volume_ratio: Optional[float],
         turnover_rate: Optional[float],
-    ) -> str:
+    ) -> Dict[str, Any]:
         bias_threshold = float(getattr(self.config, "bias_threshold", 5.0) or 5.0)
         trend_score = float(trend_result.signal_score or 0.0)
         bias_ma10 = float(trend_result.bias_ma10 or 0.0)
@@ -110,20 +133,138 @@ class StockSignalService:
         is_near_support = ma10 > 0 and current > 0 and support_floor > 0 and current <= ma10 * 1.01 and current >= support_floor
         has_active_breakout = pct >= 3.0 and volume >= 1.2 and trend_score >= 55.0
         has_holding_quality = trend_score >= 68.0 and buy_signal in {"买入", "强烈买入", "持有"} and bias_ma10 <= 4.0
+        has_trend_follow_setup = (
+            trend_score >= 72.0
+            and buy_signal in {"买入", "强烈买入", "持有"}
+            and trend_status in {"多头排列", "强势多头"}
+            and 0.5 <= bias_ma10 <= 4.0
+            and pct < 3.0
+            and turnover < 20.0
+            and current > 0
+            and ma10 > 0
+            and current >= ma10
+        )
 
-        if has_bearish_signal or has_acceleration_risk:
-            return "不宜追高"
-        if is_near_support and trend_score >= 55.0 and buy_signal in {"买入", "强烈买入", "持有"}:
-            return "低吸观察"
-        if has_holding_quality:
-            return "持有候选"
-        if has_active_breakout:
-            return "短线异动"
-        return "仅观察"
+        return {
+            "pct_chg": self._safe_float(pct_chg),
+            "bias_ma10": self._safe_float(trend_result.bias_ma10),
+            "trend_score": trend_score,
+            "buy_signal": buy_signal,
+            "trend_status": trend_status,
+            "has_bearish_signal": has_bearish_signal,
+            "has_acceleration_risk": has_acceleration_risk,
+            "is_near_support": is_near_support,
+            "has_active_breakout": has_active_breakout,
+            "has_holding_quality": has_holding_quality,
+            "has_trend_follow_setup": has_trend_follow_setup,
+        }
+
+    def _build_strategy_decisions(self, metrics: Dict[str, Any]) -> List[Dict[str, Any]]:
+        has_bearish_signal = bool(metrics.get("has_bearish_signal"))
+        has_acceleration_risk = bool(metrics.get("has_acceleration_risk"))
+        decisions = [
+            self._make_strategy_decision(
+                key="pullback",
+                label=self.STRATEGY_LABELS["pullback"],
+                matched=bool(metrics.get("is_near_support")) and not has_bearish_signal and not has_acceleration_risk,
+                signal="低吸观察" if bool(metrics.get("is_near_support")) and not has_bearish_signal and not has_acceleration_risk else ("不宜追高" if has_bearish_signal or has_acceleration_risk else "仅观察"),
+            ),
+            self._make_strategy_decision(
+                key="breakout",
+                label=self.STRATEGY_LABELS["breakout"],
+                matched=bool(metrics.get("has_active_breakout")) and not has_acceleration_risk and not has_bearish_signal,
+                signal="短线异动" if bool(metrics.get("has_active_breakout")) and not has_acceleration_risk and not has_bearish_signal else ("不宜追高" if has_bearish_signal or has_acceleration_risk else "仅观察"),
+            ),
+            self._make_strategy_decision(
+                key="trend_follow",
+                label=self.STRATEGY_LABELS["trend_follow"],
+                matched=bool(metrics.get("has_trend_follow_setup")) and not has_acceleration_risk and not has_bearish_signal,
+                signal="趋势跟随" if bool(metrics.get("has_trend_follow_setup")) and not has_acceleration_risk and not has_bearish_signal else ("不宜追高" if has_bearish_signal or has_acceleration_risk else "仅观察"),
+            ),
+            self._make_strategy_decision(
+                key="holding",
+                label=self.STRATEGY_LABELS["holding"],
+                matched=bool(metrics.get("has_holding_quality")) and not has_acceleration_risk and not has_bearish_signal,
+                signal="持有候选" if bool(metrics.get("has_holding_quality")) and not has_acceleration_risk and not has_bearish_signal else ("不宜追高" if has_bearish_signal or has_acceleration_risk else "仅观察"),
+            ),
+        ]
+        return decisions
+
+    @staticmethod
+    def _make_strategy_decision(*, key: str, label: str, matched: bool, signal: str) -> Dict[str, Any]:
+        return {
+            "key": key,
+            "label": label,
+            "matched": matched,
+            "signal": signal,
+        }
+
+    def _select_primary_decision(self, decisions: List[Dict[str, Any]], strategy: str) -> Dict[str, Any]:
+        if strategy and strategy != "auto":
+            for item in decisions:
+                if str(item.get("key")) == strategy:
+                    return item
+        for key in ("pullback", "breakout", "trend_follow", "holding"):
+            for item in decisions:
+                if str(item.get("key")) == key and bool(item.get("matched")):
+                    return item
+        if decisions:
+            return decisions[-1]
+        return {"key": strategy or "auto", "label": self.STRATEGY_LABELS.get(strategy or "auto", strategy or "auto"), "matched": False, "signal": "仅观察"}
+
+    def _decorate_strategy_decisions(
+        self,
+        *,
+        strategy_decisions: List[Dict[str, Any]],
+        trend_result: TrendAnalysisResult,
+        current_price: Optional[float],
+        pct_chg: Optional[float],
+        volume_ratio: Optional[float],
+        turnover_rate: Optional[float],
+        chip_data: Optional[ChipDistribution],
+        fundamental_context: Optional[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        normalized: List[Dict[str, Any]] = []
+        for item in strategy_decisions:
+            key = str(item.get("key") or "")
+            signal = str(item.get("signal") or "仅观察")
+            normalized.append(
+                {
+                    "key": key,
+                    "label": str(item.get("label") or key),
+                    "matched": bool(item.get("matched")),
+                    "signal": signal,
+                    "pattern": self._derive_pattern(
+                        signal,
+                        {"pct_chg": self._safe_float(pct_chg), "bias_ma10": self._safe_float(trend_result.bias_ma10)},
+                    ),
+                    "bias_ma10": self._safe_float(trend_result.bias_ma10),
+                    "selected_reasons": self._build_selected_reasons(
+                        strategy_key=key,
+                        signal=signal,
+                        trend_result=trend_result,
+                        current_price=current_price,
+                        pct_chg=pct_chg,
+                        volume_ratio=volume_ratio,
+                        chip_data=chip_data,
+                    ),
+                    "excluded_reasons": self._build_excluded_reasons(
+                        strategy_key=key,
+                        signal=signal,
+                        trend_result=trend_result,
+                        pct_chg=pct_chg,
+                        turnover_rate=turnover_rate,
+                        chip_data=chip_data,
+                        fundamental_context=fundamental_context,
+                    ),
+                }
+            )
+        return normalized
 
     def _build_selected_reasons(
         self,
         *,
+        strategy_key: str,
         signal: str,
         trend_result: TrendAnalysisResult,
         current_price: Optional[float],
@@ -136,7 +277,9 @@ class StockSignalService:
             prefer_positive=True,
             limit=3,
         )
-        if signal == "持有候选":
+        if strategy_key == "trend_follow" and signal == "趋势跟随":
+            reasons.insert(0, "趋势保持抬升，回踩偏浅，更适合顺势轻仓跟随")
+        elif signal == "持有候选":
             reasons.insert(0, "趋势底座完整，当前位置仍处于可持续跟踪区间")
         elif signal == "低吸观察":
             reasons.insert(0, "价格回踩至 MA10 / MA20 支撑带附近，更适合等承接确认")
@@ -156,6 +299,7 @@ class StockSignalService:
     def _build_excluded_reasons(
         self,
         *,
+        strategy_key: str,
         signal: str,
         trend_result: TrendAnalysisResult,
         pct_chg: Optional[float],
@@ -177,6 +321,8 @@ class StockSignalService:
             reasons.insert(0, f"偏离 MA10 {bias_ma10:.2f}% ，短线位置偏高")
         elif signal == "不宜追高" and pct >= 8.0:
             reasons.insert(0, f"当日涨幅 {pct:.2f}% 偏快，追高性价比不足")
+        elif strategy_key == "trend_follow" and signal == "仅观察":
+            reasons.insert(0, "趋势延续型更看重稳步抬高，当前还缺少足够清晰的顺势跟随机会")
         elif signal == "仅观察":
             reasons.insert(0, "当前趋势和位置都不差，但还没有形成更明确的右侧确认")
 
@@ -273,6 +419,8 @@ class StockSignalService:
     def _derive_pattern(signal: str, metrics: Dict[str, Any]) -> Optional[str]:
         pct_chg = float(metrics.get("pct_chg") or 0.0)
         bias_ma10 = float(metrics.get("bias_ma10") or 0.0)
+        if signal == "趋势跟随":
+            return "趋势延续"
         if signal == "持有候选":
             return "趋势延续"
         if signal == "低吸观察":
