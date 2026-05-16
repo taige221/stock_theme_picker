@@ -470,6 +470,53 @@ class EtfMarketHoldingSchema(BaseModel):
     report_period: Optional[str] = None
 
 
+class EtfMarketAnalysisSchema(BaseModel):
+    signal: str = "仅观察"
+    pattern: Optional[str] = None
+    summary: Optional[str] = None
+    support: Optional[float] = None
+    pressure: Optional[float] = None
+    ma5: Optional[float] = None
+    ma10: Optional[float] = None
+    ma20: Optional[float] = None
+    bias_ma10: Optional[float] = None
+    selected_reasons: List[str] = Field(default_factory=list)
+    risk_reasons: List[str] = Field(default_factory=list)
+
+
+class EtfEstimatedIopvSchema(BaseModel):
+    value: Optional[float] = None
+    premium_discount_pct: Optional[float] = None
+    coverage_weight_pct: Optional[float] = None
+    matched_holdings_count: int = 0
+    total_holdings_count: int = 0
+    report_period: Optional[str] = None
+    basis: Optional[str] = None
+    note: Optional[str] = None
+
+
+class EtfDailyMetricsSchema(BaseModel):
+    trade_date: Optional[str] = None
+    fund_shares: Optional[float] = None
+    nav: Optional[float] = None
+    derived_fund_size_yi: Optional[float] = None
+    exchange: Optional[str] = None
+    data_source: Optional[str] = None
+    updated_at: Optional[str] = None
+    cache_status: Optional[str] = None
+
+
+class EtfDailyMetricsRefreshResponse(BaseModel):
+    stock_code: str
+    base_code: str
+    instrument_type: str = "etf"
+    instrument_label: str = "ETF"
+    refreshed: bool = False
+    cache_status: str = "unknown"
+    daily_metrics: EtfDailyMetricsSchema = Field(default_factory=EtfDailyMetricsSchema)
+    errors: List[str] = Field(default_factory=list)
+
+
 class EtfMarketSnapshotResponse(BaseModel):
     query_id: Optional[str] = None
     stock_code: str
@@ -482,6 +529,9 @@ class EtfMarketSnapshotResponse(BaseModel):
     order_book: EtfMarketQuoteSchema
     profile: EtfMarketProfileSchema = Field(default_factory=EtfMarketProfileSchema)
     top_holdings: List[EtfMarketHoldingSchema] = Field(default_factory=list)
+    analysis: EtfMarketAnalysisSchema = Field(default_factory=EtfMarketAnalysisSchema)
+    estimated_iopv: EtfEstimatedIopvSchema = Field(default_factory=EtfEstimatedIopvSchema)
+    daily_metrics: EtfDailyMetricsSchema = Field(default_factory=EtfDailyMetricsSchema)
     data_sources: Dict[str, Optional[str]] = Field(default_factory=dict)
     errors: List[str] = Field(default_factory=list)
 

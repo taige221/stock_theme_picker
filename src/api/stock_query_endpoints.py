@@ -13,6 +13,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 
 from theme_picker.api.schemas import (
+    EtfDailyMetricsRefreshResponse,
     EtfQueryHistoryItemSchema,
     EtfQueryHistoryListResponse,
     EtfMarketSnapshotResponse,
@@ -126,7 +127,7 @@ def get_single_stock_status(task_id: str) -> StockQueryTaskStatusSchema:
         500: {"description": "服务器错误"},
     },
     summary="获取 ETF 市场快照",
-    description="通过 mootdx 和腾讯财经获取 ETF 的实时行情、盘口和最近日线，绕开东财链路。",
+    description="支持 ETF 代码或名称输入，返回 ETF 的实时行情、盘口、最近日线和 ETF 专属结论。",
 )
 def get_etf_market_snapshot(stock_code: str, bars: int = 20) -> EtfMarketSnapshotResponse:
     db = get_theme_picker_db()
@@ -164,6 +165,19 @@ def get_etf_market_snapshot(stock_code: str, bars: int = 20) -> EtfMarketSnapsho
                 "status": "completed",
                 "price": ((payload.get("quote") or {}).get("price")),
                 "change_pct": ((payload.get("quote") or {}).get("change_pct")),
+                "analysis_signal": ((payload.get("analysis") or {}).get("signal")),
+                "analysis_pattern": ((payload.get("analysis") or {}).get("pattern")),
+                "estimated_iopv": ((payload.get("estimated_iopv") or {}).get("value")),
+                "estimated_premium_discount_pct": ((payload.get("estimated_iopv") or {}).get("premium_discount_pct")),
+                "daily_metrics_trade_date": ((payload.get("daily_metrics") or {}).get("trade_date")),
+                "daily_metrics_fund_shares": ((payload.get("daily_metrics") or {}).get("fund_shares")),
+                "daily_metrics_nav": ((payload.get("daily_metrics") or {}).get("nav")),
+                "daily_metrics_derived_fund_size_yi": ((payload.get("daily_metrics") or {}).get("derived_fund_size_yi")),
+                "daily_metrics_exchange": ((payload.get("daily_metrics") or {}).get("exchange")),
+                "daily_metrics_cache_status": ((payload.get("daily_metrics") or {}).get("cache_status")),
+                "daily_metrics_updated_at": ((payload.get("daily_metrics") or {}).get("updated_at")),
+                "daily_metrics_source": ((payload.get("daily_metrics") or {}).get("data_source"))
+                or ((payload.get("data_sources") or {}).get("daily_metrics")),
                 "daily_bar_count": len(payload.get("daily_bars") or []),
                 "latest_bar_date": (latest_bar or {}).get("datetime"),
                 "top_holdings_count": len(payload.get("top_holdings") or []),
@@ -240,6 +254,55 @@ def get_etf_market_snapshot(stock_code: str, bars: int = 20) -> EtfMarketSnapsho
         raise HTTPException(
             status_code=500,
             detail={"error": "internal_error", "message": f"ETF 市场快照失败: {exc}"},
+        ) from exc
+
+
+@router.post(
+    "/etf-daily-metrics/{stock_code}/refresh",
+    response_model=EtfDailyMetricsRefreshResponse,
+    responses={
+        200: {"description": "ETF 日频指标刷新结果", "model": EtfDailyMetricsRefreshResponse},
+        400: {"description": "请求参数错误"},
+        500: {"description": "服务器错误"},
+    },
+    summary="手动刷新 ETF 日频指标快照",
+    description="强制在线拉取 ETF 的基金份额、单位净值和估算规模，并回写本地快照表。",
+)
+def refresh_etf_daily_metrics(stock_code: str) -> EtfDailyMetricsRefreshResponse:
+    try:
+        service = get_etf_market_service()
+        payload = service.refresh_daily_metrics(stock_code)
+        emit_etf_query_log(
+            {
+                "tag": "ETF_QUERY",
+                "event": "etf_daily_metrics_refreshed",
+                "stock_code": payload.get("stock_code"),
+                "base_code": payload.get("base_code"),
+                "refreshed": payload.get("refreshed"),
+                "cache_status": payload.get("cache_status"),
+                "daily_metrics_trade_date": ((payload.get("daily_metrics") or {}).get("trade_date")),
+                "daily_metrics_fund_shares": ((payload.get("daily_metrics") or {}).get("fund_shares")),
+                "daily_metrics_nav": ((payload.get("daily_metrics") or {}).get("nav")),
+                "daily_metrics_derived_fund_size_yi": ((payload.get("daily_metrics") or {}).get("derived_fund_size_yi")),
+                "daily_metrics_exchange": ((payload.get("daily_metrics") or {}).get("exchange")),
+                "daily_metrics_cache_status": ((payload.get("daily_metrics") or {}).get("cache_status")),
+                "daily_metrics_updated_at": ((payload.get("daily_metrics") or {}).get("updated_at")),
+                "daily_metrics_source": ((payload.get("daily_metrics") or {}).get("data_source")),
+                "error_count": len(payload.get("errors") or []),
+                "errors": (payload.get("errors") or [])[:5],
+            },
+            mirror_logger=logger,
+        )
+        return EtfDailyMetricsRefreshResponse(**payload)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "validation_error", "message": str(exc)},
+        ) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail={"error": "internal_error", "message": f"ETF 日频指标刷新失败: {exc}"},
         ) from exc
 
 
