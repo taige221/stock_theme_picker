@@ -177,6 +177,22 @@ def parse_env_float(
     return parsed
 
 
+def parse_env_csv_union(*values: Optional[str]) -> List[str]:
+    """Merge multiple comma-separated env values while preserving order."""
+    merged: List[str] = []
+    seen = set()
+    for raw_value in values:
+        if raw_value is None:
+            continue
+        for item in str(raw_value).split(','):
+            normalized = item.strip()
+            if not normalized or normalized in seen:
+                continue
+            seen.add(normalized)
+            merged.append(normalized)
+    return merged
+
+
 def normalize_news_strategy_profile(value: Optional[str]) -> str:
     """Normalize news strategy profile to known values."""
     candidate = (value or "short").strip().lower()
@@ -1263,11 +1279,15 @@ class Config:
         minimax_keys_str = os.getenv('MINIMAX_API_KEYS', '')
         minimax_api_keys = [k.strip() for k in minimax_keys_str.split(',') if k.strip()]
         
-        tavily_keys_str = os.getenv('TAVILY_API_KEYS', '') or os.getenv('TAVILY_API_KEY', '')
-        tavily_api_keys = [k.strip() for k in tavily_keys_str.split(',') if k.strip()]
-        
-        serpapi_keys_str = os.getenv('SERPAPI_API_KEYS', '') or os.getenv('SERPAPI_API_KEY', '')
-        serpapi_keys = [k.strip() for k in serpapi_keys_str.split(',') if k.strip()]
+        tavily_api_keys = parse_env_csv_union(
+            os.getenv('TAVILY_API_KEYS', ''),
+            os.getenv('TAVILY_API_KEY', ''),
+        )
+
+        serpapi_keys = parse_env_csv_union(
+            os.getenv('SERPAPI_API_KEYS', ''),
+            os.getenv('SERPAPI_API_KEY', ''),
+        )
 
         brave_keys_str = os.getenv('BRAVE_API_KEYS', '')
         brave_api_keys = [k.strip() for k in brave_keys_str.split(',') if k.strip()]

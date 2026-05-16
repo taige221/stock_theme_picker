@@ -182,6 +182,47 @@ class ThemePickerThemeListResponse(BaseModel):
     items: List[ThemePickerThemeListItemSchema] = Field(default_factory=list)
 
 
+class RuntimeSettingOptionSchema(BaseModel):
+    value: str
+    label: str
+
+
+class RuntimeSettingFieldSchema(BaseModel):
+    key: str
+    label: str
+    description: Optional[str] = None
+    input_type: str
+    value: str = ""
+    placeholder: Optional[str] = None
+    secret: bool = False
+    requires_restart: bool = False
+    options: List[RuntimeSettingOptionSchema] = Field(default_factory=list)
+
+
+class RuntimeSettingSectionSchema(BaseModel):
+    id: str
+    title: str
+    description: Optional[str] = None
+    fields: List[RuntimeSettingFieldSchema] = Field(default_factory=list)
+
+
+class RuntimeSettingsResponseSchema(BaseModel):
+    env_file: str
+    sections: List[RuntimeSettingSectionSchema] = Field(default_factory=list)
+    validation_issues: List[str] = Field(default_factory=list)
+
+
+class RuntimeSettingsUpdateRequestSchema(BaseModel):
+    values: Dict[str, Optional[str]] = Field(default_factory=dict)
+
+
+class RuntimeSettingsUpdateResponseSchema(BaseModel):
+    message: str
+    updated_keys: List[str] = Field(default_factory=list)
+    restart_required_keys: List[str] = Field(default_factory=list)
+    validation_issues: List[str] = Field(default_factory=list)
+
+
 class StockQueryAnalyzeRequest(BaseModel):
     query: Optional[str] = Field(None, description="股票代码或股票名称")
     stock_code: Optional[str] = Field(None, description="显式股票代码")

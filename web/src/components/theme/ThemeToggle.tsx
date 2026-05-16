@@ -1,18 +1,11 @@
 import type React from 'react';
-import { useEffect, useState } from 'react';
 import { Moon, SunMedium } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { Button } from '../common';
 
 export const ThemeToggle: React.FC = () => {
   const { resolvedTheme, setTheme } = useTheme();
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  const isDark = mounted ? resolvedTheme !== 'light' : true;
+  const isDark = resolvedTheme !== 'light';
 
   return (
     <Button

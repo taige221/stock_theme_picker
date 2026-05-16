@@ -1,5 +1,5 @@
 import type React from 'react';
-import { Bell, Layers3, LayoutGrid, Radar, Sparkles, Star, WalletCards } from 'lucide-react';
+import { Bell, Layers3, LayoutGrid, Radar, Settings2, Sparkles, Star, WalletCards } from 'lucide-react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { ThemeToggle } from '../theme/ThemeToggle';
 import { Badge } from '../common';
@@ -12,6 +12,7 @@ const NAV_ITEMS = [
   { to: '/etf-query', label: 'ETF 查询', icon: Layers3 },
   { to: '/watchlist', label: '观察池', icon: WalletCards },
   { to: '/deep-analysis', label: '深度分析', icon: Star },
+  { to: '/settings', label: '设置', icon: Settings2 },
 ] as const;
 
 export const AppShell: React.FC = () => {

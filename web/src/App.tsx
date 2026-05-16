@@ -4,6 +4,7 @@ import { AppShell } from './components/layout/AppShell';
 import DashboardPage from './pages/DashboardPage';
 import DeepAnalysisPage from './pages/DeepAnalysisPage';
 import EtfQueryPage from './pages/EtfQueryPage';
+import SettingsPage from './pages/SettingsPage';
 import SingleStockQueryPage from './pages/SingleStockQueryPage';
 import ThemeStockPickerPage from './pages/ThemeStockPickerPage';
 import WatchlistPage from './pages/WatchlistPage';
@@ -19,6 +20,7 @@ const App: React.FC = () => {
           <Route path="/etf-query" element={<EtfQueryPage />} />
           <Route path="/deep-analysis" element={<DeepAnalysisPage />} />
           <Route path="/watchlist" element={<WatchlistPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
           <Route path="/chat" element={<DeepAnalysisPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
