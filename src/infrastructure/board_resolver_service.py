@@ -19,6 +19,7 @@ import pandas as pd
 
 from theme_picker.data_provider.tushare_fetcher import _TushareHttpClient
 from theme_picker.domain.theme_event import ThemeDefinitionSchema
+from theme_picker.infrastructure.board_http_provider import get_board_http_provider
 from theme_picker.infrastructure.runtime import get_theme_picker_config
 from theme_picker.infrastructure.stock_pool_service import ThemeStockPoolService, canonicalize_stock_code
 
@@ -50,6 +51,7 @@ class ThemeBoardResolverService:
         self._dc_theme_trade_dates: Dict[str, str] = {}
         self._global_board_to_dc_mappings: Optional[Dict[str, str]] = None
         self._tushare_client: Optional[_TushareHttpClient] = None
+        self._board_http_provider = get_board_http_provider()
 
     def resolve_theme_candidates(
         self,
@@ -298,9 +300,7 @@ class ThemeBoardResolverService:
                 return self._board_index_df
 
             try:
-                import akshare as ak
-
-                df = ak.stock_board_concept_name_em()
+                df = self._board_http_provider.get_concept_board_index()
             except Exception as exc:
                 logger.warning("加载东方财富概念板块列表失败: %s", exc)
                 cached_df = self._load_cached_board_index()
@@ -400,9 +400,7 @@ class ThemeBoardResolverService:
 
     def _fetch_board_constituent_codes(self, board_code: str) -> List[str]:
         try:
-            import akshare as ak
-
-            df = ak.stock_board_concept_cons_em(symbol=board_code)
+            df = self._board_http_provider.get_concept_board_constituents(board_code)
         except Exception as exc:
             logger.warning("获取概念板块成分股失败: board=%s err=%s", board_code, exc)
             cached_codes = self._load_cached_board_constituents(board_code)

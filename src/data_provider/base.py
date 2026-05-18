@@ -589,6 +589,59 @@ class DataFetcherManager:
         with self._get_fetcher_call_lock(fetcher):
             return method(*args, **kwargs)
 
+    def get_realtime_http_quote(
+        self,
+        stock_code: str,
+        *,
+        source: str,
+        timeout_seconds: Optional[float] = None,
+    ):
+        """Try the unified HTTP quote adapter for CN realtime sources."""
+        from theme_picker.infrastructure.market_http_provider import get_market_http_provider
+
+        try:
+            return get_market_http_provider().get_quote(
+                stock_code,
+                source=source,
+                timeout_seconds=timeout_seconds or 10,
+            )
+        except Exception as exc:
+            logger.debug(
+                "[实时行情] HTTP adapter 失败: code=%s source=%s timeout=%s err=%s",
+                stock_code,
+                source,
+                timeout_seconds,
+                exc,
+            )
+            return None
+
+    def get_belong_boards_http(self, stock_code: str) -> List[Dict[str, Any]]:
+        """Try the unified HTTP belong-board adapter for CN securities."""
+        from theme_picker.infrastructure.board_http_provider import get_board_http_provider
+
+        normalized_code = normalize_stock_code(stock_code)
+        try:
+            frame = get_board_http_provider().get_belong_boards(normalized_code)
+        except Exception as exc:
+            logger.debug("[所属板块] HTTP adapter 失败: code=%s err=%s", normalized_code, exc)
+            return []
+        return self._normalize_belong_boards(frame)
+
+    def get_sector_rankings_http(
+        self,
+        n: int = 5,
+        *,
+        timeout_seconds: float = 10,
+    ) -> Tuple[List[Dict], List[Dict]]:
+        """Try the unified HTTP sector-ranking adapter."""
+        from theme_picker.infrastructure.board_http_provider import get_board_http_provider
+
+        try:
+            return get_board_http_provider().get_sector_rankings(n=n, timeout_seconds=timeout_seconds)
+        except Exception as exc:
+            logger.debug("[板块排行] HTTP adapter 失败: n=%s err=%s", n, exc)
+            return [], []
+
     def _get_cached_stock_name(self, stock_code: str) -> Optional[str]:
         self._ensure_concurrency_guards()
         with self._stock_name_cache_lock:
@@ -1246,36 +1299,44 @@ class DataFetcherManager:
                 quote = None
                 
                 if source == "efinance":
+                    quote = self.get_realtime_http_quote(stock_code, source=source)
                     # 尝试 EfinanceFetcher
-                    for fetcher in self._get_fetchers_snapshot():
-                        if fetcher.name == "EfinanceFetcher":
-                            if hasattr(fetcher, 'get_realtime_quote'):
-                                quote = self._call_fetcher_method(fetcher, 'get_realtime_quote', stock_code)
-                            break
+                    if quote is None:
+                        for fetcher in self._get_fetchers_snapshot():
+                            if fetcher.name == "EfinanceFetcher":
+                                if hasattr(fetcher, 'get_realtime_quote'):
+                                    quote = self._call_fetcher_method(fetcher, 'get_realtime_quote', stock_code)
+                                break
                 
                 elif source == "akshare_em":
+                    quote = self.get_realtime_http_quote(stock_code, source=source)
                     # 尝试 AkshareFetcher 东财数据源
-                    for fetcher in self._get_fetchers_snapshot():
-                        if fetcher.name == "AkshareFetcher":
-                            if hasattr(fetcher, 'get_realtime_quote'):
-                                quote = self._call_fetcher_method(fetcher, 'get_realtime_quote', stock_code, source="em")
-                            break
+                    if quote is None:
+                        for fetcher in self._get_fetchers_snapshot():
+                            if fetcher.name == "AkshareFetcher":
+                                if hasattr(fetcher, 'get_realtime_quote'):
+                                    quote = self._call_fetcher_method(fetcher, 'get_realtime_quote', stock_code, source="em")
+                                break
                 
                 elif source == "akshare_sina":
+                    quote = self.get_realtime_http_quote(stock_code, source=source)
                     # 尝试 AkshareFetcher 新浪数据源
-                    for fetcher in self._get_fetchers_snapshot():
-                        if fetcher.name == "AkshareFetcher":
-                            if hasattr(fetcher, 'get_realtime_quote'):
-                                quote = self._call_fetcher_method(fetcher, 'get_realtime_quote', stock_code, source="sina")
-                            break
+                    if quote is None:
+                        for fetcher in self._get_fetchers_snapshot():
+                            if fetcher.name == "AkshareFetcher":
+                                if hasattr(fetcher, 'get_realtime_quote'):
+                                    quote = self._call_fetcher_method(fetcher, 'get_realtime_quote', stock_code, source="sina")
+                                break
                 
                 elif source in ("tencent", "akshare_qq"):
+                    quote = self.get_realtime_http_quote(stock_code, source=source)
                     # 尝试 AkshareFetcher 腾讯数据源
-                    for fetcher in self._get_fetchers_snapshot():
-                        if fetcher.name == "AkshareFetcher":
-                            if hasattr(fetcher, 'get_realtime_quote'):
-                                quote = self._call_fetcher_method(fetcher, 'get_realtime_quote', stock_code, source="tencent")
-                            break
+                    if quote is None:
+                        for fetcher in self._get_fetchers_snapshot():
+                            if fetcher.name == "AkshareFetcher":
+                                if hasattr(fetcher, 'get_realtime_quote'):
+                                    quote = self._call_fetcher_method(fetcher, 'get_realtime_quote', stock_code, source="tencent")
+                                break
                 
                 elif source == "tushare":
                     # 尝试 TushareFetcher（需要 Tushare Pro 积分）
@@ -1575,6 +1636,10 @@ class DataFetcherManager:
         stock_code = normalize_stock_code(stock_code)
         if _market_tag(stock_code) != "cn":
             return []
+        http_boards = self.get_belong_boards_http(stock_code)
+        if http_boards:
+            logger.info("[BoardHttpProvider] 获取所属板块成功: %s, count=%s", stock_code, len(http_boards))
+            return http_boards
         for fetcher in self._fetchers:
             if not hasattr(fetcher, "get_belong_board"):
                 continue
@@ -1593,6 +1658,10 @@ class DataFetcherManager:
         stock_code = normalize_stock_code(stock_code)
         if _market_tag(stock_code) != "cn":
             return [], None
+        http_boards = self.get_belong_boards_http(stock_code)
+        if http_boards:
+            logger.info("[BoardHttpProvider] 获取所属板块成功: %s, count=%s", stock_code, len(http_boards))
+            return http_boards, "BoardHttpProvider"
 
         for fetcher in self._fetchers:
             if not hasattr(fetcher, "get_belong_board"):
@@ -2716,6 +2785,44 @@ class DataFetcherManager:
             """Get sector rankings with ordered fallback chain metadata."""
             source_chain: List[Dict[str, Any]] = []
             last_error = ""
+
+            start = time.time()
+            try:
+                top_http, bottom_http = self.get_sector_rankings_http(n)
+                duration_ms = int((time.time() - start) * 1000)
+                if top_http or bottom_http:
+                    source_chain.append(
+                        {
+                            "provider": "BoardHttpProvider",
+                            "result": "ok",
+                            "duration_ms": duration_ms,
+                        }
+                    )
+                    logger.info("[BoardHttpProvider] 获取板块排行成功")
+                    return top_http, bottom_http, source_chain, ""
+
+                last_error = "BoardHttpProvider返回空结果"
+                source_chain.append(
+                    {
+                        "provider": "BoardHttpProvider",
+                        "result": "empty",
+                        "duration_ms": duration_ms,
+                        "error": last_error,
+                    }
+                )
+            except Exception as e:
+                error_type, error_reason = summarize_exception(e)
+                last_error = f"BoardHttpProvider ({error_type}) {error_reason}"
+                duration_ms = int((time.time() - start) * 1000)
+                source_chain.append(
+                    {
+                        "provider": "BoardHttpProvider",
+                        "result": "failed",
+                        "duration_ms": duration_ms,
+                        "error": error_reason,
+                    }
+                )
+                logger.warning("[BoardHttpProvider] 获取板块排行失败: %s", error_reason)
 
             # 直接遍历管理器已经按 priority 排好序的数据源列表
             for fetcher in self._fetchers:

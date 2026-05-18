@@ -6,6 +6,7 @@ import { getParsedApiError, type ParsedApiError } from '../api/error';
 import {
   stockQueryApi,
   type EtfMarketBar,
+  type EtfDailyMetricsRefreshResponse,
   type EtfQueryHistoryItem,
   type EtfMarketSnapshotResponse,
 } from '../api/stockQuery';
@@ -37,6 +38,13 @@ function formatLargeAmountYi(value?: number | null): string {
   return `${formatNumber(value, 2)} 亿`;
 }
 
+function formatFundShares(value?: number | null): string {
+  if (value === null || value === undefined || Number.isNaN(value)) return '--';
+  if (Math.abs(value) >= 100000000) return `${formatNumber(value / 100000000, 2)} 亿份`;
+  if (Math.abs(value) >= 10000) return `${formatNumber(value / 10000, 2)} 万份`;
+  return `${formatNumber(value, 0)} 份`;
+}
+
 function formatVolume(value?: number | null): string {
   if (value === null || value === undefined || Number.isNaN(value)) return '--';
   if (Math.abs(value) >= 100000000) return `${formatNumber(value / 100000000, 2)} 亿`;
@@ -54,6 +62,20 @@ function quoteTone(value?: number | null): string {
   if (value > 0) return 'text-danger';
   if (value < 0) return 'text-success';
   return 'text-foreground';
+}
+
+function analysisBadgeVariant(signal?: string | null): 'default' | 'success' | 'warning' | 'info' {
+  switch (signal) {
+    case '趋势跟随':
+    case '低吸观察':
+      return 'success';
+    case '不宜追高':
+      return 'warning';
+    case '短线异动':
+      return 'info';
+    default:
+      return 'default';
+  }
 }
 
 function resolveLatestBar(bars: EtfMarketBar[]): EtfMarketBar | null {
@@ -75,6 +97,35 @@ function formatHistoryTime(value: string): string {
   }).format(date);
 }
 
+function formatDateTime(value?: string | null): string {
+  if (!value) return '--';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  return new Intl.DateTimeFormat('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).format(date);
+}
+
+function formatDailyMetricsCacheStatus(value?: string | null): string {
+  switch (value) {
+    case 'hit':
+      return '本地命中';
+    case 'refreshed':
+      return '在线刷新';
+    case 'stale_fallback':
+      return '旧快照回退';
+    default:
+      return value || '--';
+  }
+}
+
 const EtfQueryPage: React.FC = () => {
   const location = useLocation();
   const initialQuery = useMemo(() => {
@@ -93,6 +144,9 @@ const EtfQueryPage: React.FC = () => {
   const [historyError, setHistoryError] = useState<ParsedApiError | null>(null);
   const [historyRestoreId, setHistoryRestoreId] = useState<string | null>(null);
   const [currentHistoryId, setCurrentHistoryId] = useState<string | null>(null);
+  const [dailyMetricsRefreshing, setDailyMetricsRefreshing] = useState(false);
+  const [dailyMetricsMessage, setDailyMetricsMessage] = useState<string | null>(null);
+  const [dailyMetricsMessageTone, setDailyMetricsMessageTone] = useState<'success' | 'warning'>('success');
 
   useEffect(() => {
     setQuery(initialQuery);
@@ -120,7 +174,6 @@ const EtfQueryPage: React.FC = () => {
     setResult(snapshot);
     setLastResolvedInput(resolvedInput);
     setCurrentHistoryId(snapshot.queryId ?? null);
-    void loadHistory(snapshot.stockCode);
   };
 
   const loadEtfSnapshot = async (rawInput: string) => {
@@ -129,6 +182,7 @@ const EtfQueryPage: React.FC = () => {
 
     setIsLoading(true);
     setError(null);
+    setDailyMetricsMessage(null);
     try {
       const snapshot = await stockQueryApi.getEtfMarketSnapshot(normalized, 60);
       await applySnapshot(snapshot, normalized);
@@ -144,11 +198,62 @@ const EtfQueryPage: React.FC = () => {
     await loadEtfSnapshot(query);
   };
 
+  const applyDailyMetricsRefresh = (refreshResult: EtfDailyMetricsRefreshResponse) => {
+    setResult((previous) => {
+      if (!previous || previous.stockCode !== refreshResult.stockCode) {
+        return previous;
+      }
+      return {
+        ...previous,
+        dailyMetrics: refreshResult.dailyMetrics,
+        dataSources: {
+          ...previous.dataSources,
+          dailyMetrics: refreshResult.dailyMetrics.dataSource ?? previous.dataSources.dailyMetrics,
+        },
+        errors: refreshResult.errors.length ? refreshResult.errors : previous.errors,
+      };
+    });
+  };
+
+  const handleDailyMetricsRefresh = async () => {
+    const stockCode = result?.stockCode;
+    if (!stockCode) return;
+
+    setDailyMetricsRefreshing(true);
+    setDailyMetricsMessage(null);
+    try {
+      const refreshResult = await stockQueryApi.refreshEtfDailyMetrics(stockCode);
+      applyDailyMetricsRefresh(refreshResult);
+      setDailyMetricsMessageTone(refreshResult.refreshed ? 'success' : 'warning');
+      setDailyMetricsMessage(
+        refreshResult.refreshed
+          ? '日频指标已刷新并回写本地快照。'
+          : '在线刷新失败，当前展示的是本地旧快照。',
+      );
+    } catch (requestError) {
+      const parsed = getParsedApiError(requestError);
+      setDailyMetricsMessageTone('warning');
+      setDailyMetricsMessage(parsed.message || '日频指标刷新失败');
+    } finally {
+      setDailyMetricsRefreshing(false);
+    }
+  };
+
   const latestBar = useMemo(() => resolveLatestBar(result?.dailyBars ?? []), [result?.dailyBars]);
   const quote = result?.quote;
   const orderBook = result?.orderBook;
   const profile = result?.profile;
   const topHoldings = result?.topHoldings ?? [];
+  const analysis = result?.analysis;
+  const estimatedIopv = result?.estimatedIopv;
+  const dailyMetrics = result?.dailyMetrics;
+  const hasDailyMetrics = Boolean(
+    dailyMetrics && (
+      dailyMetrics.fundShares !== null && dailyMetrics.fundShares !== undefined
+      || dailyMetrics.nav !== null && dailyMetrics.nav !== undefined
+      || dailyMetrics.derivedFundSizeYi !== null && dailyMetrics.derivedFundSizeYi !== undefined
+    ),
+  );
   const hasPendingInputChange = query.trim() !== (lastResolvedInput || '').trim();
 
   const handleHistoryRestore = async (item: EtfQueryHistoryItem) => {
@@ -190,11 +295,11 @@ const EtfQueryPage: React.FC = () => {
 
             <form className="space-y-4" onSubmit={handleSubmit}>
               <Input
-                label="ETF 代码"
+                label="ETF 代码或名称"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder="例如 512880.SH 或 159995"
-                hint="建议优先输入 ETF 代码，支持裸码或带交易所后缀。"
+                placeholder="例如 512880.SH、159995、证券ETF、沪深300ETF"
+                hint="支持 ETF 代码、裸码和常见 ETF 名称；名称不唯一时后端会提示你补充。"
               />
               <div className="flex flex-wrap gap-2">
                 {QUICK_ETF_QUERIES.map((item) => (
@@ -215,7 +320,7 @@ const EtfQueryPage: React.FC = () => {
                 </Button>
                 <Button variant="outline" size="lg" onClick={() => {
                   setHistoryOpen(true);
-                  void loadHistory(result?.stockCode);
+                  void loadHistory();
                 }}>
                   <Clock3 className="h-4 w-4" />
                   历史记录
@@ -282,7 +387,7 @@ const EtfQueryPage: React.FC = () => {
       {!result && !isLoading ? (
         <EmptyState
           title="先查一只 ETF"
-          description="推荐先从 512880、159995、510300 这类代码开始。这个页面会优先展示 ETF 的实时价量、涨跌停价和最近日线。"
+          description="现在既可以输 512880、159995、510300 这类代码，也可以直接输证券ETF、沪深300ETF 这类名称。"
           icon={<Layers3 className="h-7 w-7" />}
         />
       ) : null}
@@ -349,11 +454,201 @@ const EtfQueryPage: React.FC = () => {
               <div className="flex items-center gap-3">
                 <Activity className="h-5 w-5 text-cyan" />
                 <div>
-                  <p className="text-xs uppercase tracking-[0.16em] text-secondary-text">Live Snapshot</p>
-                  <h3 className="mt-1 text-2xl font-semibold text-foreground">实时交易观察</h3>
+                  <p className="text-xs uppercase tracking-[0.16em] text-secondary-text">ETF Judgment</p>
+                  <h3 className="mt-1 text-2xl font-semibold text-foreground">ETF 专属结论</h3>
                 </div>
               </div>
               <div className="mt-5 space-y-4">
+                <div className="flex flex-wrap items-center gap-3">
+                  <Badge variant={analysisBadgeVariant(analysis?.signal)} className="border-0 px-3 py-1 text-sm">
+                    {analysis?.signal || '仅观察'}
+                  </Badge>
+                  <Badge variant="default" className="border-border/50 px-3 py-1 text-sm">
+                    {analysis?.pattern || '--'}
+                  </Badge>
+                </div>
+
+                <div className="rounded-2xl border border-border/60 bg-card/60 p-4">
+                  <p className="text-sm leading-7 text-foreground">
+                    {analysis?.summary || '当前 ETF 还没有形成更明确的交易结论。'}
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+                  <div className="rounded-2xl border border-border/60 bg-card/60 p-4">
+                    <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">支撑位</p>
+                    <p className="mt-2 text-xl font-semibold text-success">{formatNumber(analysis?.support, 3)}</p>
+                  </div>
+                  <div className="rounded-2xl border border-border/60 bg-card/60 p-4">
+                    <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">压力位</p>
+                    <p className="mt-2 text-xl font-semibold text-danger">{formatNumber(analysis?.pressure, 3)}</p>
+                  </div>
+                  <div className="rounded-2xl border border-border/60 bg-card/60 p-4">
+                    <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">MA10</p>
+                    <p className="mt-2 text-xl font-semibold text-foreground">{formatNumber(analysis?.ma10, 3)}</p>
+                  </div>
+                  <div className="rounded-2xl border border-border/60 bg-card/60 p-4">
+                    <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">偏离 MA10</p>
+                    <p className={`mt-2 text-xl font-semibold ${quoteTone(analysis?.biasMa10)}`}>{formatSignedPercent(analysis?.biasMa10)}</p>
+                  </div>
+                </div>
+
+                {estimatedIopv?.value ? (
+                  <div className="rounded-2xl border border-border/60 bg-card/60 p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">Estimated IOPV</p>
+                        <p className="mt-2 text-2xl font-semibold text-foreground">{formatNumber(estimatedIopv.value, 3)}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">估算折溢价</p>
+                        <p className={`mt-2 text-2xl font-semibold ${quoteTone(estimatedIopv.premiumDiscountPct)}`}>
+                          {formatSignedPercent(estimatedIopv.premiumDiscountPct)}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                      <div className="rounded-2xl border border-border/50 bg-background/70 p-3">
+                        <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">覆盖权重</p>
+                        <p className="mt-2 text-lg font-semibold text-foreground">{formatPercent(estimatedIopv.coverageWeightPct)}</p>
+                      </div>
+                      <div className="rounded-2xl border border-border/50 bg-background/70 p-3">
+                        <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">命中持仓</p>
+                        <p className="mt-2 text-lg font-semibold text-foreground">
+                          {estimatedIopv.matchedHoldingsCount} / {estimatedIopv.totalHoldingsCount}
+                        </p>
+                      </div>
+                      <div className="rounded-2xl border border-border/50 bg-background/70 p-3">
+                        <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">披露期</p>
+                        <p className="mt-2 text-lg font-semibold text-foreground">{estimatedIopv.reportPeriod || '--'}</p>
+                      </div>
+                    </div>
+                    <p className="mt-4 text-sm leading-7 text-secondary-text">
+                      {estimatedIopv.note || '这是估算值，不等同于交易所正式 IOPV。'}
+                    </p>
+                  </div>
+                ) : null}
+
+                {result ? (
+                  <div className="rounded-2xl border border-border/60 bg-card/60 p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">Daily Metrics</p>
+                        <p className="mt-2 text-sm leading-7 text-secondary-text">
+                          这组是基金日频口径，和盘中成交价、估算 IOPV 不是同一个概念。
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge variant="default" className="border-border/50 px-3 py-1 text-sm">
+                          {dailyMetrics?.tradeDate || '--'}
+                        </Badge>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => void handleDailyMetricsRefresh()}
+                          isLoading={dailyMetricsRefreshing}
+                          loadingText="刷新中..."
+                        >
+                          <RefreshCw className="h-4 w-4" />
+                          刷新日频
+                        </Button>
+                      </div>
+                    </div>
+                    {dailyMetricsMessage ? (
+                      <div className="mt-4">
+                        <InlineAlert
+                          title={dailyMetricsMessageTone === 'success' ? '刷新完成' : '刷新提示'}
+                          variant={dailyMetricsMessageTone}
+                          message={dailyMetricsMessage}
+                        />
+                      </div>
+                    ) : null}
+                    {hasDailyMetrics ? (
+                      <>
+                        <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                          <div className="rounded-2xl border border-border/50 bg-background/70 p-3">
+                            <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">基金份额</p>
+                            <p className="mt-2 text-lg font-semibold text-foreground">{formatFundShares(dailyMetrics?.fundShares)}</p>
+                          </div>
+                          <div className="rounded-2xl border border-border/50 bg-background/70 p-3">
+                            <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">单位净值</p>
+                            <p className="mt-2 text-lg font-semibold text-foreground">{formatNumber(dailyMetrics?.nav, 4)}</p>
+                          </div>
+                          <div className="rounded-2xl border border-border/50 bg-background/70 p-3">
+                            <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">估算规模</p>
+                            <p className="mt-2 text-lg font-semibold text-foreground">{formatLargeAmountYi(dailyMetrics?.derivedFundSizeYi)}</p>
+                          </div>
+                        </div>
+                        <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                          <div className="rounded-2xl border border-border/50 bg-background/70 p-3">
+                            <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">实时成交价</p>
+                            <p className="mt-2 text-lg font-semibold text-foreground">{formatNumber(quote?.price, 3)}</p>
+                          </div>
+                          <div className="rounded-2xl border border-border/50 bg-background/70 p-3">
+                            <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">估算 IOPV</p>
+                            <p className="mt-2 text-lg font-semibold text-foreground">{formatNumber(estimatedIopv?.value, 3)}</p>
+                          </div>
+                          <div className="rounded-2xl border border-border/50 bg-background/70 p-3">
+                            <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">日频来源</p>
+                            <p className="mt-2 text-sm font-semibold text-foreground">
+                              {dailyMetrics?.exchange || '--'} / {dailyMetrics?.dataSource || result.dataSources.dailyMetrics || '--'}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                          <div className="rounded-2xl border border-border/50 bg-background/70 p-3">
+                            <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">缓存状态</p>
+                            <p className="mt-2 text-sm font-semibold text-foreground">
+                              {formatDailyMetricsCacheStatus(dailyMetrics?.cacheStatus)}
+                            </p>
+                          </div>
+                          <div className="rounded-2xl border border-border/50 bg-background/70 p-3">
+                            <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">上次刷新时间</p>
+                            <p className="mt-2 text-sm font-semibold text-foreground">
+                              {formatDateTime(dailyMetrics?.updatedAt)}
+                            </p>
+                          </div>
+                        </div>
+                        <p className="mt-4 text-sm leading-7 text-secondary-text">
+                          `基金份额` 表示一共多少份，`单位净值` 表示每份净资产值多少钱，`估算规模` 是两者相乘后的日频口径结果。
+                        </p>
+                      </>
+                    ) : (
+                      <div className="mt-4 rounded-2xl border border-dashed border-border/60 bg-background/60 p-4">
+                        <p className="text-sm leading-7 text-secondary-text">
+                          当前还没有可用的日频指标，可以先点击右上角 `刷新日频`，拉取基金份额、单位净值和估算规模。
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                ) : null}
+
+                {analysis?.selectedReasons?.length ? (
+                  <div className="rounded-2xl border border-border/60 bg-card/60 p-4">
+                    <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">看多理由</p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {analysis.selectedReasons.map((item) => (
+                        <Badge key={item} variant="success" className="rounded-full border-0 px-3 py-1 text-xs leading-6">
+                          {item}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                {analysis?.riskReasons?.length ? (
+                  <div className="rounded-2xl border border-border/60 bg-card/60 p-4">
+                    <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">风险提示</p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {analysis.riskReasons.map((item) => (
+                        <Badge key={item} variant="warning" className="rounded-full border-0 px-3 py-1 text-xs leading-6">
+                          {item}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
                 <div className="grid grid-cols-2 gap-3">
                   <div className="rounded-2xl border border-border/60 bg-card/60 p-4">
                     <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">成交额</p>

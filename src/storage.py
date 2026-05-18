@@ -148,6 +148,38 @@ class EtfQueryHistory(Base):
     )
 
 
+class EtfDailyMetricsSnapshot(Base):
+    __tablename__ = "etf_daily_metrics_snapshot"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    stock_code = Column(String(16), nullable=False, index=True)
+    trade_date = Column(Date, nullable=False, index=True)
+    fund_shares = Column(Float, nullable=True)
+    nav = Column(Float, nullable=True)
+    derived_fund_size_yi = Column(Float, nullable=True)
+    exchange = Column(String(16), nullable=True)
+    data_source = Column(String(64), nullable=True)
+    created_at = Column(DateTime, default=datetime.now, index=True)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, index=True)
+
+    __table_args__ = (
+        UniqueConstraint("stock_code", "trade_date", name="uix_etf_daily_metrics_stock_date"),
+        Index("ix_etf_daily_metrics_stock_date", "stock_code", "trade_date"),
+    )
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "stock_code": self.stock_code,
+            "trade_date": self.trade_date.isoformat() if self.trade_date else None,
+            "fund_shares": self.fund_shares,
+            "nav": self.nav,
+            "derived_fund_size_yi": self.derived_fund_size_yi,
+            "exchange": self.exchange,
+            "data_source": self.data_source,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
 class StockBelongBoardsCache(Base):
     __tablename__ = "stock_belong_boards_cache"
 
@@ -706,6 +738,60 @@ class DatabaseManager:
                 )
             )
         return 1
+
+    def save_etf_daily_metrics_snapshots(self, rows: List[Dict[str, Any]]) -> int:
+        if not rows:
+            return 0
+
+        normalized_rows: List[Dict[str, Any]] = []
+        for row in rows:
+            stock_code = str(row.get("stock_code") or "").strip()
+            trade_date = self._normalize_daily_date(row.get("trade_date"))
+            if not stock_code or trade_date is None:
+                continue
+            normalized_rows.append(
+                {
+                    "stock_code": stock_code,
+                    "trade_date": trade_date,
+                    "fund_shares": self._normalize_sql_value(row.get("fund_shares")),
+                    "nav": self._normalize_sql_value(row.get("nav")),
+                    "derived_fund_size_yi": self._normalize_sql_value(row.get("derived_fund_size_yi")),
+                    "exchange": row.get("exchange"),
+                    "data_source": row.get("data_source"),
+                    "updated_at": datetime.now(),
+                }
+            )
+
+        if not normalized_rows:
+            return 0
+
+        with self.session_scope() as session:
+            for item in normalized_rows:
+                stmt = sqlite_insert(EtfDailyMetricsSnapshot).values(item)
+                excluded = stmt.excluded
+                session.execute(
+                    stmt.on_conflict_do_update(
+                        index_elements=["stock_code", "trade_date"],
+                        set_={
+                            "fund_shares": excluded.fund_shares,
+                            "nav": excluded.nav,
+                            "derived_fund_size_yi": excluded.derived_fund_size_yi,
+                            "exchange": excluded.exchange,
+                            "data_source": excluded.data_source,
+                            "updated_at": excluded.updated_at,
+                        },
+                    )
+                )
+        return len(normalized_rows)
+
+    def get_latest_etf_daily_metrics_snapshot(self, stock_code: str) -> Optional[EtfDailyMetricsSnapshot]:
+        with self.session_scope() as session:
+            return session.execute(
+                select(EtfDailyMetricsSnapshot)
+                .where(EtfDailyMetricsSnapshot.stock_code == stock_code)
+                .order_by(desc(EtfDailyMetricsSnapshot.trade_date))
+                .limit(1)
+            ).scalars().first()
 
     def get_etf_query_history(self, query_id: str) -> Optional[EtfQueryHistory]:
         with self.session_scope() as session:

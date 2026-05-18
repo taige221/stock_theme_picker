@@ -286,23 +286,39 @@ class ThemeSignalService:
             quote = None
             try:
                 if source == "efinance":
-                    quote = self._call_named_fetcher_quote("EfinanceFetcher", normalized_code)
+                    quote = self.fetcher_manager.get_realtime_http_quote(normalized_code, source=source)
+                    if quote is None:
+                        quote = self._call_named_fetcher_quote("EfinanceFetcher", normalized_code)
                 elif source == "akshare_em":
-                    quote = self._call_named_fetcher_quote("AkshareFetcher", normalized_code, source="em")
+                    quote = self.fetcher_manager.get_realtime_http_quote(normalized_code, source=source)
+                    if quote is None:
+                        quote = self._call_named_fetcher_quote("AkshareFetcher", normalized_code, source="em")
                 elif source == "akshare_sina":
-                    quote = self._call_named_fetcher_quote(
-                        "AkshareFetcher",
+                    quote = self.fetcher_manager.get_realtime_http_quote(
                         normalized_code,
-                        source="sina",
+                        source=source,
                         timeout_seconds=self.realtime_quote_timeout,
                     )
+                    if quote is None:
+                        quote = self._call_named_fetcher_quote(
+                            "AkshareFetcher",
+                            normalized_code,
+                            source="sina",
+                            timeout_seconds=self.realtime_quote_timeout,
+                        )
                 elif source in ("tencent", "akshare_qq"):
-                    quote = self._call_named_fetcher_quote(
-                        "AkshareFetcher",
+                    quote = self.fetcher_manager.get_realtime_http_quote(
                         normalized_code,
-                        source="tencent",
+                        source=source,
                         timeout_seconds=max(self.realtime_quote_timeout, self.tencent_quote_timeout),
                     )
+                    if quote is None:
+                        quote = self._call_named_fetcher_quote(
+                            "AkshareFetcher",
+                            normalized_code,
+                            source="tencent",
+                            timeout_seconds=max(self.realtime_quote_timeout, self.tencent_quote_timeout),
+                        )
                 elif source == "tushare":
                     quote = self._call_named_fetcher_quote("TushareFetcher", raw_stock_code or normalized_code)
             except Exception as exc:

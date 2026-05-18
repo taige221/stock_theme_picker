@@ -310,6 +310,53 @@ export interface EtfMarketHolding {
   reportPeriod?: string | null;
 }
 
+export interface EtfMarketAnalysis {
+  signal: string;
+  pattern?: string | null;
+  summary?: string | null;
+  support?: number | null;
+  pressure?: number | null;
+  ma5?: number | null;
+  ma10?: number | null;
+  ma20?: number | null;
+  biasMa10?: number | null;
+  selectedReasons: string[];
+  riskReasons: string[];
+}
+
+export interface EtfEstimatedIopv {
+  value?: number | null;
+  premiumDiscountPct?: number | null;
+  coverageWeightPct?: number | null;
+  matchedHoldingsCount: number;
+  totalHoldingsCount: number;
+  reportPeriod?: string | null;
+  basis?: string | null;
+  note?: string | null;
+}
+
+export interface EtfDailyMetrics {
+  tradeDate?: string | null;
+  fundShares?: number | null;
+  nav?: number | null;
+  derivedFundSizeYi?: number | null;
+  exchange?: string | null;
+  dataSource?: string | null;
+  updatedAt?: string | null;
+  cacheStatus?: string | null;
+}
+
+export interface EtfDailyMetricsRefreshResponse {
+  stockCode: string;
+  baseCode: string;
+  instrumentType: string;
+  instrumentLabel: string;
+  refreshed: boolean;
+  cacheStatus: string;
+  dailyMetrics: EtfDailyMetrics;
+  errors: string[];
+}
+
 export interface EtfMarketSnapshotResponse {
   queryId?: string | null;
   stockCode: string;
@@ -322,6 +369,9 @@ export interface EtfMarketSnapshotResponse {
   orderBook: EtfMarketQuote;
   profile: EtfMarketProfile;
   topHoldings: EtfMarketHolding[];
+  analysis: EtfMarketAnalysis;
+  estimatedIopv: EtfEstimatedIopv;
+  dailyMetrics: EtfDailyMetrics;
   dataSources: Record<string, string | null | undefined>;
   errors: string[];
 }
@@ -487,6 +537,13 @@ export const stockQueryApi = {
       },
     );
     return toCamelCase<EtfMarketSnapshotResponse>(response.data);
+  },
+
+  async refreshEtfDailyMetrics(stockCode: string): Promise<EtfDailyMetricsRefreshResponse> {
+    const response = await apiClient.post<Record<string, unknown>>(
+      `/api/v1/stock-query/etf-daily-metrics/${encodeURIComponent(stockCode)}/refresh`,
+    );
+    return toCamelCase<EtfDailyMetricsRefreshResponse>(response.data);
   },
 
   async getEtfHistory(limit = 20, stockCode?: string): Promise<EtfQueryHistoryListResponse> {
