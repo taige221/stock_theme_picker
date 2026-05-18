@@ -47,6 +47,14 @@ function formatThreshold(value?: number | null): string {
   return value.toFixed(2);
 }
 
+function isPriceRule(ruleType: string): boolean {
+  return ruleType === 'support_retest' || ruleType === 'breakout_confirm';
+}
+
+function hasUsableThreshold(rule: Pick<StockAlertRuleItem, 'ruleType' | 'thresholdValue'>): boolean {
+  return !isPriceRule(rule.ruleType) || (typeof rule.thresholdValue === 'number' && Number.isFinite(rule.thresholdValue) && rule.thresholdValue > 0);
+}
+
 function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((item) => typeof item === 'string' && item.trim().length > 0);
 }
@@ -249,6 +257,13 @@ const WatchlistPage: React.FC = () => {
     setActionError(null);
     setMessage(null);
     try {
+      if (!rule.enabled && !hasUsableThreshold(rule)) {
+        throw createParsedApiError({
+          title: '价格阈值还没配置',
+          message: '这条价格规则缺少有效阈值，先补上阈值后再启用，不然它不会触发。',
+          category: 'unknown',
+        });
+      }
       const updated = await watchlistApi.updateStockAlertRule({
         ruleId: rule.id,
         thresholdValue: rule.thresholdValue,
@@ -273,10 +288,10 @@ const WatchlistPage: React.FC = () => {
     try {
       const nextThreshold = editingThreshold.trim() === '' ? null : Number(editingThreshold.trim());
       const nextScanInterval = Number(editingScanInterval.trim() || '5');
-      if (rule.ruleType !== 'risk_event' && nextThreshold !== null && !Number.isFinite(nextThreshold)) {
+      if (isPriceRule(rule.ruleType) && (nextThreshold === null || !Number.isFinite(nextThreshold) || nextThreshold <= 0)) {
         throw createParsedApiError({
-          title: '阈值格式不正确',
-          message: '请输入有效的价格阈值。',
+          title: '价格阈值还没填好',
+          message: '价格规则必须填写大于 0 的有效阈值，不然它不会触发。',
           category: 'unknown',
         });
       }
@@ -662,122 +677,136 @@ const WatchlistPage: React.FC = () => {
                   description="先在单股查询页点击“设置告警”，系统会按当前结果生成默认三条规则。"
                 />
               ) : (
-                alertRules.map((rule) => (
-                  <div key={rule.id} className="rounded-[22px] border border-border/60 bg-background/72 px-4 py-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-semibold text-foreground">{rule.stockName} · {alertRuleLabel(rule.ruleType)}</p>
-                        <p className="mt-1 text-sm text-secondary-text">
-                          {rule.ruleType === 'risk_event' ? '监控新闻中的明确风险事件' : `阈值 ${formatThreshold(rule.thresholdValue)}`}
-                        </p>
-                        <p className="mt-1 text-xs text-secondary-text">扫描间隔 {Math.max(5, rule.scanIntervalMinutes || 5)} 分钟</p>
-                        <p className="mt-1 text-xs text-secondary-text">更新于 {formatDateTime(rule.updatedAt)}</p>
-                        <p className="mt-1 text-xs text-secondary-text">{rule.note || '当前没有备注'}</p>
-                        {rule.sourceQueryId ? (
-                          <p className="mt-1 text-xs text-secondary-text">来源 queryId {rule.sourceQueryId}</p>
-                        ) : null}
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Badge variant={rule.enabled ? 'success' : 'default'} className="border-0 px-3 py-1">
-                          {rule.enabled ? '已启用' : '已停用'}
-                        </Badge>
-                        {buildDeepAnalysisHref({
-                          analysisId: rule.sourceQueryId ? (latestAnalysisBySourceQueryId.get(rule.sourceQueryId) ?? null) : null,
-                          sourceQueryId: rule.sourceQueryId,
-                          stockCode: rule.stockCode,
-                          stockName: rule.stockName,
-                        }) ? (
-                          <Link
-                            to={buildDeepAnalysisHref({
-                              analysisId: rule.sourceQueryId ? (latestAnalysisBySourceQueryId.get(rule.sourceQueryId) ?? null) : null,
-                              sourceQueryId: rule.sourceQueryId,
-                              stockCode: rule.stockCode,
-                              stockName: rule.stockName,
-                            }) || '/deep-analysis'}
-                          >
-                            <Button variant="secondary" size="sm" className="rounded-xl">
-                              回看分析
-                            </Button>
-                          </Link>
-                        ) : null}
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          className="rounded-xl"
-                          isLoading={savingRuleId === rule.id}
-                          loadingText="处理中..."
-                          onClick={() => void handleToggleAlertRule(rule)}
-                        >
-                          {rule.enabled ? '停用' : '启用'}
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="rounded-xl"
-                          onClick={() => startEditingRule(rule)}
-                        >
-                          <SquarePen className="h-4 w-4" />
-                          编辑
-                        </Button>
-                        <Button
-                          variant="danger-subtle"
-                          size="sm"
-                          className="rounded-xl"
-                          isLoading={deletingRuleId === rule.id}
-                          loadingText="移除中..."
-                          onClick={() => void handleDeleteAlertRule(rule.id)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                          删除
-                        </Button>
-                      </div>
-                    </div>
-
-                    {editingRuleId === rule.id ? (
-                      <div className="mt-4 grid gap-3 rounded-[18px] border border-border/60 bg-card/70 p-4 md:grid-cols-[1fr_1fr_1fr_auto]">
-                        {rule.ruleType !== 'risk_event' ? (
-                          <Input
-                            label="阈值"
-                            value={editingThreshold}
-                            onChange={(event) => setEditingThreshold(event.target.value)}
-                            placeholder="输入新的价格阈值"
-                            className="h-10"
-                          />
-                        ) : (
-                          <div />
-                        )}
-                        <Input
-                          label="扫描间隔(分钟)"
-                          value={editingScanInterval}
-                          onChange={(event) => setEditingScanInterval(event.target.value)}
-                          placeholder="最小 5"
-                          className="h-10"
-                        />
-                        <Input
-                          label="备注"
-                          value={editingNote}
-                          onChange={(event) => setEditingNote(event.target.value)}
-                          placeholder="可选备注"
-                          className="h-10"
-                        />
-                        <div className="flex items-end gap-2">
+                alertRules.map((rule) => {
+                  const missingThreshold = isPriceRule(rule.ruleType) && !hasUsableThreshold(rule);
+                  return (
+                    <div key={rule.id} className="rounded-[22px] border border-border/60 bg-background/72 px-4 py-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="text-sm font-semibold text-foreground">{rule.stockName} · {alertRuleLabel(rule.ruleType)}</p>
+                            {missingThreshold ? (
+                              <Badge variant="danger" className="border-0 px-3 py-1">
+                                阈值缺失
+                              </Badge>
+                            ) : null}
+                          </div>
+                          <p className="mt-1 text-sm text-secondary-text">
+                            {rule.ruleType === 'risk_event' ? '监控新闻中的明确风险事件' : `阈值 ${formatThreshold(rule.thresholdValue)}`}
+                          </p>
+                          {missingThreshold ? (
+                            <p className="mt-1 text-xs text-danger">这是一条价格规则，但当前没有有效阈值，所以它不会触发提醒。</p>
+                          ) : null}
+                          <p className="mt-1 text-xs text-secondary-text">扫描间隔 {Math.max(5, rule.scanIntervalMinutes || 5)} 分钟</p>
+                          <p className="mt-1 text-xs text-secondary-text">更新于 {formatDateTime(rule.updatedAt)}</p>
+                          <p className="mt-1 text-xs text-secondary-text">{rule.note || '当前没有备注'}</p>
+                          {rule.sourceQueryId ? (
+                            <p className="mt-1 text-xs text-secondary-text">来源 queryId {rule.sourceQueryId}</p>
+                          ) : null}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Badge variant={missingThreshold ? 'danger' : rule.enabled ? 'success' : 'default'} className="border-0 px-3 py-1">
+                            {missingThreshold ? '不会触发' : rule.enabled ? '已启用' : '已停用'}
+                          </Badge>
+                          {buildDeepAnalysisHref({
+                            analysisId: rule.sourceQueryId ? (latestAnalysisBySourceQueryId.get(rule.sourceQueryId) ?? null) : null,
+                            sourceQueryId: rule.sourceQueryId,
+                            stockCode: rule.stockCode,
+                            stockName: rule.stockName,
+                          }) ? (
+                            <Link
+                              to={buildDeepAnalysisHref({
+                                analysisId: rule.sourceQueryId ? (latestAnalysisBySourceQueryId.get(rule.sourceQueryId) ?? null) : null,
+                                sourceQueryId: rule.sourceQueryId,
+                                stockCode: rule.stockCode,
+                                stockName: rule.stockName,
+                              }) || '/deep-analysis'}
+                            >
+                              <Button variant="secondary" size="sm" className="rounded-xl">
+                                回看分析
+                              </Button>
+                            </Link>
+                          ) : null}
                           <Button
+                            variant="secondary"
                             size="sm"
                             className="rounded-xl"
                             isLoading={savingRuleId === rule.id}
-                            loadingText="保存中..."
-                            onClick={() => void handleSaveRule(rule)}
+                            loadingText="处理中..."
+                            onClick={() => void handleToggleAlertRule(rule)}
                           >
-                            保存
+                            {rule.enabled ? '停用' : '启用'}
                           </Button>
-                          <Button variant="secondary" size="sm" className="rounded-xl" onClick={cancelEditingRule}>
-                            取消
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="rounded-xl"
+                            onClick={() => startEditingRule(rule)}
+                          >
+                            <SquarePen className="h-4 w-4" />
+                            编辑
+                          </Button>
+                          <Button
+                            variant="danger-subtle"
+                            size="sm"
+                            className="rounded-xl"
+                            isLoading={deletingRuleId === rule.id}
+                            loadingText="移除中..."
+                            onClick={() => void handleDeleteAlertRule(rule.id)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                            删除
                           </Button>
                         </div>
                       </div>
-                    ) : null}
-                  </div>
-                ))
+
+                      {editingRuleId === rule.id ? (
+                        <div className="mt-4 grid gap-3 rounded-[18px] border border-border/60 bg-card/70 p-4 md:grid-cols-[1fr_1fr_1fr_auto]">
+                          {rule.ruleType !== 'risk_event' ? (
+                            <Input
+                              label="阈值"
+                              value={editingThreshold}
+                              onChange={(event) => setEditingThreshold(event.target.value)}
+                              placeholder="输入新的价格阈值"
+                              className="h-10"
+                              hint="价格规则必须填写大于 0 的阈值。"
+                            />
+                          ) : (
+                            <div />
+                          )}
+                          <Input
+                            label="扫描间隔(分钟)"
+                            value={editingScanInterval}
+                            onChange={(event) => setEditingScanInterval(event.target.value)}
+                            placeholder="最小 5"
+                            className="h-10"
+                          />
+                          <Input
+                            label="备注"
+                            value={editingNote}
+                            onChange={(event) => setEditingNote(event.target.value)}
+                            placeholder="可选备注"
+                            className="h-10"
+                          />
+                          <div className="flex items-end gap-2">
+                            <Button
+                              size="sm"
+                              className="rounded-xl"
+                              isLoading={savingRuleId === rule.id}
+                              loadingText="保存中..."
+                              onClick={() => void handleSaveRule(rule)}
+                            >
+                              保存
+                            </Button>
+                            <Button variant="secondary" size="sm" className="rounded-xl" onClick={cancelEditingRule}>
+                              取消
+                            </Button>
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })
               )}
             </div>
           </Card>

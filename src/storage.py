@@ -40,6 +40,7 @@ logger = logging.getLogger(__name__)
 
 Base = declarative_base()
 _UNSET = object()
+UNSET = _UNSET
 
 
 class StockDaily(Base):
@@ -1002,7 +1003,7 @@ class DatabaseManager:
         self,
         *,
         rule_id: int,
-        threshold_value: Optional[float] = None,
+        threshold_value: Any = _UNSET,
         scan_interval_minutes: Optional[int] = None,
         enabled: Optional[bool] = None,
         note: Optional[str] = None,
@@ -1021,7 +1022,7 @@ class DatabaseManager:
 
             if enabled is not None:
                 record.enabled = 1 if enabled else 0
-            if threshold_value is not None or record.rule_type != "risk_event":
+            if threshold_value is not _UNSET:
                 record.threshold_value = threshold_value
             if scan_interval_minutes is not None:
                 record.scan_interval_minutes = max(5, int(scan_interval_minutes))

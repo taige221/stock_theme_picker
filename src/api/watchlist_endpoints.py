@@ -28,6 +28,7 @@ from theme_picker.api.schemas import (
 )
 from theme_picker.application.stock_alert_service import StockAlertService
 from theme_picker.config import get_config
+from theme_picker.storage import UNSET
 from theme_picker.infrastructure.persistence import (
     delete_stock_alert_rule,
     delete_stock_watchlist_item,
@@ -225,7 +226,7 @@ def update_watchlist_stock_alert_rule(rule_id: int, request: StockAlertRuleUpdat
     record = update_stock_alert_rule(
         db,
         rule_id=rule_id,
-        threshold_value=request.threshold_value,
+        threshold_value=request.threshold_value if "threshold_value" in request.model_fields_set else UNSET,
         scan_interval_minutes=request.scan_interval_minutes,
         enabled=request.enabled,
         note=request.note,
