@@ -174,7 +174,6 @@ const EtfQueryPage: React.FC = () => {
     setResult(snapshot);
     setLastResolvedInput(resolvedInput);
     setCurrentHistoryId(snapshot.queryId ?? null);
-    void loadHistory(snapshot.stockCode);
   };
 
   const loadEtfSnapshot = async (rawInput: string) => {
@@ -321,7 +320,7 @@ const EtfQueryPage: React.FC = () => {
                 </Button>
                 <Button variant="outline" size="lg" onClick={() => {
                   setHistoryOpen(true);
-                  void loadHistory(result?.stockCode);
+                  void loadHistory();
                 }}>
                   <Clock3 className="h-4 w-4" />
                   历史记录

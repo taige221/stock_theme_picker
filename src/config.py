@@ -896,6 +896,16 @@ class Config:
     stock_query_text_timeout_seconds: float = 10.0
     # 单股查询中新闻摘要补充的最大等待时间（秒）；超时后直接降级，不阻塞主结果
     stock_query_news_timeout_seconds: float = 10.0
+    # ETF 快照中统一日K抓取超时（秒）；超时后降级返回，不阻塞 ETF 主结果
+    etf_daily_bar_timeout_seconds: float = 8.0
+    # ETF 快照中 mootdx 盘口抓取超时（秒）
+    etf_mootdx_quote_timeout_seconds: float = 8.0
+    # ETF 快照中重仓股抓取超时（秒）
+    etf_top_holdings_timeout_seconds: float = 12.0
+    # ETF 快照中日频指标抓取超时（秒）
+    etf_daily_metrics_timeout_seconds: float = 12.0
+    # ETF 快照中 estimated IOPV 计算超时（秒）
+    etf_estimated_iopv_timeout_seconds: float = 8.0
     # 东财接口补丁开关
     enable_eastmoney_patch: bool = False
     # 实时行情数据源优先级（逗号分隔）
@@ -1678,6 +1688,36 @@ class Config:
                 os.getenv('STOCK_QUERY_NEWS_TIMEOUT_SECONDS'),
                 10.0,
                 field_name='STOCK_QUERY_NEWS_TIMEOUT_SECONDS',
+                minimum=0.0,
+            ),
+            etf_daily_bar_timeout_seconds=parse_env_float(
+                os.getenv('ETF_DAILY_BAR_TIMEOUT_SECONDS'),
+                8.0,
+                field_name='ETF_DAILY_BAR_TIMEOUT_SECONDS',
+                minimum=0.0,
+            ),
+            etf_mootdx_quote_timeout_seconds=parse_env_float(
+                os.getenv('ETF_MOOTDX_QUOTE_TIMEOUT_SECONDS'),
+                8.0,
+                field_name='ETF_MOOTDX_QUOTE_TIMEOUT_SECONDS',
+                minimum=0.0,
+            ),
+            etf_top_holdings_timeout_seconds=parse_env_float(
+                os.getenv('ETF_TOP_HOLDINGS_TIMEOUT_SECONDS'),
+                12.0,
+                field_name='ETF_TOP_HOLDINGS_TIMEOUT_SECONDS',
+                minimum=0.0,
+            ),
+            etf_daily_metrics_timeout_seconds=parse_env_float(
+                os.getenv('ETF_DAILY_METRICS_TIMEOUT_SECONDS'),
+                12.0,
+                field_name='ETF_DAILY_METRICS_TIMEOUT_SECONDS',
+                minimum=0.0,
+            ),
+            etf_estimated_iopv_timeout_seconds=parse_env_float(
+                os.getenv('ETF_ESTIMATED_IOPV_TIMEOUT_SECONDS'),
+                8.0,
+                field_name='ETF_ESTIMATED_IOPV_TIMEOUT_SECONDS',
                 minimum=0.0,
             ),
             # 东财接口补丁开关

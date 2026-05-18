@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from datetime import date, datetime, time, timedelta
 import json
 import logging
@@ -14,6 +15,7 @@ from mootdx.quotes import Quotes
 
 from theme_picker.data.stock_index_loader import get_stock_name_index_map
 from theme_picker.data.stock_mapping import STOCK_NAME_MAP, is_meaningful_stock_name
+from theme_picker.config import get_config
 from theme_picker.data_provider.base import normalize_stock_code
 from theme_picker.infrastructure.daily_bar_service import get_daily_bar_resolver
 from theme_picker.infrastructure.etf_http_provider import get_etf_http_provider
@@ -39,6 +41,7 @@ class EtfMarketService:
         self._akshare_etf_name_pairs: Optional[List[tuple[str, str]]] = None
 
     def get_snapshot(self, stock_code: str, *, bars: int = 20) -> Dict[str, Any]:
+        config = get_config()
         base_code = self._resolve_etf_input(stock_code)
         canonical_code = canonicalize_stock_code(base_code)
         errors: List[str] = []
@@ -61,10 +64,14 @@ class EtfMarketService:
             errors.append(f"tencent quote failed: {exc}")
 
         try:
-            daily_result = self.daily_bar_resolver.resolve_daily_bars(
-                canonical_code,
-                bars=bars,
-                minimum_rows=1,
+            daily_result = self._run_with_timeout(
+                lambda: self.daily_bar_resolver.resolve_daily_bars(
+                    canonical_code,
+                    bars=bars,
+                    minimum_rows=1,
+                ),
+                timeout_seconds=float(getattr(config, "etf_daily_bar_timeout_seconds", 8.0) or 0.0),
+                task_name="etf daily bars",
             )
             daily_bar_source = daily_result.data_source
             kline_payload = self._serialize_daily_bars(daily_result.frame)
@@ -74,7 +81,11 @@ class EtfMarketService:
             errors.append(f"daily bars failed: {exc}")
 
         try:
-            order_book_payload = self._fetch_mootdx_quote(base_code)
+            order_book_payload = self._run_with_timeout(
+                lambda: self._fetch_mootdx_quote(base_code),
+                timeout_seconds=float(getattr(config, "etf_mootdx_quote_timeout_seconds", 8.0) or 0.0),
+                task_name="etf mootdx quote",
+            )
         except Exception as exc:
             logger.warning("ETF mootdx 盘口失败: code=%s error=%s", base_code, exc)
             errors.append(f"mootdx quote failed: {exc}")
@@ -86,13 +97,21 @@ class EtfMarketService:
             errors.append(f"etf profile failed: {exc}")
 
         try:
-            top_holdings_payload = self.http_provider.get_etf_top_holdings(base_code)
+            top_holdings_payload = self._run_with_timeout(
+                lambda: self.http_provider.get_etf_top_holdings(base_code),
+                timeout_seconds=float(getattr(config, "etf_top_holdings_timeout_seconds", 12.0) or 0.0),
+                task_name="etf top holdings",
+            )
         except Exception as exc:
             logger.warning("ETF 重仓股失败: code=%s error=%s", base_code, exc)
             errors.append(f"etf top holdings failed: {exc}")
 
         try:
-            daily_metrics_payload = self._fetch_daily_metrics(canonical_code)
+            daily_metrics_payload = self._run_with_timeout(
+                lambda: self._fetch_daily_metrics(canonical_code),
+                timeout_seconds=float(getattr(config, "etf_daily_metrics_timeout_seconds", 12.0) or 0.0),
+                task_name="etf daily metrics",
+            )
         except Exception as exc:
             logger.warning("ETF 日频指标失败: code=%s error=%s", base_code, exc)
             errors.append(f"etf daily metrics failed: {exc}")
@@ -116,10 +135,14 @@ class EtfMarketService:
 
         quote_source = self._resolve_quote_source(quote_payload)
         try:
-            estimated_iopv_payload = self._build_estimated_iopv(
-                etf_code=canonical_code,
-                quote_payload=quote_payload,
-                top_holdings=top_holdings_payload,
+            estimated_iopv_payload = self._run_with_timeout(
+                lambda: self._build_estimated_iopv(
+                    etf_code=canonical_code,
+                    quote_payload=quote_payload,
+                    top_holdings=top_holdings_payload,
+                ),
+                timeout_seconds=float(getattr(config, "etf_estimated_iopv_timeout_seconds", 8.0) or 0.0),
+                task_name="etf estimated iopv",
             )
         except Exception as exc:
             logger.warning("ETF estimated IOPV 失败: code=%s error=%s", base_code, exc)
@@ -158,6 +181,20 @@ class EtfMarketService:
             "errors": errors,
         }
         return response
+
+    @staticmethod
+    def _run_with_timeout(task, *, timeout_seconds: float, task_name: str):
+        if timeout_seconds <= 0:
+            return task()
+
+        executor = ThreadPoolExecutor(max_workers=1)
+        try:
+            future = executor.submit(task)
+            return future.result(timeout=max(0.0, float(timeout_seconds)))
+        except FuturesTimeoutError as exc:
+            raise TimeoutError(f"{task_name} timeout after {timeout_seconds:.1f}s") from exc
+        finally:
+            executor.shutdown(wait=False)
 
     @staticmethod
     def _resolve_quote_source(quote_payload: Dict[str, Any]) -> str:
@@ -526,12 +563,17 @@ class EtfMarketService:
         }
 
     def _fetch_daily_metrics(self, canonical_code: str) -> Dict[str, Any]:
+        config = get_config()
         cached_snapshot = self._get_cached_daily_metrics(canonical_code)
         expected_trade_date = self._resolve_expected_daily_metrics_date()
         if self._is_daily_metrics_fresh(cached_snapshot, expected_trade_date=expected_trade_date):
             return self._with_daily_metrics_status(cached_snapshot, cache_status="hit")
 
-        refreshed_metrics, _ = self._fetch_daily_metrics_online(canonical_code)
+        refreshed_metrics, _ = self._run_with_timeout(
+            lambda: self._fetch_daily_metrics_online(canonical_code),
+            timeout_seconds=float(getattr(config, "etf_daily_metrics_timeout_seconds", 12.0) or 0.0),
+            task_name="etf daily metrics",
+        )
         if self._is_daily_metrics_fresh(refreshed_metrics, expected_trade_date=expected_trade_date):
             return self._with_daily_metrics_status(refreshed_metrics, cache_status="refreshed")
         if cached_snapshot:
@@ -539,13 +581,22 @@ class EtfMarketService:
         return {}
 
     def refresh_daily_metrics(self, stock_code: str) -> Dict[str, Any]:
+        config = get_config()
         base_code = self._resolve_etf_input(stock_code)
         canonical_code = canonicalize_stock_code(base_code)
         errors: List[str] = []
         expected_trade_date = self._resolve_expected_daily_metrics_date()
 
-        refreshed_metrics, refresh_errors = self._fetch_daily_metrics_online(canonical_code)
-        errors.extend(refresh_errors)
+        try:
+            refreshed_metrics, refresh_errors = self._run_with_timeout(
+                lambda: self._fetch_daily_metrics_online(canonical_code),
+                timeout_seconds=float(getattr(config, "etf_daily_metrics_timeout_seconds", 12.0) or 0.0),
+                task_name="etf daily metrics",
+            )
+            errors.extend(refresh_errors)
+        except Exception as exc:
+            refreshed_metrics = {}
+            errors.append(str(exc))
         if self._is_daily_metrics_fresh(refreshed_metrics, expected_trade_date=expected_trade_date):
             return {
                 "stock_code": canonical_code,
@@ -735,11 +786,17 @@ class EtfMarketService:
         }
 
     def _fetch_batch_mootdx_quotes(self, stock_codes: List[str]) -> Dict[str, Dict[str, Any]]:
-        normalized_codes = [
-            normalize_stock_code(code)
-            for code in stock_codes
-            if normalize_stock_code(code)
-        ]
+        normalized_codes = []
+        for code in stock_codes:
+            normalized = normalize_stock_code(code)
+            if not normalized:
+                continue
+            # mootdx only supports CN numeric symbols here.  Overseas ETF holdings
+            # such as AAPL / MSFT would otherwise bubble up low-level socket/protocol
+            # errors like "head_buf is not 0x10 : b''".
+            if not normalized.isdigit() or len(normalized) != 6:
+                continue
+            normalized_codes.append(normalized)
         if not normalized_codes:
             return {}
 
