@@ -1,10 +1,11 @@
 import type React from 'react';
 import { useEffect, useMemo, useState } from 'react';
-import { Activity, Bell, CheckCheck, Layers3, RefreshCw, SquarePen, Star, Trash2, TrendingUp } from 'lucide-react';
+import { Activity, BarChart3, Bell, CheckCheck, Layers3, RefreshCw, SquarePen, Star, Trash2, TrendingUp } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { createParsedApiError, getParsedApiError, type ParsedApiError } from '../api/error';
 import { watchlistApi, type StockAlertEventItem, type StockAlertLoopStatus, type StockAlertRuleItem, type StockWatchlistItem } from '../api/watchlist';
-import { ApiErrorAlert, AppPage, Badge, Button, Card, EmptyState, InlineAlert, Input } from '../components/common';
+import { CandlestickChart } from '../components/CandlestickChart';
+import { ApiErrorAlert, AppPage, Badge, Button, Card, Drawer, EmptyState, InlineAlert, Input } from '../components/common';
 
 const DEFAULT_GROUP = '核心跟踪';
 
@@ -158,6 +159,7 @@ const WatchlistPage: React.FC = () => {
   const [readingEventId, setReadingEventId] = useState<number | null>(null);
   const [markingAllRead, setMarkingAllRead] = useState(false);
   const [runningScan, setRunningScan] = useState(false);
+  const [chartStock, setChartStock] = useState<{ code: string; name: string } | null>(null);
 
   const loadWatchlist = async () => {
     setLoading(true);
@@ -538,6 +540,15 @@ const WatchlistPage: React.FC = () => {
                       {item.alertEnabled ? '提醒已开' : '提醒未开'}
                     </Badge>
                     <Button
+                      variant="secondary"
+                      size="sm"
+                      className="rounded-xl"
+                      onClick={() => setChartStock({ code: item.stockCode, name: item.stockName })}
+                    >
+                      <BarChart3 className="h-4 w-4" />
+                      K线
+                    </Button>
+                    <Button
                       variant="danger-subtle"
                       size="sm"
                       className="rounded-xl"
@@ -812,6 +823,20 @@ const WatchlistPage: React.FC = () => {
           </Card>
         </div>
       </section>
+      <Drawer
+        isOpen={chartStock !== null}
+        onClose={() => setChartStock(null)}
+        title={chartStock ? `${chartStock.name} K线图` : ''}
+        width="max-w-4xl"
+      >
+        {chartStock ? (
+          <CandlestickChart
+            key={chartStock.code}
+            stockCode={chartStock.code}
+            stockName={chartStock.name}
+          />
+        ) : null}
+      </Drawer>
     </AppPage>
   );
 };
