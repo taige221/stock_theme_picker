@@ -189,7 +189,14 @@ export interface ThemeFactorScanResultPayload {
     breadthScore?: number | null;
   };
   themeScan?: {
-    query?: Record<string, unknown>;
+    query?: {
+      themeId?: string | null;
+      themeName?: string | null;
+      boardCode?: string | null;
+      boardName?: string | null;
+      strategyMode?: 'event' | 'holding' | null;
+      maxCandidates?: number | null;
+    };
     themeInsight?: Record<string, unknown>;
     stocks?: ThemeFactorScanStockItem[];
     selectedStock?: Record<string, unknown> | null;

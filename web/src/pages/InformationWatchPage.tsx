@@ -33,6 +33,12 @@ const EVENT_STATUS_OPTIONS = [
   { value: 'repeated', label: '仅重复事件' },
 ] as const;
 
+const DISCOVERY_TEMPLATE_SCROLL_CLASS = 'max-h-[360px] overflow-y-auto pr-1';
+const DISCOVERY_CANDIDATE_SCROLL_CLASS = 'max-h-[430px] overflow-y-auto pr-1';
+const DISCOVERY_EVENT_SCROLL_CLASS = 'max-h-[420px] overflow-y-auto pr-1';
+const WATCH_EVENT_SCROLL_CLASS = 'max-h-[920px] overflow-y-auto pr-1';
+const WATCH_ITEM_SCROLL_CLASS = 'max-h-[360px] overflow-y-auto pr-1';
+
 function splitTokens(value: string): string[] {
   return value
     .split(/[,\n/，、]+/)
@@ -342,8 +348,8 @@ const InformationWatchPage: React.FC = () => {
   return (
     <AppPage className="space-y-6 !max-w-[1680px] px-3 md:px-5 lg:px-6">
       <section className="overflow-hidden rounded-[32px] border border-border/60 bg-[radial-gradient(circle_at_top_left,_rgba(6,182,212,0.18),_transparent_30%),radial-gradient(circle_at_bottom_right,_rgba(59,130,246,0.16),_transparent_28%),linear-gradient(180deg,rgba(255,255,255,0.98),rgba(246,249,252,0.96))] shadow-soft-card dark:bg-[radial-gradient(circle_at_top_left,_rgba(34,211,238,0.18),_transparent_30%),radial-gradient(circle_at_bottom_right,_rgba(59,130,246,0.14),_transparent_28%),linear-gradient(180deg,rgba(10,15,26,0.98),rgba(14,20,32,0.96))]">
-        <div className="grid gap-6 px-5 py-6 lg:grid-cols-[1.15fr_0.85fr] lg:px-7 lg:py-7">
-          <div className="space-y-5">
+        <div className="grid gap-6 px-5 py-6 lg:grid-cols-12 lg:px-7 lg:py-7">
+          <div className="space-y-5 lg:col-span-7">
             <div className="flex items-center gap-4">
               <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-cyan/10 text-cyan shadow-soft-card">
                 <TowerControl className="h-7 w-7" />
@@ -356,27 +362,9 @@ const InformationWatchPage: React.FC = () => {
                 </p>
               </div>
             </div>
-
-            <div className="grid gap-3 sm:grid-cols-3">
-              <Card variant="bordered" padding="lg" className="rounded-[24px] border-border/60 bg-card/85">
-                <p className="text-xs uppercase tracking-[0.16em] text-secondary-text">启用观察项</p>
-                <p className="mt-3 text-3xl font-semibold text-foreground">{stats.enabledItems}</p>
-                <p className="mt-2 text-sm text-secondary-text">当前以事件型主题为主，不直接扫大板块噪音。</p>
-              </Card>
-              <Card variant="bordered" padding="lg" className="rounded-[24px] border-border/60 bg-card/85">
-                <p className="text-xs uppercase tracking-[0.16em] text-secondary-text">高质量事件</p>
-                <p className="mt-3 text-3xl font-semibold text-foreground">{stats.promotedEvents}</p>
-                <p className="mt-2 text-sm text-secondary-text">满足新鲜度和可信度门槛，适合进入主题因子层继续确认。</p>
-              </Card>
-              <Card variant="bordered" padding="lg" className="rounded-[24px] border-border/60 bg-card/85">
-                <p className="text-xs uppercase tracking-[0.16em] text-secondary-text">一级线索</p>
-                <p className="mt-3 text-3xl font-semibold text-foreground">{stats.tier1Events}</p>
-                <p className="mt-2 text-sm text-secondary-text">优先保留公告/监管这类硬确认来源，降低旧闻与观点噪音。</p>
-              </Card>
-            </div>
           </div>
 
-          <Card variant="bordered" padding="lg" className="rounded-[28px] border-border/60 bg-card/90">
+          <Card variant="bordered" padding="lg" className="rounded-[28px] border-border/60 bg-card/90 lg:col-span-5 lg:min-h-[248px]">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <p className="text-xs uppercase tracking-[0.18em] text-secondary-text">Run Loop</p>
@@ -406,6 +394,24 @@ const InformationWatchPage: React.FC = () => {
               </div>
             </div>
           </Card>
+
+          <div className="grid gap-3 sm:grid-cols-3 lg:col-span-12">
+            <Card variant="bordered" padding="lg" className="rounded-[24px] border-border/60 bg-card/85">
+              <p className="text-xs uppercase tracking-[0.16em] text-secondary-text">启用观察项</p>
+              <p className="mt-3 text-3xl font-semibold text-foreground">{stats.enabledItems}</p>
+              <p className="mt-2 text-sm text-secondary-text">当前以事件型主题为主，不直接扫大板块噪音。</p>
+            </Card>
+            <Card variant="bordered" padding="lg" className="rounded-[24px] border-border/60 bg-card/85">
+              <p className="text-xs uppercase tracking-[0.16em] text-secondary-text">高质量事件</p>
+              <p className="mt-3 text-3xl font-semibold text-foreground">{stats.promotedEvents}</p>
+              <p className="mt-2 text-sm text-secondary-text">满足新鲜度和可信度门槛，适合进入主题因子层继续确认。</p>
+            </Card>
+            <Card variant="bordered" padding="lg" className="rounded-[24px] border-border/60 bg-card/85">
+              <p className="text-xs uppercase tracking-[0.16em] text-secondary-text">一级线索</p>
+              <p className="mt-3 text-3xl font-semibold text-foreground">{stats.tier1Events}</p>
+              <p className="mt-2 text-sm text-secondary-text">优先保留公告/监管这类硬确认来源，降低旧闻与观点噪音。</p>
+            </Card>
+          </div>
         </div>
       </section>
 
@@ -426,73 +432,130 @@ const InformationWatchPage: React.FC = () => {
         />
       ) : null}
 
-      <section className="grid gap-5 xl:grid-cols-[0.98fr_1.02fr]">
-        <Card variant="bordered" padding="lg" className="rounded-[28px]">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <span className="label-uppercase">Open Discovery Pool</span>
-              <h3 className="mt-1 text-2xl font-semibold text-foreground">开放发现池</h3>
-              <p className="mt-2 text-sm leading-7 text-secondary-text">
-                不预设具体股票或单一主题，直接按高价值事件模板扫全局信息，用来发现新的产业链苗头。
-              </p>
-            </div>
-            <Badge variant="info" className="border-0 px-3 py-1">{discoveryProfiles.length} 个模板</Badge>
-          </div>
-          <div className="mt-5 grid gap-3 sm:grid-cols-3">
-            <Card variant="bordered" padding="md" className="rounded-[22px] border-border/60 bg-card/80">
-              <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">发现模板</p>
-              <p className="mt-2 text-2xl font-semibold text-foreground">{discoveryProfiles.filter((item) => item.enabled).length}</p>
-              <p className="mt-1 text-xs text-secondary-text">订单、扩产、涨价、政策、量产等全局模板。</p>
-            </Card>
-            <Card variant="bordered" padding="md" className="rounded-[22px] border-border/60 bg-card/80">
-              <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">高质量发现</p>
-              <p className="mt-2 text-2xl font-semibold text-foreground">{stats.discoveryPromoted}</p>
-              <p className="mt-1 text-xs text-secondary-text">这些发现事件会直接进入主题因子层继续确认。</p>
-            </Card>
-            <Card variant="bordered" padding="md" className="rounded-[22px] border-border/60 bg-card/80">
-              <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">发现模式</p>
-              <p className="mt-2 text-2xl font-semibold text-foreground">全局探索</p>
-              <p className="mt-1 text-xs text-secondary-text">先找事件语义，再反推主题、产业链和候选股。</p>
-            </Card>
-          </div>
-          <div className="mt-5 flex flex-wrap gap-3">
-            <Button size="lg" isLoading={runningDiscovery} loadingText="正在扫描开放发现池..." onClick={() => void handleRunDiscoveryOnce()}>
-              开始开放发现
-            </Button>
-            <Button variant="secondary" size="lg" onClick={() => void loadData()} isLoading={loading} loadingText="刷新中...">
-              <RefreshCw className="h-4 w-4" />
-              刷新发现结果
-            </Button>
-          </div>
-          <div className="mt-5 space-y-3">
-            {discoveryProfiles.map((profile) => (
-              <div key={profile.profileId} className="rounded-[22px] border border-border/60 bg-background/72 px-4 py-4">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <h4 className="text-base font-semibold text-foreground">{profile.name}</h4>
-                    <p className="mt-1 text-sm text-secondary-text">{eventTypeLabel(profile.eventType)}</p>
-                  </div>
-                  <Badge variant={profile.enabled ? 'success' : 'default'} className="border-0 px-3 py-1">
-                    {profile.enabled ? '启用' : '停用'}
-                  </Badge>
-                </div>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {profile.queryTemplates.slice(0, 2).map((template) => (
-                    <Badge key={`${profile.profileId}-${template}`} variant="default" className="border-border/60 px-3 py-1">
-                      {template}
-                    </Badge>
-                  ))}
-                </div>
-                <p className="mt-3 text-xs leading-6 text-secondary-text">
-                  主题倾向：{profile.themes.join(' / ') || '待自动发现'} · 标签：{profile.chainTags.join(' / ') || '未设置'}
+      <section className="grid gap-5 xl:grid-cols-12">
+        <div className="grid gap-5 xl:col-span-5 xl:auto-rows-auto">
+          <Card variant="bordered" padding="lg" className="rounded-[28px] xl:min-h-[640px]">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <span className="label-uppercase">Open Discovery Pool</span>
+                <h3 className="mt-1 text-2xl font-semibold text-foreground">开放发现池</h3>
+                <p className="mt-2 text-sm leading-7 text-secondary-text">
+                  不预设具体股票或单一主题，直接按高价值事件模板扫全局信息，用来发现新的产业链苗头。
                 </p>
               </div>
-            ))}
-          </div>
-        </Card>
+              <Badge variant="info" className="border-0 px-3 py-1">{discoveryProfiles.length} 个模板</Badge>
+            </div>
+            <div className="mt-5 grid gap-3 sm:grid-cols-3">
+              <Card variant="bordered" padding="md" className="rounded-[22px] border-border/60 bg-card/80">
+                <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">发现模板</p>
+                <p className="mt-2 text-2xl font-semibold text-foreground">{discoveryProfiles.filter((item) => item.enabled).length}</p>
+                <p className="mt-1 text-xs text-secondary-text">订单、扩产、涨价、政策、量产等全局模板。</p>
+              </Card>
+              <Card variant="bordered" padding="md" className="rounded-[22px] border-border/60 bg-card/80">
+                <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">高质量发现</p>
+                <p className="mt-2 text-2xl font-semibold text-foreground">{stats.discoveryPromoted}</p>
+                <p className="mt-1 text-xs text-secondary-text">这些发现事件会直接进入主题因子层继续确认。</p>
+              </Card>
+              <Card variant="bordered" padding="md" className="rounded-[22px] border-border/60 bg-card/80">
+                <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">发现模式</p>
+                <p className="mt-2 text-2xl font-semibold text-foreground">全局探索</p>
+                <p className="mt-1 text-xs text-secondary-text">先找事件语义，再反推主题、产业链和候选股。</p>
+              </Card>
+            </div>
+            <div className="mt-5 flex flex-wrap gap-3">
+              <Button size="lg" isLoading={runningDiscovery} loadingText="正在扫描开放发现池..." onClick={() => void handleRunDiscoveryOnce()}>
+                开始开放发现
+              </Button>
+              <Button variant="secondary" size="lg" onClick={() => void loadData()} isLoading={loading} loadingText="刷新中...">
+                <RefreshCw className="h-4 w-4" />
+                刷新发现结果
+              </Button>
+            </div>
+            <div className={`mt-5 space-y-3 ${DISCOVERY_TEMPLATE_SCROLL_CLASS}`}>
+              {discoveryProfiles.map((profile) => (
+                <div key={profile.profileId} className="rounded-[22px] border border-border/60 bg-background/72 px-4 py-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <h4 className="text-base font-semibold text-foreground">{profile.name}</h4>
+                      <p className="mt-1 text-sm text-secondary-text">{eventTypeLabel(profile.eventType)}</p>
+                    </div>
+                    <Badge variant={profile.enabled ? 'success' : 'default'} className="border-0 px-3 py-1">
+                      {profile.enabled ? '启用' : '停用'}
+                    </Badge>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {profile.queryTemplates.slice(0, 2).map((template) => (
+                      <Badge key={`${profile.profileId}-${template}`} variant="default" className="border-border/60 px-3 py-1">
+                        {template}
+                      </Badge>
+                    ))}
+                  </div>
+                  <p className="mt-3 text-xs leading-6 text-secondary-text">
+                    主题倾向：{profile.themes.join(' / ') || '待自动发现'} · 标签：{profile.chainTags.join(' / ') || '未设置'}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </Card>
 
-        <div className="space-y-5">
-          <Card variant="bordered" padding="lg" className="rounded-[28px]">
+          <Card variant="bordered" padding="lg" className="rounded-[28px] xl:min-h-[420px]">
+            <div className="flex items-center gap-3">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-cyan/10 text-cyan">
+                <Sparkles className="h-5 w-5" />
+              </div>
+              <div>
+                <span className="label-uppercase">Watch Items</span>
+                <h3 className="mt-1 text-2xl font-semibold text-foreground">当前观察主题</h3>
+              </div>
+            </div>
+            <div className={`mt-5 space-y-3 ${WATCH_ITEM_SCROLL_CLASS}`}>
+              {items.map((item) => (
+                <div key={item.itemId} className="rounded-[22px] border border-border/60 bg-background/72 px-4 py-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <h4 className="text-base font-semibold text-foreground">{item.name}</h4>
+                      <p className="mt-1 text-sm text-secondary-text">{eventTypeLabel(item.eventType)}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge variant={item.isSystem ? 'info' : 'default'} className="border-0 px-3 py-1">
+                        {item.isSystem ? '系统内置' : '自定义'}
+                      </Badge>
+                      <Badge variant={item.enabled ? 'success' : 'default'} className="border-0 px-3 py-1">
+                        {item.enabled ? '启用' : '停用'}
+                      </Badge>
+                      <Button variant="secondary" size="sm" onClick={() => handleEditItem(item)}>
+                        编辑
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => void handleDeleteItem(item)}
+                        disabled={item.isSystem}
+                        isLoading={deletingItemId === item.itemId}
+                        loadingText="删除中..."
+                      >
+                        {item.isSystem ? '内置保护' : '删除'}
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {item.seedTerms.slice(0, 4).map((term) => (
+                      <Badge key={`${item.itemId}-${term}`} variant="default" className="border-border/60 px-3 py-1">
+                        {term}
+                      </Badge>
+                    ))}
+                  </div>
+                  <p className="mt-3 text-xs leading-6 text-secondary-text">
+                    主题：{item.themes.join(' / ') || '未设置'} · 产业链标签：{item.chainTags.join(' / ') || '未设置'}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </Card>
+        </div>
+
+        <div className="grid gap-5 xl:col-span-7 xl:auto-rows-auto">
+          <Card variant="bordered" padding="lg" className="rounded-[28px] xl:min-h-[520px]">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <span className="label-uppercase">Discovery Candidates</span>
@@ -503,7 +566,7 @@ const InformationWatchPage: React.FC = () => {
               </div>
               <Badge variant="default" className="border-border/60 px-3 py-1">{discoveryCandidates.length} 组</Badge>
             </div>
-            <div className="mt-5 space-y-3">
+            <div className={`mt-5 space-y-3 ${DISCOVERY_CANDIDATE_SCROLL_CLASS}`}>
               {!loading && discoveryCandidates.length === 0 ? (
                 <EmptyState
                   title="还没有候选主题"
@@ -584,109 +647,109 @@ const InformationWatchPage: React.FC = () => {
             </div>
           </Card>
 
-          <Card variant="bordered" padding="lg" className="rounded-[28px]">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <span className="label-uppercase">Discovery Events</span>
-              <h3 className="mt-1 text-2xl font-semibold text-foreground">最近发现事件</h3>
-            </div>
-            <Badge variant="default" className="border-border/60 px-3 py-1">{discoveryEvents.length} 条</Badge>
-          </div>
-          <div className="mt-5 space-y-3">
-            {!loading && discoveryEvents.length === 0 ? (
-              <EmptyState
-                title="还没有开放发现事件"
-                description="先跑一轮开放发现池，系统会从全局高价值事件模板里找新的产业链苗头。"
-                icon={<Sparkles className="h-6 w-6" />}
-                action={<Button onClick={() => void handleRunDiscoveryOnce()}>开始第一次开放发现</Button>}
-              />
-            ) : null}
-            {discoveryEvents.map((event) => (
-              <div key={event.eventId} className="rounded-[24px] border border-border/60 bg-background/72 px-5 py-4">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Badge variant="info" className="border-0 px-3 py-1">discovery</Badge>
-                  <Badge variant={statusVariant(event.status)} className="border-0 px-3 py-1">{event.status}</Badge>
-                  <Badge variant={tierVariant(event.sourceTier)} className="border-0 px-3 py-1">{event.sourceTier}</Badge>
-                  <Badge variant="default" className="border-border/60 px-3 py-1">{eventTypeLabel(event.eventType)}</Badge>
-                  {event.sourceHost ? (
-                    <Badge variant="default" className="border-border/60 px-3 py-1">{event.sourceHost}</Badge>
-                  ) : null}
-                  {event.clusterLabel ? (
-                    <Badge variant="default" className="border-border/60 px-3 py-1">{event.clusterLabel}</Badge>
-                  ) : null}
-                  {event.watchItemName ? (
-                    <Badge variant="success" className="border-0 px-3 py-1">已关联：{event.watchItemName}</Badge>
-                  ) : null}
-                </div>
-                <div className="mt-3 flex items-start justify-between gap-4">
-                  <div className="min-w-0 flex-1">
-                    <h4 className="text-lg font-semibold text-foreground">{event.title}</h4>
-                    {event.summary ? <p className="mt-2 text-sm leading-6 text-secondary-text">{event.summary}</p> : null}
-                  </div>
-                  {event.url ? (
-                    <a
-                      href={event.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex shrink-0 items-center gap-1 rounded-xl border border-border/60 bg-card/75 px-3 py-2 text-xs text-secondary-text transition hover:border-cyan/20 hover:text-foreground"
-                    >
-                      原文
-                      <ExternalLink className="h-3.5 w-3.5" />
-                    </a>
-                  ) : null}
-                </div>
-                <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                  <div className="rounded-[18px] border border-border/60 bg-card/70 px-4 py-3">
-                    <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">新鲜度</p>
-                    <p className="mt-2 text-lg font-semibold text-foreground">{event.freshnessScore.toFixed(0)}</p>
-                    <p className="mt-1 text-xs text-secondary-text">{formatDateTime(event.publishedAt)}</p>
-                  </div>
-                  <div className="rounded-[18px] border border-border/60 bg-card/70 px-4 py-3">
-                    <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">可信度</p>
-                    <p className="mt-2 text-lg font-semibold text-foreground">{event.credibilityScore.toFixed(0)}</p>
-                    <p className="mt-1 text-xs text-secondary-text">{String(event.metadata.discoveryProfileName ?? '开放模板')}</p>
-                  </div>
-                  <div className="rounded-[18px] border border-border/60 bg-card/70 px-4 py-3">
-                    <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">信号强度</p>
-                    <p className="mt-2 text-lg font-semibold text-foreground">{event.signalStrength.toFixed(0)}</p>
-                    <p className="mt-1 text-xs text-secondary-text">{String(event.metadata.queryGroup ?? 'event_news')}</p>
-                  </div>
-                </div>
-                <div className="mt-4 flex flex-wrap gap-2">
-                  {event.themes.map((theme) => (
-                    <Badge key={`${event.eventId}-${theme}`} variant="info" className="border-0 px-3 py-1">
-                      {theme}
-                    </Badge>
-                  ))}
-                  {event.chainTags.map((tag) => (
-                    <Badge key={`${event.eventId}-${tag}`} variant="default" className="border-border/60 px-3 py-1">
-                      {tag}
-                    </Badge>
-                  ))}
-                </div>
-                <div className="mt-4 flex flex-wrap items-center gap-3">
-                  <Button
-                    variant={event.watchItemId ? 'secondary' : 'primary'}
-                    size="sm"
-                    onClick={() => void handlePromoteDiscoveryEvent(event)}
-                    isLoading={promotingEventId === event.eventId}
-                    loadingText={event.watchItemId ? '定位中...' : '加入中...'}
-                  >
-                    {event.watchItemId ? '编辑观察项' : '加入观察池'}
-                  </Button>
-                  <p className="text-xs leading-6 text-secondary-text">
-                    {event.watchItemId ? '这条发现事件已经沉淀为观察项，可直接在右侧继续调整检索词。' : '把这条开放发现事件转成长期观察主题，后续由观察池持续跟踪。'}
-                  </p>
-                </div>
+          <Card variant="bordered" padding="lg" className="rounded-[28px] xl:min-h-[540px]">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <span className="label-uppercase">Discovery Events</span>
+                <h3 className="mt-1 text-2xl font-semibold text-foreground">最近发现事件</h3>
               </div>
-            ))}
-          </div>
+              <Badge variant="default" className="border-border/60 px-3 py-1">{discoveryEvents.length} 条</Badge>
+            </div>
+            <div className={`mt-5 space-y-3 ${DISCOVERY_EVENT_SCROLL_CLASS}`}>
+              {!loading && discoveryEvents.length === 0 ? (
+                <EmptyState
+                  title="还没有开放发现事件"
+                  description="先跑一轮开放发现池，系统会从全局高价值事件模板里找新的产业链苗头。"
+                  icon={<Sparkles className="h-6 w-6" />}
+                  action={<Button onClick={() => void handleRunDiscoveryOnce()}>开始第一次开放发现</Button>}
+                />
+              ) : null}
+              {discoveryEvents.map((event) => (
+                <div key={event.eventId} className="rounded-[24px] border border-border/60 bg-background/72 px-5 py-4">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant="info" className="border-0 px-3 py-1">discovery</Badge>
+                    <Badge variant={statusVariant(event.status)} className="border-0 px-3 py-1">{event.status}</Badge>
+                    <Badge variant={tierVariant(event.sourceTier)} className="border-0 px-3 py-1">{event.sourceTier}</Badge>
+                    <Badge variant="default" className="border-border/60 px-3 py-1">{eventTypeLabel(event.eventType)}</Badge>
+                    {event.sourceHost ? (
+                      <Badge variant="default" className="border-border/60 px-3 py-1">{event.sourceHost}</Badge>
+                    ) : null}
+                    {event.clusterLabel ? (
+                      <Badge variant="default" className="border-border/60 px-3 py-1">{event.clusterLabel}</Badge>
+                    ) : null}
+                    {event.watchItemName ? (
+                      <Badge variant="success" className="border-0 px-3 py-1">已关联：{event.watchItemName}</Badge>
+                    ) : null}
+                  </div>
+                  <div className="mt-3 flex items-start justify-between gap-4">
+                    <div className="min-w-0 flex-1">
+                      <h4 className="text-lg font-semibold text-foreground">{event.title}</h4>
+                      {event.summary ? <p className="mt-2 text-sm leading-6 text-secondary-text">{event.summary}</p> : null}
+                    </div>
+                    {event.url ? (
+                      <a
+                        href={event.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex shrink-0 items-center gap-1 rounded-xl border border-border/60 bg-card/75 px-3 py-2 text-xs text-secondary-text transition hover:border-cyan/20 hover:text-foreground"
+                      >
+                        原文
+                        <ExternalLink className="h-3.5 w-3.5" />
+                      </a>
+                    ) : null}
+                  </div>
+                  <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                    <div className="rounded-[18px] border border-border/60 bg-card/70 px-4 py-3">
+                      <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">新鲜度</p>
+                      <p className="mt-2 text-lg font-semibold text-foreground">{event.freshnessScore.toFixed(0)}</p>
+                      <p className="mt-1 text-xs text-secondary-text">{formatDateTime(event.publishedAt)}</p>
+                    </div>
+                    <div className="rounded-[18px] border border-border/60 bg-card/70 px-4 py-3">
+                      <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">可信度</p>
+                      <p className="mt-2 text-lg font-semibold text-foreground">{event.credibilityScore.toFixed(0)}</p>
+                      <p className="mt-1 text-xs text-secondary-text">{String(event.metadata.discoveryProfileName ?? '开放模板')}</p>
+                    </div>
+                    <div className="rounded-[18px] border border-border/60 bg-card/70 px-4 py-3">
+                      <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">信号强度</p>
+                      <p className="mt-2 text-lg font-semibold text-foreground">{event.signalStrength.toFixed(0)}</p>
+                      <p className="mt-1 text-xs text-secondary-text">{String(event.metadata.queryGroup ?? 'event_news')}</p>
+                    </div>
+                  </div>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {event.themes.map((theme) => (
+                      <Badge key={`${event.eventId}-${theme}`} variant="info" className="border-0 px-3 py-1">
+                        {theme}
+                      </Badge>
+                    ))}
+                    {event.chainTags.map((tag) => (
+                      <Badge key={`${event.eventId}-${tag}`} variant="default" className="border-border/60 px-3 py-1">
+                        {tag}
+                      </Badge>
+                    ))}
+                  </div>
+                  <div className="mt-4 flex flex-wrap items-center gap-3">
+                    <Button
+                      variant={event.watchItemId ? 'secondary' : 'primary'}
+                      size="sm"
+                      onClick={() => void handlePromoteDiscoveryEvent(event)}
+                      isLoading={promotingEventId === event.eventId}
+                      loadingText={event.watchItemId ? '定位中...' : '加入中...'}
+                    >
+                      {event.watchItemId ? '编辑观察项' : '加入观察池'}
+                    </Button>
+                    <p className="text-xs leading-6 text-secondary-text">
+                      {event.watchItemId ? '这条发现事件已经沉淀为观察项，可直接在右侧继续调整检索词。' : '把这条开放发现事件转成长期观察主题，后续由观察池持续跟踪。'}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
           </Card>
         </div>
       </section>
 
-      <section className="grid gap-5 xl:grid-cols-[1.18fr_0.82fr]">
-        <Card variant="bordered" padding="lg" className="rounded-[28px]">
+      <section className="grid gap-5 xl:grid-cols-12">
+        <Card variant="bordered" padding="lg" className="rounded-[28px] xl:col-span-7 xl:min-h-[1080px]">
           <div className="flex items-center justify-between gap-3">
             <div>
               <span className="label-uppercase">Recent Events</span>
@@ -705,7 +768,7 @@ const InformationWatchPage: React.FC = () => {
             </div>
           </div>
 
-          <div className="mt-5 space-y-3">
+          <div className={`mt-5 space-y-3 ${WATCH_EVENT_SCROLL_CLASS}`}>
             {!loading && events.length === 0 ? (
               <EmptyState
                 title="暂时还没有信息事件"
@@ -770,9 +833,7 @@ const InformationWatchPage: React.FC = () => {
                   <div className="rounded-[18px] border border-border/60 bg-card/70 px-4 py-3">
                     <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">信号强度</p>
                     <p className="mt-2 text-lg font-semibold text-foreground">{event.signalStrength.toFixed(0)}</p>
-                    <p className="mt-1 text-xs text-secondary-text">
-                      {String(event.metadata.queryGroup ?? 'event_news')}
-                    </p>
+                    <p className="mt-1 text-xs text-secondary-text">{String(event.metadata.queryGroup ?? 'event_news')}</p>
                   </div>
                 </div>
 
@@ -793,9 +854,9 @@ const InformationWatchPage: React.FC = () => {
           </div>
         </Card>
 
-        <div className="space-y-5">
+        <div className="grid gap-5 xl:col-span-5 xl:auto-rows-auto">
           <div ref={formAnchorRef} />
-          <Card variant="bordered" padding="lg" className="rounded-[28px]">
+          <Card variant="bordered" padding="lg" className="rounded-[28px] xl:min-h-[700px]">
             <div className="flex items-center gap-3">
               <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald/10 text-emerald">
                 <Sparkles className="h-5 w-5" />
@@ -916,66 +977,7 @@ const InformationWatchPage: React.FC = () => {
             </div>
           </Card>
 
-          <Card variant="bordered" padding="lg" className="rounded-[28px]">
-            <div className="flex items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-cyan/10 text-cyan">
-                <Sparkles className="h-5 w-5" />
-              </div>
-              <div>
-                <span className="label-uppercase">Watch Items</span>
-                <h3 className="mt-1 text-2xl font-semibold text-foreground">当前观察主题</h3>
-              </div>
-            </div>
-            <div className="mt-5 space-y-3">
-              {items.map((item) => (
-                <div key={item.itemId} className="rounded-[22px] border border-border/60 bg-background/72 px-4 py-4">
-                  <div className="flex items-center justify-between gap-3">
-                  <div>
-                      <h4 className="text-base font-semibold text-foreground">{item.name}</h4>
-                      <p className="mt-1 text-sm text-secondary-text">{eventTypeLabel(item.eventType)}</p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Badge variant={item.isSystem ? 'info' : 'default'} className="border-0 px-3 py-1">
-                        {item.isSystem ? '系统内置' : '自定义'}
-                      </Badge>
-                      <Badge variant={item.enabled ? 'success' : 'default'} className="border-0 px-3 py-1">
-                        {item.enabled ? '启用' : '停用'}
-                      </Badge>
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => handleEditItem(item)}
-                      >
-                        编辑
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => void handleDeleteItem(item)}
-                        disabled={item.isSystem}
-                        isLoading={deletingItemId === item.itemId}
-                        loadingText="删除中..."
-                      >
-                        {item.isSystem ? '内置保护' : '删除'}
-                      </Button>
-                    </div>
-                  </div>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {item.seedTerms.slice(0, 4).map((term) => (
-                      <Badge key={`${item.itemId}-${term}`} variant="default" className="border-border/60 px-3 py-1">
-                        {term}
-                      </Badge>
-                    ))}
-                  </div>
-                  <p className="mt-3 text-xs leading-6 text-secondary-text">
-                    主题：{item.themes.join(' / ') || '未设置'} · 产业链标签：{item.chainTags.join(' / ') || '未设置'}
-                  </p>
-                </div>
-              ))}
-            </div>
-          </Card>
-
-          <Card variant="bordered" padding="lg" className="rounded-[28px]">
+          <Card variant="bordered" padding="lg" className="rounded-[28px] xl:min-h-[340px]">
             <div className="flex items-center gap-3">
               <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-purple/10 text-purple">
                 <Activity className="h-5 w-5" />

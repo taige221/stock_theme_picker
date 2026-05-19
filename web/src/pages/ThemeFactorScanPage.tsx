@@ -1,7 +1,7 @@
 import type React from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ArrowRight, Orbit, Radar, RefreshCw, Sparkles, Workflow } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { getParsedApiError, type ParsedApiError } from '../api/error';
 import {
   informationWatchApi,
@@ -40,7 +40,24 @@ function scoreTone(score?: number | null): string {
   return 'text-secondary-text';
 }
 
+function isSyntheticThemeId(value?: string | null): boolean {
+  const text = String(value || '').trim();
+  return text.startsWith('theme_name_');
+}
+
+function normalizeSyncedThemeName(value?: string | null): string {
+  const text = String(value || '').trim();
+  if (!text) return '';
+  if (!isSyntheticThemeId(text)) return text;
+  return text.replace(/^theme_name_/, '').trim();
+}
+
+const RECENT_SCAN_SCROLL_CLASS = 'max-h-[860px] overflow-y-auto pr-1';
+const REVIEW_SCROLL_CLASS = 'max-h-[300px] overflow-y-auto pr-1';
+const PROMOTED_EVENT_SCROLL_CLASS = 'max-h-[360px] overflow-y-auto pr-1';
+
 const ThemeFactorScanPage: React.FC = () => {
+  const navigate = useNavigate();
   const [events, setEvents] = useState<InformationWatchEvent[]>([]);
   const [scans, setScans] = useState<ThemeFactorScanItem[]>([]);
   const [selectedEventId, setSelectedEventId] = useState('');
@@ -120,11 +137,46 @@ const ThemeFactorScanPage: React.FC = () => {
     return { completed, highScore, confirmedEtf };
   }, [scans]);
 
+  const handleSyncToThemePicker = useCallback((scan: ThemeFactorScanItem) => {
+    const query = scan.result?.themeScan?.query;
+    const params = new URLSearchParams();
+    params.set('from', 'theme-factor');
+    params.set('scanId', scan.scanId);
+    params.set('eventId', scan.eventId);
+    const syncedThemeName = normalizeSyncedThemeName(query?.themeName || scan.themeName || '');
+    if (syncedThemeName) {
+      params.set('themeName', syncedThemeName);
+    }
+    const syncedThemeId = String(query?.themeId || scan.themeId || '').trim();
+    if (syncedThemeId && !isSyntheticThemeId(syncedThemeId)) {
+      params.set('themeId', syncedThemeId);
+    }
+    if (query?.boardCode) {
+      params.set('boardCode', String(query.boardCode).trim());
+    }
+    if (query?.boardName) {
+      params.set('boardName', String(query.boardName).trim());
+    }
+    if (query?.strategyMode) {
+      params.set('strategyMode', String(query.strategyMode).trim());
+    }
+    if (query?.maxCandidates != null) {
+      params.set('maxCandidates', String(query.maxCandidates));
+    }
+    if (scan.result?.event?.title) {
+      params.set('eventTitle', String(scan.result.event.title));
+    }
+    if (scan.themeFactorScore != null) {
+      params.set('themeFactorScore', String(scan.themeFactorScore));
+    }
+    navigate(`/theme-picker?${params.toString()}`);
+  }, [navigate]);
+
   return (
     <AppPage className="space-y-6 !max-w-[1680px] px-3 md:px-5 lg:px-6">
       <section className="overflow-hidden rounded-[32px] border border-border/60 bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.16),_transparent_30%),radial-gradient(circle_at_bottom_right,_rgba(6,182,212,0.16),_transparent_28%),linear-gradient(180deg,rgba(255,255,255,0.98),rgba(246,249,252,0.96))] shadow-soft-card dark:bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.16),_transparent_30%),radial-gradient(circle_at_bottom_right,_rgba(34,211,238,0.14),_transparent_28%),linear-gradient(180deg,rgba(10,15,26,0.98),rgba(14,20,32,0.96))]">
-        <div className="grid gap-6 px-5 py-6 lg:grid-cols-[1.15fr_0.85fr] lg:px-7 lg:py-7">
-          <div className="space-y-5">
+        <div className="grid gap-6 px-5 py-6 lg:grid-cols-12 lg:px-7 lg:py-7">
+          <div className="space-y-5 lg:col-span-7">
             <div className="flex items-center gap-4">
               <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-success/10 text-success shadow-soft-card">
                 <Workflow className="h-7 w-7" />
@@ -138,32 +190,9 @@ const ThemeFactorScanPage: React.FC = () => {
               </div>
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-3">
-              <Card variant="bordered" padding="lg" className="rounded-[24px] border-border/60 bg-card/85">
-                <p className="text-xs uppercase tracking-[0.16em] text-secondary-text">已完成扫描</p>
-                <p className="mt-3 text-3xl font-semibold text-foreground">{stats.completed}</p>
-                <p className="mt-2 text-sm text-secondary-text">
-                  {reviewSummary ? `近 ${reviewSummary.days} 天事件转扫描 ${reviewSummary.scanConversionRate.toFixed(0)}%。` : '至少跑通过一次主题确认链路，不再只看原始新闻。'}
-                </p>
-              </Card>
-              <Card variant="bordered" padding="lg" className="rounded-[24px] border-border/60 bg-card/85">
-                <p className="text-xs uppercase tracking-[0.16em] text-secondary-text">高分主题</p>
-                <p className="mt-3 text-3xl font-semibold text-foreground">{stats.highScore}</p>
-                <p className="mt-2 text-sm text-secondary-text">
-                  {reviewSummary ? `高分占比 ${reviewSummary.highScoreRate.toFixed(0)}%，更适合继续下钻个股和入场点。` : '主题因子分超过 75，适合继续下钻个股和入场点。'}
-                </p>
-              </Card>
-              <Card variant="bordered" padding="lg" className="rounded-[24px] border-border/60 bg-card/85">
-                <p className="text-xs uppercase tracking-[0.16em] text-secondary-text">ETF 已确认</p>
-                <p className="mt-3 text-3xl font-semibold text-foreground">{stats.confirmedEtf}</p>
-                <p className="mt-2 text-sm text-secondary-text">
-                  {reviewSummary ? `确认率 ${reviewSummary.confirmedEtfRate.toFixed(0)}%，说明资金承认度在抬升。` : '说明市场资金已经开始认可这条主线，不只是信息面单独躁动。'}
-                </p>
-              </Card>
-            </div>
           </div>
 
-          <Card variant="bordered" padding="lg" className="rounded-[28px] border-border/60 bg-card/90">
+          <Card variant="bordered" padding="lg" className="rounded-[28px] border-border/60 bg-card/90 lg:col-span-5 lg:min-h-[248px]">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <p className="text-xs uppercase tracking-[0.18em] text-secondary-text">Run Once</p>
@@ -197,6 +226,30 @@ const ThemeFactorScanPage: React.FC = () => {
               </div>
             </div>
           </Card>
+
+          <div className="grid gap-3 sm:grid-cols-3 lg:col-span-12">
+              <Card variant="bordered" padding="lg" className="rounded-[24px] border-border/60 bg-card/85">
+                <p className="text-xs uppercase tracking-[0.16em] text-secondary-text">已完成扫描</p>
+                <p className="mt-3 text-3xl font-semibold text-foreground">{stats.completed}</p>
+                <p className="mt-2 text-sm text-secondary-text">
+                  {reviewSummary ? `近 ${reviewSummary.days} 天事件转扫描 ${reviewSummary.scanConversionRate.toFixed(0)}%。` : '至少跑通过一次主题确认链路，不再只看原始新闻。'}
+                </p>
+              </Card>
+              <Card variant="bordered" padding="lg" className="rounded-[24px] border-border/60 bg-card/85">
+                <p className="text-xs uppercase tracking-[0.16em] text-secondary-text">高分主题</p>
+                <p className="mt-3 text-3xl font-semibold text-foreground">{stats.highScore}</p>
+                <p className="mt-2 text-sm text-secondary-text">
+                  {reviewSummary ? `高分占比 ${reviewSummary.highScoreRate.toFixed(0)}%，更适合继续下钻个股和入场点。` : '主题因子分超过 75，适合继续下钻个股和入场点。'}
+                </p>
+              </Card>
+              <Card variant="bordered" padding="lg" className="rounded-[24px] border-border/60 bg-card/85">
+                <p className="text-xs uppercase tracking-[0.16em] text-secondary-text">ETF 已确认</p>
+                <p className="mt-3 text-3xl font-semibold text-foreground">{stats.confirmedEtf}</p>
+                <p className="mt-2 text-sm text-secondary-text">
+                  {reviewSummary ? `确认率 ${reviewSummary.confirmedEtfRate.toFixed(0)}%，说明资金承认度在抬升。` : '说明市场资金已经开始认可这条主线，不只是信息面单独躁动。'}
+                </p>
+              </Card>
+          </div>
         </div>
       </section>
 
@@ -210,8 +263,8 @@ const ThemeFactorScanPage: React.FC = () => {
         />
       ) : null}
 
-      <section className="grid gap-5 xl:grid-cols-[1.16fr_0.84fr]">
-        <Card variant="bordered" padding="lg" className="rounded-[28px]">
+      <section className="grid gap-5 xl:grid-cols-12">
+        <Card variant="bordered" padding="lg" className="rounded-[28px] xl:col-span-7 xl:min-h-[1040px]">
           <div className="flex items-center justify-between gap-3">
             <div>
               <span className="label-uppercase">Recent Scans</span>
@@ -229,7 +282,7 @@ const ThemeFactorScanPage: React.FC = () => {
             </div>
           </div>
 
-          <div className="mt-5 space-y-3">
+          <div className={`mt-5 space-y-3 ${RECENT_SCAN_SCROLL_CLASS}`}>
             {!loading && scans.length === 0 ? (
               <EmptyState
                 title="还没有主题因子扫描结果"
@@ -244,21 +297,20 @@ const ThemeFactorScanPage: React.FC = () => {
               const etf = scan.result?.etfConfirmation;
               const stocks = scan.result?.themeScan?.stocks ?? [];
               return (
-                <div key={scan.scanId} className="rounded-[24px] border border-border/60 bg-background/72 px-5 py-4">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Badge variant={scanStatusVariant(scan.status)} className="border-0 px-3 py-1">
-                      {scan.status}
-                    </Badge>
-                    <Badge variant="info" className="border-0 px-3 py-1">
-                      {scan.themeName}
-                    </Badge>
-                    {etf?.confirmed ? (
-                      <Badge variant="success" className="border-0 px-3 py-1">ETF 已确认</Badge>
-                    ) : null}
-                  </div>
-
-                  <div className="mt-3 flex items-start justify-between gap-4">
+                <div key={scan.scanId} className="rounded-[22px] border border-border/60 bg-background/72 px-4 py-4">
+                  <div className="flex items-start justify-between gap-4">
                     <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge variant={scanStatusVariant(scan.status)} className="border-0 px-3 py-1">
+                          {scan.status}
+                        </Badge>
+                        <Badge variant="info" className="border-0 px-3 py-1">
+                          {scan.themeName}
+                        </Badge>
+                        {etf?.confirmed ? (
+                          <Badge variant="success" className="border-0 px-3 py-1">ETF 已确认</Badge>
+                        ) : null}
+                      </div>
                       <h4 className="text-lg font-semibold text-foreground">{event?.title ?? '未回填事件标题'}</h4>
                       <p className="mt-2 text-sm leading-6 text-secondary-text">
                         事件源层级 {event?.sourceTier ?? '未知'} · 生成时间 {formatDateTime(scan.createdAt)}
@@ -291,18 +343,48 @@ const ThemeFactorScanPage: React.FC = () => {
                     </div>
                   </div>
 
-                  {scan.result?.leaderConfirmation?.stockName ? (
-                    <div className="mt-4 rounded-[18px] border border-border/60 bg-card/70 px-4 py-3">
-                      <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">龙头确认</p>
-                      <p className="mt-2 text-sm font-semibold text-foreground">
-                        {scan.result.leaderConfirmation.stockName}
-                        {scan.result.leaderConfirmation.stockCode ? ` · ${scan.result.leaderConfirmation.stockCode}` : ''}
-                      </p>
-                      <p className="mt-1 text-xs text-secondary-text">
-                        {scan.result.leaderConfirmation.signalLevel ?? '待确认'} · 趋势 {Number(scan.result.leaderConfirmation.trendScore ?? 0).toFixed(0)}
-                      </p>
-                    </div>
-                  ) : null}
+                  <div className="mt-4 grid gap-3 lg:grid-cols-[0.95fr_1.05fr]">
+                    {scan.result?.leaderConfirmation?.stockName ? (
+                      <div className="rounded-[18px] border border-border/60 bg-card/70 px-4 py-3">
+                        <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">龙头确认</p>
+                        <p className="mt-2 text-sm font-semibold text-foreground">
+                          {scan.result.leaderConfirmation.stockName}
+                          {scan.result.leaderConfirmation.stockCode ? ` · ${scan.result.leaderConfirmation.stockCode}` : ''}
+                        </p>
+                        <p className="mt-1 text-xs text-secondary-text">
+                          {scan.result.leaderConfirmation.signalLevel ?? '待确认'} · 趋势 {Number(scan.result.leaderConfirmation.trendScore ?? 0).toFixed(0)}
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="rounded-[18px] border border-dashed border-border/60 bg-card/60 px-4 py-3 text-sm text-secondary-text">
+                        当前还没有明确龙头确认，说明这条主题更多处在信息先行阶段。
+                      </div>
+                    )}
+
+                    {scan.result?.roleBreakdown ? (
+                      <div className="rounded-[18px] border border-dashed border-border/60 bg-card/60 px-4 py-3">
+                        <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">角色分层</p>
+                        <div className="mt-2 flex flex-wrap gap-2 text-xs text-secondary-text">
+                          <Badge variant="success" className="border-0 px-3 py-1">
+                            龙头 {scan.result.roleBreakdown.leader?.stockName ?? '暂无'}
+                          </Badge>
+                          <Badge variant="info" className="border-0 px-3 py-1">
+                            一阶 {scan.result.roleBreakdown.firstOrder?.length ?? 0}
+                          </Badge>
+                          <Badge variant="default" className="border-border/60 px-3 py-1">
+                            二阶 {scan.result.roleBreakdown.secondOrder?.length ?? 0}
+                          </Badge>
+                          <Badge variant="default" className="border-border/60 px-3 py-1">
+                            观察 {scan.result.roleBreakdown.observe?.length ?? 0}
+                          </Badge>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="rounded-[18px] border border-dashed border-border/60 bg-card/60 px-4 py-3 text-sm text-secondary-text">
+                        当前还没有角色分层结果，说明候选股还不足以区分一阶和二阶受益。
+                      </div>
+                    )}
+                  </div>
 
                   {stocks.length > 0 ? (
                     <div className="mt-4 space-y-2">
@@ -332,34 +414,26 @@ const ThemeFactorScanPage: React.FC = () => {
                     </div>
                   )}
 
-                  {scan.result?.roleBreakdown ? (
-                    <div className="mt-4 rounded-[18px] border border-dashed border-border/60 bg-card/60 px-4 py-3">
-                      <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">角色分层</p>
-                      <div className="mt-2 flex flex-wrap gap-2 text-xs text-secondary-text">
-                        <Badge variant="success" className="border-0 px-3 py-1">
-                          龙头 {scan.result.roleBreakdown.leader?.stockName ?? '暂无'}
-                        </Badge>
-                        <Badge variant="info" className="border-0 px-3 py-1">
-                          一阶 {scan.result.roleBreakdown.firstOrder?.length ?? 0}
-                        </Badge>
-                        <Badge variant="default" className="border-border/60 px-3 py-1">
-                          二阶 {scan.result.roleBreakdown.secondOrder?.length ?? 0}
-                        </Badge>
-                        <Badge variant="default" className="border-border/60 px-3 py-1">
-                          观察 {scan.result.roleBreakdown.observe?.length ?? 0}
-                        </Badge>
-                      </div>
-                    </div>
-                  ) : null}
+                  <div className="mt-4 flex flex-wrap justify-end gap-2">
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      disabled={scan.status !== 'completed'}
+                      onClick={() => handleSyncToThemePicker(scan)}
+                    >
+                      同步到主题选股
+                      <ArrowRight className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </div>
               );
             })}
           </div>
         </Card>
 
-        <div className="space-y-5">
+        <div className="grid gap-5 xl:col-span-5 xl:auto-rows-auto">
           {reviewSummary ? (
-            <Card variant="bordered" padding="lg" className="rounded-[28px]">
+            <Card variant="bordered" padding="lg" className="rounded-[28px] xl:min-h-[360px]">
               <div className="flex items-center gap-3">
                 <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-success/10 text-success">
                   <Sparkles className="h-5 w-5" />
@@ -381,7 +455,7 @@ const ThemeFactorScanPage: React.FC = () => {
                   <p className="mt-1 text-xs text-secondary-text">说明新主线探索已开始沉淀成结构化事件。</p>
                 </div>
               </div>
-              <div className="mt-4 space-y-2">
+              <div className={`mt-4 space-y-2 ${REVIEW_SCROLL_CLASS}`}>
                 {reviewSummary.eventTypeBreakdown.slice(0, 4).map((item) => (
                   <div key={item.key} className="rounded-[18px] border border-border/60 bg-card/70 px-4 py-3">
                     <div className="flex items-center justify-between gap-3">
@@ -411,7 +485,7 @@ const ThemeFactorScanPage: React.FC = () => {
             </Card>
           ) : null}
 
-          <Card variant="bordered" padding="lg" className="rounded-[28px]">
+          <Card variant="bordered" padding="lg" className="rounded-[28px] xl:min-h-[460px]">
             <div className="flex items-center gap-3">
               <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-cyan/10 text-cyan">
                 <Radar className="h-5 w-5" />
@@ -421,7 +495,7 @@ const ThemeFactorScanPage: React.FC = () => {
                 <h3 className="mt-1 text-2xl font-semibold text-foreground">高质量事件输入</h3>
               </div>
             </div>
-            <div className="mt-5 space-y-3">
+            <div className={`mt-5 space-y-3 ${PROMOTED_EVENT_SCROLL_CLASS}`}>
               {events.length === 0 ? (
                 <EmptyState
                   title="还没有 promoted 事件"
@@ -459,7 +533,7 @@ const ThemeFactorScanPage: React.FC = () => {
             </div>
           </Card>
 
-          <Card variant="bordered" padding="lg" className="rounded-[28px]">
+          <Card variant="bordered" padding="lg" className="rounded-[28px] xl:min-h-[200px]">
             <div className="flex items-center gap-3">
               <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-purple/10 text-purple">
                 <Sparkles className="h-5 w-5" />
