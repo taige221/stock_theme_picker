@@ -1,5 +1,5 @@
 import type React from 'react';
-import { ArrowRight, Bell, Layers3, Radar, Sparkles, Star, TrendingUp } from 'lucide-react';
+import { Activity, ArrowRight, Bell, Layers3, Newspaper, Radar, Sparkles, Star, TrendingUp } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { AppPage, Badge, Button, Card } from '../components/common';
 
@@ -22,6 +22,18 @@ const recentAlerts = [
 ];
 
 const actionCards = [
+  {
+    title: '信息观察池',
+    description: '围绕订单、扩产、放行、量产等事件型主题做定时扫描，先判断今天新增了什么。',
+    to: '/information-watch',
+    icon: Newspaper,
+  },
+  {
+    title: '主题因子',
+    description: '只消费高质量信息事件，叠加 ETF 与龙头确认，压缩成今天值得继续看的方向。',
+    to: '/theme-factor-scans',
+    icon: Activity,
+  },
   {
     title: '主题选股',
     description: '从题材、板块和催化出发，快速收敛一批值得继续看的股票。',
@@ -62,7 +74,7 @@ const DashboardPage: React.FC = () => {
                 <p className="text-xs uppercase tracking-[0.18em] text-secondary-text">Daily Research Hub</p>
                 <h2 className="mt-1 text-3xl font-semibold tracking-tight text-foreground">今天先看哪些变化最值得跟进</h2>
                 <p className="mt-2 max-w-3xl text-sm leading-7 text-secondary-text">
-                  这版工作台把主题扫描、单股反查、观察池和提醒入口都摆在一层，优先回答“今天发生了什么”和“我下一步该点哪里”。
+                  这版工作台把信息观察池、主题因子扫描、主题选股、单股反查和观察池入口都摆在一层，优先回答“今天发生了什么”和“我下一步该点哪里”。
                 </p>
               </div>
             </div>

@@ -182,6 +182,227 @@ class ThemePickerThemeListResponse(BaseModel):
     items: List[ThemePickerThemeListItemSchema] = Field(default_factory=list)
 
 
+class InformationWatchItemSchema(BaseModel):
+    item_id: str
+    name: str
+    enabled: bool = True
+    is_system: bool = False
+    priority: int = 100
+    event_type: str
+    seed_terms: List[str] = Field(default_factory=list)
+    aliases: List[str] = Field(default_factory=list)
+    themes: List[str] = Field(default_factory=list)
+    chain_tags: List[str] = Field(default_factory=list)
+    source_tiers: List[str] = Field(default_factory=list)
+    freshness_days: int = 3
+    notes: Optional[str] = None
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+
+class InformationWatchItemUpsertRequest(BaseModel):
+    item_id: Optional[str] = None
+    name: str
+    enabled: bool = True
+    priority: int = Field(default=100, ge=0, le=9999)
+    event_type: str
+    seed_terms: List[str] = Field(default_factory=list)
+    aliases: List[str] = Field(default_factory=list)
+    themes: List[str] = Field(default_factory=list)
+    chain_tags: List[str] = Field(default_factory=list)
+    source_tiers: List[str] = Field(default_factory=lambda: ["L1", "L2"])
+    freshness_days: int = Field(default=3, ge=1, le=30)
+    notes: Optional[str] = None
+
+    @model_validator(mode="after")
+    def validate_payload(self):
+        if not self.name.strip():
+            raise ValueError("name 不能为空")
+        if self.event_type not in {
+            "order",
+            "capacity_expand",
+            "mass_production",
+            "price_signal",
+            "policy_catalyst",
+            "technology_progress",
+            "capital_expenditure",
+            "risk_signal",
+            "opinion_only",
+        }:
+            raise ValueError("event_type 不在支持范围内")
+        if not [item for item in self.seed_terms if str(item).strip()]:
+            raise ValueError("seed_terms 至少需要提供一个")
+        return self
+
+
+class InformationWatchItemListResponse(BaseModel):
+    items: List[InformationWatchItemSchema] = Field(default_factory=list)
+
+
+class InformationWatchRunOnceRequest(BaseModel):
+    limit: int = Field(default=20, ge=1, le=100)
+    item_ids: List[str] = Field(default_factory=list)
+
+
+class OpenDiscoveryProfileSchema(BaseModel):
+    profile_id: str
+    name: str
+    enabled: bool = True
+    priority: int = 100
+    event_type: str
+    query_templates: List[str] = Field(default_factory=list)
+    themes: List[str] = Field(default_factory=list)
+    chain_tags: List[str] = Field(default_factory=list)
+    source_tiers: List[str] = Field(default_factory=list)
+    freshness_days: int = 2
+    notes: Optional[str] = None
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+
+class OpenDiscoveryProfileListResponse(BaseModel):
+    items: List[OpenDiscoveryProfileSchema] = Field(default_factory=list)
+
+
+class OpenDiscoveryRunOnceRequest(BaseModel):
+    limit: int = Field(default=12, ge=1, le=50)
+    profile_ids: List[str] = Field(default_factory=list)
+
+
+class InformationEventSchema(BaseModel):
+    event_id: str
+    watch_item_id: Optional[str] = None
+    watch_item_name: Optional[str] = None
+    title: str
+    summary: Optional[str] = None
+    event_type: str
+    impact_direction: Optional[str] = None
+    source_mode: str = "watch"
+    source_tier: str
+    provider: Optional[str] = None
+    source_host: Optional[str] = None
+    cluster_key: Optional[str] = None
+    cluster_label: Optional[str] = None
+    url: Optional[str] = None
+    published_at: Optional[str] = None
+    first_seen_at: Optional[str] = None
+    last_seen_at: Optional[str] = None
+    is_new_event: bool = True
+    duplicate_key: Optional[str] = None
+    themes: List[str] = Field(default_factory=list)
+    chain_tags: List[str] = Field(default_factory=list)
+    entities: Dict[str, Any] = Field(default_factory=dict)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+    freshness_score: float = 0.0
+    credibility_score: float = 0.0
+    signal_strength: float = 0.0
+    status: str = "new"
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+
+class InformationEventListResponse(BaseModel):
+    items: List[InformationEventSchema] = Field(default_factory=list)
+
+
+class OpenDiscoveryCandidateSchema(BaseModel):
+    cluster_key: str
+    label: str
+    event_type: str
+    themes: List[str] = Field(default_factory=list)
+    chain_tags: List[str] = Field(default_factory=list)
+    event_count: int = 0
+    promoted_count: int = 0
+    source_hosts: List[str] = Field(default_factory=list)
+    source_tiers: List[str] = Field(default_factory=list)
+    hard_source_confirmed: bool = False
+    candidate_score: float = 0.0
+    representative_event_id: Optional[str] = None
+    representative_title: Optional[str] = None
+    latest_published_at: Optional[str] = None
+    watch_item_id: Optional[str] = None
+    watch_item_name: Optional[str] = None
+    status: str = "candidate"
+
+
+class OpenDiscoveryCandidateListResponse(BaseModel):
+    items: List[OpenDiscoveryCandidateSchema] = Field(default_factory=list)
+
+
+class InformationWatchRunOnceResponse(BaseModel):
+    scanned_items: int = 0
+    created_events: int = 0
+    promoted_events: int = 0
+    items: List[InformationEventSchema] = Field(default_factory=list)
+
+
+class OpenDiscoveryRunOnceResponse(BaseModel):
+    scanned_profiles: int = 0
+    created_events: int = 0
+    promoted_events: int = 0
+    items: List[InformationEventSchema] = Field(default_factory=list)
+
+
+class ThemeFactorScanItemSchema(BaseModel):
+    scan_id: str
+    event_id: str
+    theme_id: Optional[str] = None
+    theme_name: str
+    status: str
+    event_score: Optional[float] = None
+    etf_confirmation_score: Optional[float] = None
+    leader_confirmation_score: Optional[float] = None
+    theme_factor_score: Optional[float] = None
+    result: Dict[str, Any] = Field(default_factory=dict)
+    error: Optional[str] = None
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+
+class ThemeFactorScanListResponse(BaseModel):
+    items: List[ThemeFactorScanItemSchema] = Field(default_factory=list)
+
+
+class ThemeFactorScanRunOnceRequest(BaseModel):
+    limit: int = Field(default=10, ge=1, le=50)
+    event_ids: List[str] = Field(default_factory=list)
+    min_signal_strength: float = Field(default=70.0, ge=0.0, le=100.0)
+
+
+class ThemeFactorScanRunOnceResponse(BaseModel):
+    scanned_events: int = 0
+    generated_scans: int = 0
+    items: List[ThemeFactorScanItemSchema] = Field(default_factory=list)
+
+
+class InformationReviewBreakdownSchema(BaseModel):
+    key: str
+    label: str
+    event_count: int = 0
+    promoted_count: int = 0
+    scan_count: int = 0
+    high_score_count: int = 0
+    avg_signal_strength: float = 0.0
+    avg_theme_factor_score: float = 0.0
+
+
+class InformationReviewSummarySchema(BaseModel):
+    days: int = 7
+    total_events: int = 0
+    promoted_events: int = 0
+    discovery_events: int = 0
+    scan_count: int = 0
+    high_score_scan_count: int = 0
+    confirmed_etf_scan_count: int = 0
+    promoted_rate: float = 0.0
+    scan_conversion_rate: float = 0.0
+    high_score_rate: float = 0.0
+    confirmed_etf_rate: float = 0.0
+    top_themes: List[Dict[str, Any]] = Field(default_factory=list)
+    top_source_hosts: List[Dict[str, Any]] = Field(default_factory=list)
+    event_type_breakdown: List[InformationReviewBreakdownSchema] = Field(default_factory=list)
+
+
 class RuntimeSettingOptionSchema(BaseModel):
     value: str
     label: str

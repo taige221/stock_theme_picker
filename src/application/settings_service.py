@@ -16,6 +16,7 @@ from theme_picker.api.schemas import (
     RuntimeSettingsUpdateResponseSchema,
 )
 from theme_picker.config import Config, REPO_ROOT, get_config, setup_env
+from theme_picker.search_service import reset_search_service
 
 
 @dataclass(frozen=True)
@@ -117,6 +118,63 @@ SETTING_DEFINITIONS: List[RuntimeSettingDefinition] = [
         label="预取实时行情",
         input_type="boolean",
         description="在部分查询链路里提前取行情，降低等待感。",
+    ),
+    RuntimeSettingDefinition(
+        key="INFORMATION_WATCH_LOOP_ENABLED",
+        section_id="runtime",
+        label="信息观察池后台循环",
+        input_type="boolean",
+        description="控制进程内信息观察池与开放发现池后台循环是否启用。",
+        requires_restart=True,
+    ),
+    RuntimeSettingDefinition(
+        key="INFORMATION_WATCH_QUERY_TIMEOUT_SECONDS",
+        section_id="runtime",
+        label="信息观察搜索超时（秒）",
+        input_type="number",
+        description="信息观察池和开放发现池搜索阶段的单次请求超时。",
+        placeholder="8",
+    ),
+    RuntimeSettingDefinition(
+        key="INFORMATION_L1_DIRECT_ENABLED",
+        section_id="runtime",
+        label="启用 L1 公告直连",
+        input_type="boolean",
+        description="开启后会优先尝试巨潮公告直连，作为一级硬源确认。",
+        requires_restart=True,
+    ),
+    RuntimeSettingDefinition(
+        key="INFORMATION_L1_DIRECT_TIMEOUT_SECONDS",
+        section_id="runtime",
+        label="L1 公告直连超时（秒）",
+        input_type="number",
+        description="巨潮公告直连单次请求的超时预算。",
+        placeholder="10",
+        requires_restart=True,
+    ),
+    RuntimeSettingDefinition(
+        key="OPEN_DISCOVERY_POOL_ENABLED",
+        section_id="runtime",
+        label="启用开放发现池",
+        input_type="boolean",
+        description="允许后台定时全局探索新的产业事件苗头。",
+        requires_restart=True,
+    ),
+    RuntimeSettingDefinition(
+        key="OPEN_DISCOVERY_SCAN_INTERVAL_MINUTES",
+        section_id="runtime",
+        label="开放发现扫描间隔（分钟）",
+        input_type="number",
+        placeholder="120",
+        requires_restart=True,
+    ),
+    RuntimeSettingDefinition(
+        key="THEME_FACTOR_SCAN_AUTO_ENABLED",
+        section_id="runtime",
+        label="自动触发主题因子扫描",
+        input_type="boolean",
+        description="当高质量信息事件出现后自动继续跑主题因子扫描。",
+        requires_restart=True,
     ),
     RuntimeSettingDefinition(
         key="REALTIME_SOURCE_PRIORITY",
@@ -332,6 +390,14 @@ SETTING_DEFINITIONS: List[RuntimeSettingDefinition] = [
         ],
     ),
     RuntimeSettingDefinition(
+        key="NEWS_PROVIDER_PRIORITY",
+        section_id="analysis",
+        label="新闻检索数据源优先级",
+        input_type="text",
+        description="逗号分隔，例如 anspire,bocha,tavily,brave,serpapi,minimax,searxng。",
+        placeholder="anspire,bocha,tavily,brave,serpapi,minimax,searxng",
+    ),
+    RuntimeSettingDefinition(
         key="SEARXNG_PUBLIC_INSTANCES_ENABLED",
         section_id="analysis",
         label="启用公开 SearXNG 实例",
@@ -506,6 +572,7 @@ class RuntimeSettingsService:
         self._write_env_values(normalized_values)
         Config.reset_instance()
         setup_env(override=True)
+        reset_search_service()
         config = get_config()
 
         message = "设置已保存到 .env"

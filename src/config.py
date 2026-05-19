@@ -703,6 +703,7 @@ class Config:
     serpapi_keys: List[str] = field(default_factory=list)  # SerpAPI Keys
     searxng_base_urls: List[str] = field(default_factory=list)  # SearXNG instance URLs (self-hosted, no quota)
     searxng_public_instances_enabled: bool = True  # Auto-discover public SearXNG instances when base URLs are absent
+    news_provider_priority: List[str] = field(default_factory=list)  # Search/news provider priority order
 
     # === Social Sentiment (US stocks only, api.adanos.org) ===
     social_sentiment_api_key: Optional[str] = None
@@ -741,6 +742,17 @@ class Config:
     agent_event_alert_rules_json: str = ""  # JSON array of serialized EventMonitor rules
     stock_alert_loop_enabled: bool = False  # Enable in-process stock alert background loop
     stock_alert_loop_base_tick_seconds: int = 60  # Base polling tick for stock alert loop
+    information_watch_loop_enabled: bool = False  # Enable in-process information watch background loop
+    information_watch_loop_base_tick_seconds: int = 300  # Base polling tick for information watch loop
+    information_watch_scan_interval_minutes: int = 60  # Scan interval for information watch pool
+    information_watch_query_timeout_seconds: float = 8.0  # Timeout per information watch search request
+    information_l1_direct_enabled: bool = True  # Enable direct cninfo hard-source connector
+    information_l1_direct_timeout_seconds: float = 10.0  # Timeout per cninfo direct request
+    open_discovery_pool_enabled: bool = False  # Enable open discovery pool scanning
+    open_discovery_scan_interval_minutes: int = 120  # Scan interval for open discovery pool
+    information_event_min_freshness_score: float = 70.0  # Promotion threshold for freshness
+    information_event_min_credibility_score: float = 65.0  # Promotion threshold for credibility
+    theme_factor_scan_auto_enabled: bool = False  # Auto-run theme factor scan after information promotion
 
     # === 通知配置（可同时配置多个，全部推送）===
     
@@ -1301,6 +1313,9 @@ class Config:
 
         brave_keys_str = os.getenv('BRAVE_API_KEYS', '')
         brave_api_keys = [k.strip() for k in brave_keys_str.split(',') if k.strip()]
+        news_provider_priority = parse_env_csv_union(
+            os.getenv('NEWS_PROVIDER_PRIORITY', ''),
+        )
 
         _raw_urls = [u.strip() for u in os.getenv('SEARXNG_BASE_URLS', '').split(',') if u.strip()]
         searxng_base_urls = []
@@ -1427,6 +1442,7 @@ class Config:
             serpapi_keys=serpapi_keys,
             searxng_base_urls=searxng_base_urls,
             searxng_public_instances_enabled=searxng_public_instances_enabled,
+            news_provider_priority=news_provider_priority,
             social_sentiment_api_key=os.getenv('SOCIAL_SENTIMENT_API_KEY') or None,
             social_sentiment_api_url=os.getenv('SOCIAL_SENTIMENT_API_URL', 'https://api.adanos.org').rstrip('/'),
             news_max_age_days=parse_env_int(os.getenv('NEWS_MAX_AGE_DAYS'), 3, field_name='NEWS_MAX_AGE_DAYS', minimum=1),
@@ -1509,6 +1525,66 @@ class Config:
                 60,
                 field_name='STOCK_ALERT_LOOP_BASE_TICK_SECONDS',
                 minimum=5,
+            ),
+            information_watch_loop_enabled=parse_env_bool(
+                os.getenv('INFORMATION_WATCH_LOOP_ENABLED'),
+                default=False,
+            ),
+            information_watch_loop_base_tick_seconds=parse_env_int(
+                os.getenv('INFORMATION_WATCH_LOOP_BASE_TICK_SECONDS'),
+                300,
+                field_name='INFORMATION_WATCH_LOOP_BASE_TICK_SECONDS',
+                minimum=30,
+            ),
+            information_watch_scan_interval_minutes=parse_env_int(
+                os.getenv('INFORMATION_WATCH_SCAN_INTERVAL_MINUTES'),
+                60,
+                field_name='INFORMATION_WATCH_SCAN_INTERVAL_MINUTES',
+                minimum=5,
+            ),
+            information_watch_query_timeout_seconds=parse_env_float(
+                os.getenv('INFORMATION_WATCH_QUERY_TIMEOUT_SECONDS'),
+                8.0,
+                field_name='INFORMATION_WATCH_QUERY_TIMEOUT_SECONDS',
+                minimum=1.0,
+            ),
+            information_l1_direct_enabled=parse_env_bool(
+                os.getenv('INFORMATION_L1_DIRECT_ENABLED'),
+                default=True,
+            ),
+            information_l1_direct_timeout_seconds=parse_env_float(
+                os.getenv('INFORMATION_L1_DIRECT_TIMEOUT_SECONDS'),
+                10.0,
+                field_name='INFORMATION_L1_DIRECT_TIMEOUT_SECONDS',
+                minimum=1.0,
+            ),
+            open_discovery_pool_enabled=parse_env_bool(
+                os.getenv('OPEN_DISCOVERY_POOL_ENABLED'),
+                default=False,
+            ),
+            open_discovery_scan_interval_minutes=parse_env_int(
+                os.getenv('OPEN_DISCOVERY_SCAN_INTERVAL_MINUTES'),
+                120,
+                field_name='OPEN_DISCOVERY_SCAN_INTERVAL_MINUTES',
+                minimum=5,
+            ),
+            information_event_min_freshness_score=parse_env_float(
+                os.getenv('INFORMATION_EVENT_MIN_FRESHNESS_SCORE'),
+                70.0,
+                field_name='INFORMATION_EVENT_MIN_FRESHNESS_SCORE',
+                minimum=0.0,
+                maximum=100.0,
+            ),
+            information_event_min_credibility_score=parse_env_float(
+                os.getenv('INFORMATION_EVENT_MIN_CREDIBILITY_SCORE'),
+                65.0,
+                field_name='INFORMATION_EVENT_MIN_CREDIBILITY_SCORE',
+                minimum=0.0,
+                maximum=100.0,
+            ),
+            theme_factor_scan_auto_enabled=parse_env_bool(
+                os.getenv('THEME_FACTOR_SCAN_AUTO_ENABLED'),
+                default=False,
             ),
             wechat_webhook_url=os.getenv('WECHAT_WEBHOOK_URL'),
             feishu_webhook_url=os.getenv('FEISHU_WEBHOOK_URL'),

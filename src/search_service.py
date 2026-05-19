@@ -48,6 +48,16 @@ from theme_picker.config import (
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_NEWS_PROVIDER_PRIORITY = [
+    "anspire",
+    "bocha",
+    "tavily",
+    "brave",
+    "serpapi",
+    "minimax",
+    "searxng",
+]
+
 # Transient network errors (retryable)
 _SEARCH_TRANSIENT_EXCEPTIONS = (
     requests.exceptions.SSLError,
@@ -219,6 +229,23 @@ class BaseSearchProvider(ABC):
             self._key_errors[key] = self._key_errors.get(key, 0) + 1
             error_count = self._key_errors[key]
         logger.warning(f"[{self._name}] API Key {key[:8]}... 错误计数: {error_count}")
+
+    def _normalize_error_message(self, error: Any) -> str:
+        """Normalize low-level provider/network errors into user-facing text."""
+        raw = str(error or "").strip()
+        lowered = raw.lower()
+        if (
+            "serpapi.com" in lowered
+            and (
+                "nodename nor servname provided" in lowered
+                or "name or service not known" in lowered
+                or "nameresolutionerror" in lowered
+                or "failed to resolve" in lowered
+                or "temporary failure in name resolution" in lowered
+            )
+        ):
+            return "无法解析 serpapi.com，请检查本机网络或 DNS 设置，或暂时停用 SerpAPI"
+        return raw or "未知错误"
     
     @abstractmethod
     def _do_search(self, query: str, api_key: str, max_results: int, days: int = 7) -> SearchResponse:
@@ -267,13 +294,14 @@ class BaseSearchProvider(ABC):
         except Exception as e:
             self._record_error(api_key)
             elapsed = time.time() - start_time
-            logger.error(f"[{self._name}] 搜索 '{query}' 失败: {e}")
+            normalized_error = self._normalize_error_message(e)
+            logger.error(f"[{self._name}] 搜索 '{query}' 失败: {normalized_error}")
             return SearchResponse(
                 query=query,
                 results=[],
                 provider=self._name,
                 success=False,
-                error_message=str(e),
+                error_message=normalized_error,
                 search_time=elapsed
             )
 
@@ -2149,6 +2177,7 @@ class SearchService:
         searxng_public_instances_enabled: bool = True,
         news_max_age_days: int = 3,
         news_strategy_profile: str = "short",
+        provider_priority: Optional[List[str]] = None,
     ):
         """
         初始化搜索服务
@@ -2164,6 +2193,7 @@ class SearchService:
             searxng_public_instances_enabled: 未配置自建实例时，是否自动使用公共 SearXNG 实例
             news_max_age_days: 新闻最大时效（天）
             news_strategy_profile: 新闻窗口策略档位（ultra_short/short/medium/long）
+            provider_priority: 新闻检索数据源优先级
         """
         self._providers: List[BaseSearchProvider] = []
         self.news_max_age_days = max(1, news_max_age_days)
@@ -2183,49 +2213,48 @@ class SearchService:
             NEWS_STRATEGY_WINDOWS["short"],
         )
 
-        # 初始化搜索引擎（按优先级排序）
-        # 1. Bocha 优先（中文搜索优化，AI摘要）
+        available_providers: Dict[str, BaseSearchProvider] = {}
+
         if bocha_keys:
-            self._providers.append(BochaSearchProvider(bocha_keys))
+            available_providers["bocha"] = BochaSearchProvider(bocha_keys)
             logger.info(f"已配置 Bocha 搜索，共 {len(bocha_keys)} 个 API Key")
 
-        # 2. Tavily（免费额度更多，每月 1000 次）
         if tavily_keys:
-            self._providers.append(TavilySearchProvider(tavily_keys))
+            available_providers["tavily"] = TavilySearchProvider(tavily_keys)
             logger.info(f"已配置 Tavily 搜索，共 {len(tavily_keys)} 个 API Key")
 
-        # 3. Brave Search（隐私优先，全球覆盖）
         if brave_keys:
-            self._providers.append(BraveSearchProvider(brave_keys))
+            available_providers["brave"] = BraveSearchProvider(brave_keys)
             logger.info(f"已配置 Brave 搜索，共 {len(brave_keys)} 个 API Key")
 
-        # 4. SerpAPI 作为备选（每月 100 次）
         if serpapi_keys:
-            self._providers.append(SerpAPISearchProvider(serpapi_keys))
+            available_providers["serpapi"] = SerpAPISearchProvider(serpapi_keys)
             logger.info(f"已配置 SerpAPI 搜索，共 {len(serpapi_keys)} 个 API Key")
 
-        # 5. MiniMax（Coding Plan Web Search，结构化结果）
         if minimax_keys:
-            self._providers.append(MiniMaxSearchProvider(minimax_keys))
+            available_providers["minimax"] = MiniMaxSearchProvider(minimax_keys)
             logger.info(f"已配置 MiniMax 搜索，共 {len(minimax_keys)} 个 API Key")
 
-        # 6. SearXNG（自建实例优先；未配置时可自动发现公共实例）
         searxng_provider = SearXNGSearchProvider(
             searxng_base_urls,
             use_public_instances=bool(searxng_public_instances_enabled and not searxng_base_urls),
         )
         if searxng_provider.is_available:
-            self._providers.append(searxng_provider)
+            available_providers["searxng"] = searxng_provider
             if searxng_base_urls:
                 logger.info("已配置 SearXNG 搜索，共 %s 个自建实例", len(searxng_base_urls))
             else:
                 logger.info("已启用 SearXNG 公共实例自动发现模式")
 
-        # 7. Anspire Search（实时智能搜索优化）
         if anspire_keys:
-            self._providers.insert(0, AnspireSearchProvider(anspire_keys))
+            available_providers["anspire"] = AnspireSearchProvider(anspire_keys)
             logger.info(f"已配置 Anspire Search 搜索，共 {len(anspire_keys)} 个 API Key")
-            
+
+        for provider_name in self._resolve_provider_priority(provider_priority):
+            provider = available_providers.get(provider_name)
+            if provider is not None:
+                self._providers.append(provider)
+
         if not self._providers:
             logger.warning("未配置任何搜索能力，新闻搜索功能将不可用")
 
@@ -2242,6 +2271,26 @@ class SearchService:
             self.news_max_age_days,
             self.news_window_days,
         )
+
+    @staticmethod
+    def _resolve_provider_priority(provider_priority: Optional[List[str]]) -> List[str]:
+        resolved: List[str] = []
+        seen = set()
+
+        for provider_name in provider_priority or []:
+            normalized = (provider_name or "").strip().lower()
+            if not normalized or normalized in seen:
+                continue
+            seen.add(normalized)
+            resolved.append(normalized)
+
+        for provider_name in DEFAULT_NEWS_PROVIDER_PRIORITY:
+            if provider_name in seen:
+                continue
+            seen.add(provider_name)
+            resolved.append(provider_name)
+
+        return resolved
     
     @staticmethod
     def _is_foreign_stock(stock_code: str) -> bool:
@@ -3466,6 +3515,7 @@ def get_search_service() -> SearchService:
                     searxng_public_instances_enabled=config.searxng_public_instances_enabled,
                     news_max_age_days=config.news_max_age_days,
                     news_strategy_profile=getattr(config, "news_strategy_profile", "short"),
+                    provider_priority=getattr(config, "news_provider_priority", []),
                 )
     
     return _search_service

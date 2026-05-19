@@ -1,12 +1,14 @@
 import type React from 'react';
-import { Bell, Layers3, LayoutGrid, Radar, Settings2, Sparkles, Star, WalletCards } from 'lucide-react';
+import { Bell, Layers3, Newspaper, Orbit, Radar, Settings2, Sparkles, Star, WalletCards } from 'lucide-react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { ThemeToggle } from '../theme/ThemeToggle';
 import { Badge } from '../common';
 import { cn } from '../../utils/cn';
 
 const NAV_ITEMS = [
-  { to: '/', label: '工作台', icon: LayoutGrid },
+  // { to: '/', label: '工作台', icon: LayoutGrid },
+  { to: '/information-watch', label: '信息观察池', icon: Newspaper },
+  { to: '/theme-factor-scans', label: '主题因子', icon: Orbit },
   { to: '/theme-picker', label: '主题选股', icon: Sparkles },
   { to: '/stock-query', label: '单股查询', icon: Radar },
   { to: '/etf-query', label: 'ETF 查询', icon: Layers3 },
@@ -38,7 +40,7 @@ export const AppShell: React.FC = () => {
                   <NavLink
                     key={item.to}
                     to={item.to}
-                    end={item.to === '/'}
+                    end={false}
                     className={({ isActive }) =>
                       cn(
                         'inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition-all',
@@ -76,7 +78,7 @@ export const AppShell: React.FC = () => {
               <NavLink
                 key={item.to}
                 to={item.to}
-                end={item.to === '/'}
+                end={false}
                 className={({ isActive }) =>
                   cn(
                     'inline-flex shrink-0 items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition-all',

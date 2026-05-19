@@ -146,11 +146,24 @@ class ThemePickerService:
     def _build_pipeline(registry_service: ThemeRegistryService) -> ThemeAlertPipeline:
         config = get_theme_picker_config()
         theme_news_search_service = SearchService(
+            bocha_keys=config.bocha_api_keys,
             tavily_keys=config.tavily_api_keys,
+            anspire_keys=config.anspire_api_keys,
+            brave_keys=config.brave_api_keys,
+            serpapi_keys=config.serpapi_keys,
+            minimax_keys=config.minimax_api_keys,
             news_max_age_days=config.news_max_age_days,
             news_strategy_profile=getattr(config, "news_strategy_profile", "short"),
             searxng_public_instances_enabled=False,
-        ) if config.tavily_api_keys else None
+            provider_priority=getattr(config, "news_provider_priority", []),
+        ) if (
+            config.bocha_api_keys
+            or config.tavily_api_keys
+            or config.anspire_api_keys
+            or config.brave_api_keys
+            or config.serpapi_keys
+            or config.minimax_api_keys
+        ) else None
         search_service = SearchService(
             bocha_keys=config.bocha_api_keys,
             tavily_keys=config.tavily_api_keys,
@@ -162,6 +175,7 @@ class ThemePickerService:
             searxng_public_instances_enabled=config.searxng_public_instances_enabled,
             news_max_age_days=config.news_max_age_days,
             news_strategy_profile=getattr(config, "news_strategy_profile", "short"),
+            provider_priority=getattr(config, "news_provider_priority", []),
         )
         event_scanner = ThemeEventScanner(search_service=theme_news_search_service or search_service)
         expansion_service = ThemeExpansionService(search_service=search_service)

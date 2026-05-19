@@ -4,9 +4,11 @@ import { AppShell } from './components/layout/AppShell';
 import DashboardPage from './pages/DashboardPage';
 import DeepAnalysisPage from './pages/DeepAnalysisPage';
 import EtfQueryPage from './pages/EtfQueryPage';
+import InformationWatchPage from './pages/InformationWatchPage';
 import SettingsPage from './pages/SettingsPage';
 import SingleStockQueryPage from './pages/SingleStockQueryPage';
 import ThemeStockPickerPage from './pages/ThemeStockPickerPage';
+import ThemeFactorScanPage from './pages/ThemeFactorScanPage';
 import WatchlistPage from './pages/WatchlistPage';
 
 const App: React.FC = () => {
@@ -15,6 +17,8 @@ const App: React.FC = () => {
       <Routes>
         <Route element={<AppShell />}>
           <Route path="/" element={<DashboardPage />} />
+          <Route path="/information-watch" element={<InformationWatchPage />} />
+          <Route path="/theme-factor-scans" element={<ThemeFactorScanPage />} />
           <Route path="/theme-picker" element={<ThemeStockPickerPage />} />
           <Route path="/stock-query" element={<SingleStockQueryPage />} />
           <Route path="/etf-query" element={<EtfQueryPage />} />
