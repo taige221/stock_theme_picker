@@ -73,7 +73,14 @@ class ThemeFactorScanService:
         event_ids: Optional[Iterable[str]],
         min_signal_strength: float,
     ) -> List[Any]:
-        selected_ids = [str(item_id).strip() for item_id in (event_ids or []) if str(item_id).strip()]
+        selected_ids: List[str] = []
+        seen_ids = set()
+        for item_id in event_ids or []:
+            normalized = str(item_id).strip()
+            if not normalized or normalized in seen_ids:
+                continue
+            seen_ids.add(normalized)
+            selected_ids.append(normalized)
         if selected_ids:
             events = []
             for event_id in selected_ids:

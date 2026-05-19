@@ -86,6 +86,7 @@ class InformationWatchLoopService:
                 now = datetime.now()
                 watch_interval_seconds = int(getattr(self.config, "information_watch_scan_interval_minutes", 60) or 60) * 60
                 discovery_interval_seconds = int(getattr(self.config, "open_discovery_scan_interval_minutes", 120) or 120) * 60
+                promoted_event_ids = set()
 
                 if self._should_run(last_run_at=self.last_watch_scan_at, interval_seconds=watch_interval_seconds, now=now):
                     scan_summary = self.information_watch_service.run_once(limit=20)
@@ -94,6 +95,11 @@ class InformationWatchLoopService:
                         "created_events": int(scan_summary.get("created_events") or 0),
                         "promoted_events": int(scan_summary.get("promoted_events") or 0),
                     }
+                    promoted_event_ids.update(
+                        str(event_id).strip()
+                        for event_id in (scan_summary.get("promoted_event_ids") or [])
+                        if str(event_id).strip()
+                    )
                     self.last_watch_scan_at = now
                 if bool(getattr(self.config, "open_discovery_pool_enabled", False)):
                     if self._should_run(last_run_at=self.last_discovery_scan_at, interval_seconds=discovery_interval_seconds, now=now):
@@ -103,9 +109,17 @@ class InformationWatchLoopService:
                             "created_events": int(discovery_summary.get("created_events") or 0),
                             "promoted_events": int(discovery_summary.get("promoted_events") or 0),
                         }
+                        promoted_event_ids.update(
+                            str(event_id).strip()
+                            for event_id in (discovery_summary.get("promoted_event_ids") or [])
+                            if str(event_id).strip()
+                        )
                         self.last_discovery_scan_at = now
-                if bool(getattr(self.config, "theme_factor_scan_auto_enabled", False)):
-                    factor_summary = self.theme_factor_scan_service.run_once(limit=10)
+                if bool(getattr(self.config, "theme_factor_scan_auto_enabled", False)) and promoted_event_ids:
+                    factor_summary = self.theme_factor_scan_service.run_once(
+                        event_ids=sorted(promoted_event_ids),
+                        limit=len(promoted_event_ids),
+                    )
                     self.last_factor_summary = {
                         "scanned_events": int(factor_summary.get("scanned_events") or 0),
                         "generated_scans": int(factor_summary.get("generated_scans") or 0),

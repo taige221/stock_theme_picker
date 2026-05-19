@@ -217,21 +217,25 @@ class InformationWatchService:
             items = [item for item in items if item.item_id in selected_ids]
         items = items[: max(1, int(limit))]
 
-        created_events: List[Any] = []
-        promoted_events = 0
+        created_event_map: Dict[str, Any] = {}
+        promoted_event_ids = set()
 
         for item in items:
             for event_payload in self._scan_item(item):
+                newly_promoted = bool(event_payload.pop("_newly_promoted", False))
                 record = save_information_event(self.db, **event_payload)
-                created_events.append(record)
-                if str(record.status or "") == "promoted":
-                    promoted_events += 1
+                event_id = str(getattr(record, "event_id", "") or "")
+                if event_id:
+                    created_event_map[event_id] = record
+                    if newly_promoted:
+                        promoted_event_ids.add(event_id)
 
-        latest_items = list_information_events(self.db, limit=max(1, min(len(created_events) or limit, 50)))
+        latest_items = list_information_events(self.db, limit=max(1, min(len(created_event_map) or limit, 50)))
         return {
             "scanned_items": len(items),
-            "created_events": len(created_events),
-            "promoted_events": promoted_events,
+            "created_events": len(created_event_map),
+            "promoted_events": len(promoted_event_ids),
+            "promoted_event_ids": list(promoted_event_ids),
             "items": latest_items,
         }
 
@@ -276,10 +280,10 @@ class InformationWatchService:
         if not query or not self.search_service.is_available:
             return SearchResponse(query=query, results=[], provider="None", success=False, error_message="search unavailable")
 
-        providers = [provider for provider in getattr(self.search_service, "_providers", []) or [] if getattr(provider, "is_available", False)]
         providers = [
-            provider for provider in providers
-            if provider.__class__.__name__ in {"TavilySearchProvider", "SerpAPISearchProvider"}
+            provider
+            for provider in getattr(self.search_service, "_providers", []) or []
+            if getattr(provider, "is_available", False)
         ]
         for provider in providers:
             response = provider.search(query, max_results=3, days=days)
@@ -426,8 +430,10 @@ class InformationWatchService:
             status = "repeated" if status != "promoted" else status
         else:
             first_seen_at = datetime.now()
+        newly_promoted = status == "promoted" and str(getattr(previous, "status", "") or "") != "promoted"
 
         return {
+            "_newly_promoted": newly_promoted,
             "event_id": str(previous.event_id) if previous is not None else uuid.uuid4().hex,
             "watch_item_id": getattr(item, "item_id", None),
             "title": title,

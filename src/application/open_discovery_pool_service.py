@@ -178,24 +178,28 @@ class OpenDiscoveryPoolService:
             profiles = [profile for profile in profiles if profile.profile_id in selected_ids]
         profiles = profiles[: max(1, int(limit))]
 
-        created_events: List[Any] = []
-        promoted_events = 0
+        created_event_map: Dict[str, Any] = {}
+        promoted_event_ids = set()
 
         for profile in profiles:
             for event_payload in self._dedupe_batch_event_payloads(self._scan_profile(profile)):
+                newly_promoted = bool(event_payload.pop("_newly_promoted", False))
                 record = save_information_event(self.db, **event_payload)
-                created_events.append(record)
-                if str(record.status or "") == "promoted":
-                    promoted_events += 1
+                event_id = str(getattr(record, "event_id", "") or "")
+                if event_id:
+                    created_event_map[event_id] = record
+                    if newly_promoted:
+                        promoted_event_ids.add(event_id)
 
         latest_items = self.db.list_information_events(
-            limit=max(1, min(len(created_events) or limit, 50)),
+            limit=max(1, min(len(created_event_map) or limit, 50)),
             source_mode="discovery",
         )
         return {
             "scanned_profiles": len(profiles),
-            "created_events": len(created_events),
-            "promoted_events": promoted_events,
+            "created_events": len(created_event_map),
+            "promoted_events": len(promoted_event_ids),
+            "promoted_event_ids": list(promoted_event_ids),
             "items": latest_items,
         }
 
@@ -712,8 +716,10 @@ class OpenDiscoveryPoolService:
         )
         if previous is not None and status != "promoted":
             status = "repeated"
+        newly_promoted = status == "promoted" and str(getattr(previous, "status", "") or "") != "promoted"
 
         return {
+            "_newly_promoted": newly_promoted,
             "event_id": str(previous.event_id) if previous is not None else uuid.uuid4().hex,
             "watch_item_id": None,
             "title": title,
