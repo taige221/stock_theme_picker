@@ -21,6 +21,7 @@ from theme_picker.api.market_endpoints import router as market_router  # noqa: E
 from theme_picker.api.settings_endpoints import router as settings_router  # noqa: E402
 from theme_picker.api.stock_query_endpoints import router as stock_query_router  # noqa: E402
 from theme_picker.api.watchlist_endpoints import router as watchlist_router  # noqa: E402
+from theme_picker.application.information_watch_loop_service import InformationWatchLoopService  # noqa: E402
 from theme_picker.application.stock_alert_loop_service import StockAlertLoopService  # noqa: E402
 from theme_picker.config import get_config  # noqa: E402
 
@@ -29,17 +30,26 @@ from theme_picker.config import get_config  # noqa: E402
 async def lifespan(app: FastAPI):
     cfg = get_config()
     alert_loop = None
+    information_watch_loop = None
     if bool(getattr(cfg, "stock_alert_loop_enabled", False)):
         alert_loop = StockAlertLoopService(
             base_tick_seconds=int(getattr(cfg, "stock_alert_loop_base_tick_seconds", 60) or 60),
         )
         alert_loop.start()
         app.state.stock_alert_loop = alert_loop
+    if bool(getattr(cfg, "information_watch_loop_enabled", False)):
+        information_watch_loop = InformationWatchLoopService(
+            base_tick_seconds=int(getattr(cfg, "information_watch_loop_base_tick_seconds", 300) or 300),
+        )
+        information_watch_loop.start()
+        app.state.information_watch_loop = information_watch_loop
     try:
         yield
     finally:
         if alert_loop is not None:
             alert_loop.stop()
+        if information_watch_loop is not None:
+            information_watch_loop.stop()
 
 app = FastAPI(
     title="Theme Picker API",

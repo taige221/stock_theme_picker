@@ -139,6 +139,17 @@ cp .env.example .env
 - `STOCK_QUERY_NEWS_TIMEOUT_SECONDS`：单股查询新闻摘要补充的超时秒数
 - `STOCK_ALERT_LOOP_ENABLED`：是否启用进程内单股告警后台循环
 - `STOCK_ALERT_LOOP_BASE_TICK_SECONDS`：后台循环基础 tick，单位秒；它只决定统一心跳频率，规则是否真正执行仍取决于每条规则自己的扫描间隔
+- `INFORMATION_WATCH_LOOP_ENABLED`：是否启用进程内信息观察池后台循环
+- `INFORMATION_WATCH_LOOP_BASE_TICK_SECONDS`：信息观察池后台循环基础 tick，单位秒
+- `INFORMATION_WATCH_SCAN_INTERVAL_MINUTES`：信息观察池扫描间隔，单位分钟
+- `INFORMATION_WATCH_QUERY_TIMEOUT_SECONDS`：信息观察池单次搜索超时秒数
+- `INFORMATION_L1_DIRECT_ENABLED`：是否启用巨潮公告一级硬源直连
+- `INFORMATION_L1_DIRECT_TIMEOUT_SECONDS`：巨潮公告一级硬源直连超时秒数
+- `OPEN_DISCOVERY_POOL_ENABLED`：是否启用“开放发现池”全局事件扫描
+- `OPEN_DISCOVERY_SCAN_INTERVAL_MINUTES`：开放发现池扫描间隔，单位分钟
+- `INFORMATION_EVENT_MIN_FRESHNESS_SCORE`：信息事件晋升到主题因子扫描的 freshness 阈值
+- `INFORMATION_EVENT_MIN_CREDIBILITY_SCORE`：信息事件晋升到主题因子扫描的 credibility 阈值
+- `THEME_FACTOR_SCAN_AUTO_ENABLED`：是否在高质量信息事件出现后自动触发主题因子扫描
 - `FUNDAMENTAL_STAGE_TIMEOUT_SECONDS`：单股查询基本面聚合总预算秒数
 - `FUNDAMENTAL_FETCH_TIMEOUT_SECONDS`：单个基本面块的抓取预算秒数
 - `PREFETCH_REALTIME_QUOTES`：是否预取实时行情

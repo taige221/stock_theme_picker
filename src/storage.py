@@ -301,6 +301,116 @@ class StockDeepAnalysisMessage(Base):
     )
 
 
+class InformationWatchItem(Base):
+    __tablename__ = "information_watch_item"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    item_id = Column(String(64), nullable=False, unique=True, index=True)
+    name = Column(String(128), nullable=False, index=True)
+    enabled = Column(Integer, nullable=False, default=1, index=True)
+    priority = Column(Integer, nullable=False, default=100, index=True)
+    event_type = Column(String(32), nullable=False, index=True)
+    seed_terms_json = Column(Text, nullable=False)
+    aliases_json = Column(Text, nullable=False)
+    themes_json = Column(Text, nullable=False)
+    chain_tags_json = Column(Text, nullable=False)
+    source_tiers_json = Column(Text, nullable=False)
+    freshness_days = Column(Integer, nullable=False, default=3)
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.now, index=True)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, index=True)
+
+    __table_args__ = (
+        Index("ix_information_watch_item_enabled_priority", "enabled", "priority"),
+    )
+
+
+class OpenDiscoveryProfile(Base):
+    __tablename__ = "open_discovery_profile"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    profile_id = Column(String(64), nullable=False, unique=True, index=True)
+    name = Column(String(128), nullable=False, index=True)
+    enabled = Column(Integer, nullable=False, default=1, index=True)
+    priority = Column(Integer, nullable=False, default=100, index=True)
+    event_type = Column(String(32), nullable=False, index=True)
+    query_templates_json = Column(Text, nullable=False)
+    themes_json = Column(Text, nullable=False)
+    chain_tags_json = Column(Text, nullable=False)
+    source_tiers_json = Column(Text, nullable=False)
+    freshness_days = Column(Integer, nullable=False, default=2)
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.now, index=True)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, index=True)
+
+    __table_args__ = (
+        Index("ix_open_discovery_profile_enabled_priority", "enabled", "priority"),
+    )
+
+
+class InformationEvent(Base):
+    __tablename__ = "information_event"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    event_id = Column(String(64), nullable=False, unique=True, index=True)
+    watch_item_id = Column(String(64), nullable=True, index=True)
+    title = Column(String(256), nullable=False)
+    summary = Column(Text, nullable=True)
+    event_type = Column(String(32), nullable=False, index=True)
+    impact_direction = Column(String(32), nullable=True, index=True)
+    source_mode = Column(String(20), nullable=False, default="watch", index=True)
+    source_tier = Column(String(16), nullable=False, index=True)
+    provider = Column(String(32), nullable=True, index=True)
+    url = Column(Text, nullable=True)
+    published_at = Column(DateTime, nullable=True, index=True)
+    first_seen_at = Column(DateTime, nullable=False, default=datetime.now, index=True)
+    last_seen_at = Column(DateTime, nullable=False, default=datetime.now, index=True)
+    is_new_event = Column(Integer, nullable=False, default=1, index=True)
+    duplicate_key = Column(String(160), nullable=True, index=True)
+    themes_json = Column(Text, nullable=False)
+    chain_tags_json = Column(Text, nullable=False)
+    entities_json = Column(Text, nullable=False)
+    metadata_json = Column(Text, nullable=False)
+    freshness_score = Column(Float, nullable=False, default=0.0, index=True)
+    credibility_score = Column(Float, nullable=False, default=0.0, index=True)
+    signal_strength = Column(Float, nullable=False, default=0.0, index=True)
+    status = Column(String(20), nullable=False, default="new", index=True)
+    created_at = Column(DateTime, default=datetime.now, index=True)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, index=True)
+
+    __table_args__ = (
+        Index("ix_information_event_watch_created", "watch_item_id", "created_at"),
+        Index("ix_information_event_status_created", "status", "created_at"),
+        Index("ix_information_event_signal_created", "signal_strength", "created_at"),
+        Index("ix_information_event_source_mode_created", "source_mode", "created_at"),
+    )
+
+
+class ThemeFactorScanHistory(Base):
+    __tablename__ = "theme_factor_scan_history"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    scan_id = Column(String(64), nullable=False, unique=True, index=True)
+    event_id = Column(String(64), nullable=False, index=True)
+    theme_id = Column(String(64), nullable=True, index=True)
+    theme_name = Column(String(128), nullable=False, index=True)
+    status = Column(String(20), nullable=False, default="completed", index=True)
+    event_score = Column(Float, nullable=True)
+    etf_confirmation_score = Column(Float, nullable=True)
+    leader_confirmation_score = Column(Float, nullable=True)
+    theme_factor_score = Column(Float, nullable=True, index=True)
+    request_payload = Column(Text, nullable=False)
+    result_payload = Column(Text, nullable=True)
+    error = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.now, index=True)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, index=True)
+
+    __table_args__ = (
+        Index("ix_theme_factor_scan_event_created", "event_id", "created_at"),
+        Index("ix_theme_factor_scan_theme_created", "theme_id", "created_at"),
+    )
+
+
 @dataclass
 class _SqliteSettings:
     database_path: Path
@@ -372,6 +482,15 @@ class DatabaseManager:
             alter_sql="ALTER TABLE stock_alert_rule ADD COLUMN last_triggered_at DATETIME NULL",
         )
         self._ensure_sqlite_column(
+            table_name="information_event",
+            column_name="source_mode",
+            alter_sql="ALTER TABLE information_event ADD COLUMN source_mode VARCHAR(20) NOT NULL DEFAULT 'watch'",
+        )
+        self._ensure_sqlite_index(
+            index_name="ix_information_event_source_mode_created",
+            create_sql="CREATE INDEX IF NOT EXISTS ix_information_event_source_mode_created ON information_event (source_mode, created_at)",
+        )
+        self._ensure_sqlite_column(
             table_name="stock_alert_rule",
             column_name="last_trigger_key",
             alter_sql="ALTER TABLE stock_alert_rule ADD COLUMN last_trigger_key VARCHAR(128) NULL",
@@ -383,6 +502,15 @@ class DatabaseManager:
             existing = {str(row[1]) for row in rows if len(row) > 1}
             if column_name not in existing:
                 conn.exec_driver_sql(alter_sql)
+
+    def _ensure_sqlite_index(self, *, index_name: str, create_sql: str) -> None:
+        with self.engine.begin() as conn:
+            rows = conn.exec_driver_sql(
+                "SELECT name FROM sqlite_master WHERE type='index' AND name = :index_name",
+                {"index_name": index_name},
+            ).fetchall()
+            if not rows:
+                conn.exec_driver_sql(create_sql)
 
     def close(self) -> None:
         try:
@@ -1238,6 +1366,366 @@ class DatabaseManager:
                     .limit(max(1, int(limit)))
                 ).scalars().all()
             )
+
+    def upsert_information_watch_item(
+        self,
+        *,
+        item_id: str,
+        name: str,
+        enabled: bool,
+        priority: int,
+        event_type: str,
+        seed_terms: List[str],
+        aliases: List[str],
+        themes: List[str],
+        chain_tags: List[str],
+        source_tiers: List[str],
+        freshness_days: int,
+        notes: Optional[str] = None,
+    ) -> InformationWatchItem:
+        now = datetime.now()
+        values = {
+            "item_id": item_id,
+            "name": name,
+            "enabled": 1 if enabled else 0,
+            "priority": int(priority),
+            "event_type": event_type,
+            "seed_terms_json": self._safe_json_dumps(seed_terms or []),
+            "aliases_json": self._safe_json_dumps(aliases or []),
+            "themes_json": self._safe_json_dumps(themes or []),
+            "chain_tags_json": self._safe_json_dumps(chain_tags or []),
+            "source_tiers_json": self._safe_json_dumps(source_tiers or []),
+            "freshness_days": max(1, int(freshness_days or 3)),
+            "notes": notes,
+            "created_at": now,
+            "updated_at": now,
+        }
+        with self.session_scope() as session:
+            stmt = sqlite_insert(InformationWatchItem).values(values)
+            excluded = stmt.excluded
+            session.execute(
+                stmt.on_conflict_do_update(
+                    index_elements=["item_id"],
+                    set_={
+                        "name": excluded.name,
+                        "enabled": excluded.enabled,
+                        "priority": excluded.priority,
+                        "event_type": excluded.event_type,
+                        "seed_terms_json": excluded.seed_terms_json,
+                        "aliases_json": excluded.aliases_json,
+                        "themes_json": excluded.themes_json,
+                        "chain_tags_json": excluded.chain_tags_json,
+                        "source_tiers_json": excluded.source_tiers_json,
+                        "freshness_days": excluded.freshness_days,
+                        "notes": excluded.notes,
+                        "updated_at": excluded.updated_at,
+                    },
+                )
+            )
+            return session.execute(
+                select(InformationWatchItem).where(InformationWatchItem.item_id == item_id).limit(1)
+            ).scalars().first()
+
+    def upsert_open_discovery_profile(
+        self,
+        *,
+        profile_id: str,
+        name: str,
+        enabled: bool,
+        priority: int,
+        event_type: str,
+        query_templates: List[str],
+        themes: List[str],
+        chain_tags: List[str],
+        source_tiers: List[str],
+        freshness_days: int,
+        notes: Optional[str] = None,
+    ) -> OpenDiscoveryProfile:
+        now = datetime.now()
+        values = {
+            "profile_id": profile_id,
+            "name": name,
+            "enabled": 1 if enabled else 0,
+            "priority": int(priority),
+            "event_type": event_type,
+            "query_templates_json": self._safe_json_dumps(query_templates or []),
+            "themes_json": self._safe_json_dumps(themes or []),
+            "chain_tags_json": self._safe_json_dumps(chain_tags or []),
+            "source_tiers_json": self._safe_json_dumps(source_tiers or []),
+            "freshness_days": max(1, int(freshness_days or 2)),
+            "notes": notes,
+            "created_at": now,
+            "updated_at": now,
+        }
+        with self.session_scope() as session:
+            stmt = sqlite_insert(OpenDiscoveryProfile).values(values)
+            excluded = stmt.excluded
+            session.execute(
+                stmt.on_conflict_do_update(
+                    index_elements=["profile_id"],
+                    set_={
+                        "name": excluded.name,
+                        "enabled": excluded.enabled,
+                        "priority": excluded.priority,
+                        "event_type": excluded.event_type,
+                        "query_templates_json": excluded.query_templates_json,
+                        "themes_json": excluded.themes_json,
+                        "chain_tags_json": excluded.chain_tags_json,
+                        "source_tiers_json": excluded.source_tiers_json,
+                        "freshness_days": excluded.freshness_days,
+                        "notes": excluded.notes,
+                        "updated_at": excluded.updated_at,
+                    },
+                )
+            )
+            return session.execute(
+                select(OpenDiscoveryProfile).where(OpenDiscoveryProfile.profile_id == profile_id).limit(1)
+            ).scalars().first()
+
+    def list_information_watch_items(self, *, enabled_only: bool = False) -> List[InformationWatchItem]:
+        stmt = select(InformationWatchItem)
+        if enabled_only:
+            stmt = stmt.where(InformationWatchItem.enabled == 1)
+        stmt = stmt.order_by(
+            InformationWatchItem.priority.asc(),
+            desc(InformationWatchItem.updated_at),
+            desc(InformationWatchItem.created_at),
+        )
+        with self.session_scope() as session:
+            return list(session.execute(stmt).scalars().all())
+
+    def list_open_discovery_profiles(self, *, enabled_only: bool = False) -> List[OpenDiscoveryProfile]:
+        stmt = select(OpenDiscoveryProfile)
+        if enabled_only:
+            stmt = stmt.where(OpenDiscoveryProfile.enabled == 1)
+        stmt = stmt.order_by(
+            OpenDiscoveryProfile.priority.asc(),
+            desc(OpenDiscoveryProfile.updated_at),
+            desc(OpenDiscoveryProfile.created_at),
+        )
+        with self.session_scope() as session:
+            return list(session.execute(stmt).scalars().all())
+
+    def get_information_watch_item(self, item_id: str) -> Optional[InformationWatchItem]:
+        with self.session_scope() as session:
+            return session.execute(
+                select(InformationWatchItem).where(InformationWatchItem.item_id == item_id).limit(1)
+            ).scalars().first()
+
+    def delete_information_watch_item(self, item_id: str) -> bool:
+        with self.session_scope() as session:
+            result = session.execute(delete(InformationWatchItem).where(InformationWatchItem.item_id == item_id))
+            return bool(result.rowcount)
+
+    def save_information_event(
+        self,
+        *,
+        event_id: str,
+        watch_item_id: Optional[str],
+        title: str,
+        summary: Optional[str],
+        event_type: str,
+        impact_direction: Optional[str],
+        source_tier: str,
+        provider: Optional[str],
+        url: Optional[str],
+        published_at: Optional[datetime],
+        first_seen_at: Optional[datetime],
+        last_seen_at: Optional[datetime],
+        source_mode: str,
+        is_new_event: bool,
+        duplicate_key: Optional[str],
+        themes: List[str],
+        chain_tags: List[str],
+        entities: Dict[str, Any],
+        metadata: Dict[str, Any],
+        freshness_score: float,
+        credibility_score: float,
+        signal_strength: float,
+        status: str,
+    ) -> InformationEvent:
+        now = datetime.now()
+        values = {
+            "event_id": event_id,
+            "watch_item_id": watch_item_id,
+            "title": title,
+            "summary": summary,
+            "event_type": event_type,
+            "impact_direction": impact_direction,
+            "source_tier": source_tier,
+            "provider": provider,
+            "url": url,
+            "published_at": published_at,
+            "first_seen_at": first_seen_at or now,
+            "last_seen_at": last_seen_at or now,
+            "source_mode": source_mode or "watch",
+            "is_new_event": 1 if is_new_event else 0,
+            "duplicate_key": duplicate_key,
+            "themes_json": self._safe_json_dumps(themes or []),
+            "chain_tags_json": self._safe_json_dumps(chain_tags or []),
+            "entities_json": self._safe_json_dumps(entities or {}),
+            "metadata_json": self._safe_json_dumps(metadata or {}),
+            "freshness_score": float(freshness_score or 0.0),
+            "credibility_score": float(credibility_score or 0.0),
+            "signal_strength": float(signal_strength or 0.0),
+            "status": status,
+            "created_at": now,
+            "updated_at": now,
+        }
+        with self.session_scope() as session:
+            stmt = sqlite_insert(InformationEvent).values(values)
+            excluded = stmt.excluded
+            session.execute(
+                stmt.on_conflict_do_update(
+                    index_elements=["event_id"],
+                    set_={
+                        "watch_item_id": excluded.watch_item_id,
+                        "title": excluded.title,
+                        "summary": excluded.summary,
+                        "event_type": excluded.event_type,
+                        "impact_direction": excluded.impact_direction,
+                        "source_tier": excluded.source_tier,
+                        "provider": excluded.provider,
+                        "url": excluded.url,
+                        "published_at": excluded.published_at,
+                        "first_seen_at": excluded.first_seen_at,
+                        "last_seen_at": excluded.last_seen_at,
+                        "source_mode": excluded.source_mode,
+                        "is_new_event": excluded.is_new_event,
+                        "duplicate_key": excluded.duplicate_key,
+                        "themes_json": excluded.themes_json,
+                        "chain_tags_json": excluded.chain_tags_json,
+                        "entities_json": excluded.entities_json,
+                        "metadata_json": excluded.metadata_json,
+                        "freshness_score": excluded.freshness_score,
+                        "credibility_score": excluded.credibility_score,
+                        "signal_strength": excluded.signal_strength,
+                        "status": excluded.status,
+                        "updated_at": excluded.updated_at,
+                    },
+                )
+            )
+            return session.execute(
+                select(InformationEvent).where(InformationEvent.event_id == event_id).limit(1)
+            ).scalars().first()
+
+    def get_information_event(self, event_id: str) -> Optional[InformationEvent]:
+        with self.session_scope() as session:
+            return session.execute(
+                select(InformationEvent).where(InformationEvent.event_id == event_id).limit(1)
+            ).scalars().first()
+
+    def get_latest_information_event_by_duplicate_key(self, duplicate_key: str) -> Optional[InformationEvent]:
+        with self.session_scope() as session:
+            return session.execute(
+                select(InformationEvent)
+                .where(InformationEvent.duplicate_key == duplicate_key)
+                .order_by(desc(InformationEvent.last_seen_at), desc(InformationEvent.created_at))
+                .limit(1)
+            ).scalars().first()
+
+    def list_information_events(
+        self,
+        *,
+        limit: int = 50,
+        status: Optional[str] = None,
+        promoted_only: bool = False,
+        source_mode: Optional[str] = None,
+    ) -> List[InformationEvent]:
+        stmt = select(InformationEvent)
+        if status:
+            stmt = stmt.where(InformationEvent.status == status)
+        if promoted_only:
+            stmt = stmt.where(InformationEvent.status == "promoted")
+        if source_mode:
+            stmt = stmt.where(InformationEvent.source_mode == source_mode)
+        stmt = stmt.order_by(
+            desc(InformationEvent.last_seen_at),
+            desc(InformationEvent.signal_strength),
+            desc(InformationEvent.created_at),
+        ).limit(max(1, int(limit)))
+        with self.session_scope() as session:
+            return list(session.execute(stmt).scalars().all())
+
+    def save_theme_factor_scan_history(
+        self,
+        *,
+        scan_id: str,
+        event_id: str,
+        theme_id: Optional[str],
+        theme_name: str,
+        status: str,
+        event_score: Optional[float],
+        etf_confirmation_score: Optional[float],
+        leader_confirmation_score: Optional[float],
+        theme_factor_score: Optional[float],
+        request_payload: Dict[str, Any],
+        result_payload: Optional[Dict[str, Any]] = None,
+        error: Optional[str] = None,
+    ) -> ThemeFactorScanHistory:
+        now = datetime.now()
+        values = {
+            "scan_id": scan_id,
+            "event_id": event_id,
+            "theme_id": theme_id,
+            "theme_name": theme_name,
+            "status": status,
+            "event_score": event_score,
+            "etf_confirmation_score": etf_confirmation_score,
+            "leader_confirmation_score": leader_confirmation_score,
+            "theme_factor_score": theme_factor_score,
+            "request_payload": self._safe_json_dumps(request_payload or {}),
+            "result_payload": self._safe_json_dumps(result_payload) if result_payload is not None else None,
+            "error": error,
+            "created_at": now,
+            "updated_at": now,
+        }
+        with self.session_scope() as session:
+            stmt = sqlite_insert(ThemeFactorScanHistory).values(values)
+            excluded = stmt.excluded
+            session.execute(
+                stmt.on_conflict_do_update(
+                    index_elements=["scan_id"],
+                    set_={
+                        "event_id": excluded.event_id,
+                        "theme_id": excluded.theme_id,
+                        "theme_name": excluded.theme_name,
+                        "status": excluded.status,
+                        "event_score": excluded.event_score,
+                        "etf_confirmation_score": excluded.etf_confirmation_score,
+                        "leader_confirmation_score": excluded.leader_confirmation_score,
+                        "theme_factor_score": excluded.theme_factor_score,
+                        "request_payload": excluded.request_payload,
+                        "result_payload": excluded.result_payload,
+                        "error": excluded.error,
+                        "updated_at": excluded.updated_at,
+                    },
+                )
+            )
+            return session.execute(
+                select(ThemeFactorScanHistory).where(ThemeFactorScanHistory.scan_id == scan_id).limit(1)
+            ).scalars().first()
+
+    def get_theme_factor_scan_history(self, scan_id: str) -> Optional[ThemeFactorScanHistory]:
+        with self.session_scope() as session:
+            return session.execute(
+                select(ThemeFactorScanHistory).where(ThemeFactorScanHistory.scan_id == scan_id).limit(1)
+            ).scalars().first()
+
+    def list_theme_factor_scan_history(
+        self,
+        *,
+        limit: int = 20,
+        event_id: Optional[str] = None,
+    ) -> List[ThemeFactorScanHistory]:
+        stmt = select(ThemeFactorScanHistory)
+        if event_id:
+            stmt = stmt.where(ThemeFactorScanHistory.event_id == event_id)
+        stmt = stmt.order_by(desc(ThemeFactorScanHistory.created_at), desc(ThemeFactorScanHistory.id)).limit(
+            max(1, int(limit))
+        )
+        with self.session_scope() as session:
+            return list(session.execute(stmt).scalars().all())
 
 
 def get_db() -> DatabaseManager:

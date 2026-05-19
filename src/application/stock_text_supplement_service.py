@@ -15,8 +15,6 @@ from typing import Any, Dict, List, Optional
 from theme_picker.search_service import (
     SearchResponse,
     SearchService,
-    SerpAPISearchProvider,
-    TavilySearchProvider,
     get_search_service,
 )
 
@@ -212,16 +210,12 @@ class StockTextSupplementService:
         return bundle
 
     def _preferred_providers(self) -> List[Any]:
-        tavily_providers: List[Any] = []
-        serpapi_providers: List[Any] = []
+        providers: List[Any] = []
         for search_provider in (getattr(self._search_service, "_providers", []) or []):
             if not getattr(search_provider, "is_available", False):
                 continue
-            if isinstance(search_provider, TavilySearchProvider):
-                tavily_providers.append(search_provider)
-            elif isinstance(search_provider, SerpAPISearchProvider):
-                serpapi_providers.append(search_provider)
-        return tavily_providers + serpapi_providers
+            providers.append(search_provider)
+        return providers
 
     def _bundle_cache_key(self, stock_code: str, stock_name: str) -> str:
         return f"{stock_code.strip().upper()}::{stock_name.strip()}::{','.join(self.provider_names)}"
@@ -276,7 +270,7 @@ class StockTextSupplementService:
     def _search_dimension(
         self,
         *,
-        providers: List[SerpAPISearchProvider],
+        providers: List[Any],
         dimension: Dict[str, Any],
         days: int,
         max_results: int,

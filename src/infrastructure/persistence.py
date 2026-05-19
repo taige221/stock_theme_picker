@@ -9,12 +9,16 @@ from theme_picker.storage import (
     DatabaseManager,
     EtfDailyMetricsSnapshot,
     EtfQueryHistory,
+    InformationEvent,
+    InformationWatchItem,
+    OpenDiscoveryProfile,
     StockAlertEvent,
     StockAlertRule,
     StockDeepAnalysisHistory,
     StockDeepAnalysisMessage,
     StockQueryHistory,
     StockWatchlist,
+    ThemeFactorScanHistory,
     ThemePickerTaskHistory,
     get_db,
 )
@@ -170,6 +174,65 @@ def list_stock_deep_analysis_messages(db: DatabaseManager, *, analysis_id: str, 
     return db.list_stock_deep_analysis_messages(analysis_id=analysis_id, limit=limit)
 
 
+def upsert_information_watch_item(db: DatabaseManager, **kwargs: Any):
+    return db.upsert_information_watch_item(**kwargs)
+
+
+def upsert_open_discovery_profile(db: DatabaseManager, **kwargs: Any):
+    return db.upsert_open_discovery_profile(**kwargs)
+
+
+def list_information_watch_items(db: DatabaseManager, *, enabled_only: bool = False):
+    return db.list_information_watch_items(enabled_only=enabled_only)
+
+
+def list_open_discovery_profiles(db: DatabaseManager, *, enabled_only: bool = False):
+    return db.list_open_discovery_profiles(enabled_only=enabled_only)
+
+
+def get_information_watch_item(db: DatabaseManager, item_id: str):
+    return db.get_information_watch_item(item_id)
+
+
+def delete_information_watch_item(db: DatabaseManager, item_id: str) -> bool:
+    return db.delete_information_watch_item(item_id)
+
+
+def save_information_event(db: DatabaseManager, **kwargs: Any):
+    return db.save_information_event(**kwargs)
+
+
+def get_information_event(db: DatabaseManager, event_id: str):
+    return db.get_information_event(event_id)
+
+
+def get_latest_information_event_by_duplicate_key(db: DatabaseManager, duplicate_key: str):
+    return db.get_latest_information_event_by_duplicate_key(duplicate_key)
+
+
+def list_information_events(
+    db: DatabaseManager,
+    *,
+    limit: int = 50,
+    status: str | None = None,
+    promoted_only: bool = False,
+    source_mode: str | None = None,
+):
+    return db.list_information_events(limit=limit, status=status, promoted_only=promoted_only, source_mode=source_mode)
+
+
+def save_theme_factor_scan_record(db: DatabaseManager, **kwargs: Any):
+    return db.save_theme_factor_scan_history(**kwargs)
+
+
+def get_theme_factor_scan_record(db: DatabaseManager, scan_id: str):
+    return db.get_theme_factor_scan_history(scan_id)
+
+
+def list_theme_factor_scan_records(db: DatabaseManager, *, limit: int = 20, event_id: str | None = None):
+    return db.list_theme_factor_scan_history(limit=limit, event_id=event_id)
+
+
 __all__ = [
     "EtfQueryHistory",
     "EtfDailyMetricsSnapshot",
@@ -179,6 +242,10 @@ __all__ = [
     "StockDeepAnalysisHistory",
     "StockDeepAnalysisMessage",
     "StockWatchlist",
+    "InformationWatchItem",
+    "OpenDiscoveryProfile",
+    "InformationEvent",
+    "ThemeFactorScanHistory",
     "ThemePickerTaskHistory",
     "get_theme_picker_db",
     "save_stock_query_record",
@@ -211,6 +278,19 @@ __all__ = [
     "list_stock_deep_analysis_records",
     "create_stock_deep_analysis_message",
     "list_stock_deep_analysis_messages",
+    "upsert_information_watch_item",
+    "upsert_open_discovery_profile",
+    "list_information_watch_items",
+    "list_open_discovery_profiles",
+    "get_information_watch_item",
+    "delete_information_watch_item",
+    "save_information_event",
+    "get_information_event",
+    "get_latest_information_event_by_duplicate_key",
+    "list_information_events",
+    "save_theme_factor_scan_record",
+    "get_theme_factor_scan_record",
+    "list_theme_factor_scan_records",
     "list_task_history",
     "list_task_history_by_statuses",
     "cleanup_task_history",

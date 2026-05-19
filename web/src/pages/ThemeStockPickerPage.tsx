@@ -1,5 +1,5 @@
 import type React from 'react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowRight,
   Bookmark,
@@ -14,7 +14,7 @@ import {
   Target,
   TrendingUp,
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   themePickerApi,
   type ThemePickerTaskHistoryItem,
@@ -62,6 +62,26 @@ type QueryIntent = {
   payload: ResolvedScanPayload;
   effectiveFields: string[];
 };
+
+type ThemeFactorSyncContext = {
+  fromThemeFactor: boolean;
+  scanId: string;
+  eventId: string;
+  eventTitle: string;
+  themeFactorScore: string;
+};
+
+function isSyntheticThemeId(value?: string | null): boolean {
+  const text = String(value || '').trim();
+  return text.startsWith('theme_name_');
+}
+
+function normalizeSyncedThemeName(value?: string | null): string {
+  const text = String(value || '').trim();
+  if (!text) return '';
+  if (!isSyntheticThemeId(text)) return text;
+  return text.replace(/^theme_name_/, '').trim();
+}
 
 function formatNumber(value?: number | null, digits = 2): string {
   if (value == null || Number.isNaN(value)) return '--';
@@ -322,6 +342,7 @@ function deriveSelectedStock(stock: ThemePickerStockItem, result: ThemePickerSca
 
 const ThemeStockPickerPage: React.FC = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [themeId, setThemeId] = useState('');
   const [themeName, setThemeName] = useState('');
   const [boardCode, setBoardCode] = useState('');
@@ -346,6 +367,17 @@ const ThemeStockPickerPage: React.FC = () => {
   const scanLoadingRef = useRef(false);
   const scanResultRef = useRef<ThemePickerScanResponse | null>(null);
   const scanTaskRef = useRef<ThemePickerTaskStatus | null>(null);
+
+  const themeFactorSyncContext = useMemo<ThemeFactorSyncContext>(() => ({
+    fromThemeFactor: searchParams.get('from') === 'theme-factor',
+    scanId: searchParams.get('scanId') ?? '',
+    eventId: searchParams.get('eventId') ?? '',
+    eventTitle: searchParams.get('eventTitle') ?? '',
+    themeFactorScore: searchParams.get('themeFactorScore') ?? '',
+  }), [searchParams]);
+
+  const hasThemeFactorSyncContext = themeFactorSyncContext.fromThemeFactor
+    && Boolean(searchParams.get('themeName') || searchParams.get('themeId'));
 
   useEffect(() => {
     document.title = '主题选股 - DSA';
@@ -403,6 +435,7 @@ const ThemeStockPickerPage: React.FC = () => {
 
         if (
           !initialHistoryAppliedRef.current
+          && !hasThemeFactorSyncContext
           && !scanLoadingRef.current
           && !scanResultRef.current
           && !scanTaskRef.current
@@ -435,7 +468,7 @@ const ThemeStockPickerPage: React.FC = () => {
     return () => {
       active = false;
     };
-  }, []);
+  }, [hasThemeFactorSyncContext]);
 
   const hasQuery = Boolean(themeId || themeName.trim() || boardCode.trim() || boardName.trim());
   const normalizedMaxCandidates = clampMaxCandidates(Number.parseInt(maxCandidates, 10));
@@ -488,6 +521,38 @@ const ThemeStockPickerPage: React.FC = () => {
   const handleSingleStockAnalyze = (stockCode: string, stockName: string) => {
     navigate(`/stock-query?stock=${encodeURIComponent(stockCode)}&name=${encodeURIComponent(stockName)}`);
   };
+
+  const submitScan = useCallback(async (payload: ResolvedScanPayload) => {
+    if (pollTimeoutRef.current != null) {
+      window.clearTimeout(pollTimeoutRef.current);
+      pollTimeoutRef.current = null;
+    }
+
+    setScanLoading(true);
+    setScanError(null);
+    setScanResult(null);
+    setSelectedStock(null);
+
+    setMaxCandidates(String(clampMaxCandidates(payload.maxCandidates)));
+
+    try {
+      const accepted = await themePickerApi.scan(payload);
+
+      setScanTask({
+        taskId: accepted.taskId,
+        status: accepted.status,
+        progress: 0,
+        message: accepted.message,
+        createdAt: new Date().toISOString(),
+      });
+
+      await pollScanStatus(accepted.taskId);
+    } catch (error) {
+      setScanError(getParsedApiError(error));
+      setScanTask(null);
+      setScanLoading(false);
+    }
+  }, []);
 
   const applyResultToPage = (result: ThemePickerScanResponse) => {
     setScanResult(result);
@@ -562,35 +627,7 @@ const ThemeStockPickerPage: React.FC = () => {
 
   const handleScan = async () => {
     if (!hasQuery) return;
-    if (pollTimeoutRef.current != null) {
-      window.clearTimeout(pollTimeoutRef.current);
-      pollTimeoutRef.current = null;
-    }
-
-    setScanLoading(true);
-    setScanError(null);
-    setScanResult(null);
-    setSelectedStock(null);
-
-    setMaxCandidates(String(normalizedMaxCandidates));
-
-    try {
-      const accepted = await themePickerApi.scan(queryIntent.payload);
-
-      setScanTask({
-        taskId: accepted.taskId,
-        status: accepted.status,
-        progress: 0,
-        message: accepted.message,
-        createdAt: new Date().toISOString(),
-      });
-
-      await pollScanStatus(accepted.taskId);
-    } catch (error) {
-      setScanError(getParsedApiError(error));
-      setScanTask(null);
-      setScanLoading(false);
-    }
+    await submitScan(queryIntent.payload);
   };
 
   const pollScanStatus = async (taskId: string) => {
@@ -635,6 +672,27 @@ const ThemeStockPickerPage: React.FC = () => {
     }
     return scanResult.stocks[0] ?? null;
   }, [scanResult, selectedStock]);
+
+  useEffect(() => {
+    if (!hasThemeFactorSyncContext) return;
+
+    const themeNameFromParams = normalizeSyncedThemeName(searchParams.get('themeName'));
+    const rawThemeIdFromParams = (searchParams.get('themeId') ?? '').trim();
+    const themeIdFromParams = isSyntheticThemeId(rawThemeIdFromParams) ? '' : rawThemeIdFromParams;
+    const boardCodeFromParams = (searchParams.get('boardCode') ?? '').trim().toUpperCase();
+    const boardNameFromParams = (searchParams.get('boardName') ?? '').trim();
+    const strategyModeFromParams = (searchParams.get('strategyMode') ?? '').trim();
+    const maxCandidatesFromParams = clampMaxCandidates(
+      Number.parseInt(searchParams.get('maxCandidates') ?? String(DEFAULT_MAX_CANDIDATES), 10),
+    );
+
+    setThemeId(themeIdFromParams);
+    setThemeName(themeNameFromParams);
+    setBoardCode(boardCodeFromParams);
+    setBoardName(boardNameFromParams);
+    setStrategyMode(strategyModeFromParams === 'event' ? 'event' : 'holding');
+    setMaxCandidates(String(maxCandidatesFromParams));
+  }, [hasThemeFactorSyncContext, searchParams]);
 
   return (
     <AppPage className="space-y-6 !max-w-[1640px] px-3 md:px-5 lg:px-6">
@@ -813,6 +871,19 @@ const ThemeStockPickerPage: React.FC = () => {
       </section>
 
       {scanError ? <ApiErrorAlert error={scanError} /> : null}
+
+      {hasThemeFactorSyncContext ? (
+        <InlineAlert
+          variant="info"
+          title="已接收主题因子同步上下文"
+          message={[
+            themeName ? `当前主题：${themeName}` : null,
+            themeFactorSyncContext.eventTitle ? `来源事件：${themeFactorSyncContext.eventTitle}` : null,
+            themeFactorSyncContext.themeFactorScore ? `主题因子分：${themeFactorSyncContext.themeFactorScore}` : null,
+            '你可以基于这条主题因子继续筛选候选股。',
+          ].filter(Boolean).join(' · ')}
+        />
+      ) : null}
 
       {scanTask && scanLoading ? (
         <InlineAlert
