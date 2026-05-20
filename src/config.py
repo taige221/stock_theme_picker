@@ -937,6 +937,8 @@ class Config:
     theme_news_query_timeout: float = 8.0
     # 主题板块结构化结果缓存 TTL（秒）
     theme_board_cache_ttl_seconds: int = 21600
+    # 主题板块东财 HTTP 抓取是否在代理错误时临时禁用代理重试
+    theme_board_http_unproxy_enabled: bool = True
     # 主题选股历史保留天数（<=0 表示不自动清理）
     theme_picker_task_history_retention_days: int = 30
     # 主题选股历史单次清理批次大小
@@ -1823,6 +1825,10 @@ class Config:
                 21600,
                 field_name='THEME_BOARD_CACHE_TTL_SECONDS',
                 minimum=0,
+            ),
+            theme_board_http_unproxy_enabled=parse_env_bool(
+                os.getenv('THEME_BOARD_HTTP_UNPROXY_ENABLED'),
+                True,
             ),
             theme_picker_task_history_retention_days=parse_env_int(
                 os.getenv('THEME_PICKER_TASK_HISTORY_RETENTION_DAYS'),

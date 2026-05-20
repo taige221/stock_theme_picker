@@ -207,6 +207,13 @@ SETTING_DEFINITIONS: List[RuntimeSettingDefinition] = [
         placeholder="15",
     ),
     RuntimeSettingDefinition(
+        key="THEME_BOARD_HTTP_UNPROXY_ENABLED",
+        section_id="runtime",
+        label="主题板块抓取临时禁用代理",
+        input_type="boolean",
+        description="东财板块 HTTP 抓取遇到代理错误时自动无代理重试。",
+    ),
+    RuntimeSettingDefinition(
         key="THEME_PICKER_TASK_HISTORY_RETENTION_DAYS",
         section_id="runtime",
         label="主题任务历史保留天数",

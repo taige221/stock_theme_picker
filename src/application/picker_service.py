@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
+import re
 from typing import List, Optional, Dict, Any, Tuple
 
 from theme_picker.core.theme_alert_pipeline import ThemeAlertPipeline
@@ -132,6 +133,50 @@ _SIGNAL_LEVEL_RANK = {
 
 class ThemePickerService:
     RESPONSE_SCHEMA_VERSION = 2
+
+    @staticmethod
+    def _sanitize_theme_name(value: Optional[str]) -> str:
+        text = str(value or "").strip()
+        if not text:
+            return ""
+        synthetic_prefix = "theme_name_"
+        if text.startswith(synthetic_prefix):
+            return text[len(synthetic_prefix):].strip()
+        prefixed_match = re.match(r"^theme_name\s*=\s*(.+)$", text, flags=re.IGNORECASE)
+        if prefixed_match:
+            return str(prefixed_match.group(1) or "").strip()
+        return text
+
+    @staticmethod
+    def _sanitize_board_name(value: Optional[str]) -> str:
+        text = str(value or "").strip()
+        if not text:
+            return ""
+        synthetic_prefix = "board_name_"
+        if text.startswith(synthetic_prefix):
+            return text[len(synthetic_prefix):].strip()
+        prefixed_match = re.match(r"^board_name\s*=\s*(.+)$", text, flags=re.IGNORECASE)
+        if prefixed_match:
+            return str(prefixed_match.group(1) or "").strip()
+        return text
+
+    @staticmethod
+    def _sanitize_board_code(value: Optional[str]) -> str:
+        text = str(value or "").strip()
+        if not text:
+            return ""
+        prefixed_match = re.match(r"^board_code\s*=\s*(.+)$", text, flags=re.IGNORECASE)
+        if prefixed_match:
+            return str(prefixed_match.group(1) or "").strip().upper()
+        synthetic_prefix = "board_"
+        if text.startswith(synthetic_prefix):
+            return text[len(synthetic_prefix):].strip().upper()
+        return text.upper()
+
+    @staticmethod
+    def _is_synthetic_query_id(value: Optional[str]) -> bool:
+        text = str(value or "").strip()
+        return text.startswith("theme_name_") or text.startswith("board_") or text.startswith("board_name_")
 
     def __init__(
         self,
@@ -693,8 +738,8 @@ class ThemePickerService:
             copied.signal_rules.strategy_mode = strategy_mode
             return {"mode": "scan", "themes": [copied]}
 
-        board_codes = self._parse_csv_values(request.board_code)
-        board_names = self._parse_csv_values(request.board_name)
+        board_codes = self._parse_csv_values(self._sanitize_board_code(request.board_code))
+        board_names = self._parse_csv_values(self._sanitize_board_name(request.board_name))
         if board_codes or board_names:
             direct_themes = self._build_direct_board_themes(
                 board_codes,
@@ -704,7 +749,7 @@ class ThemePickerService:
             if direct_themes:
                 return {"mode": "direct", "themes": direct_themes}
 
-        theme_name = (request.theme_name or "").strip()
+        theme_name = self._sanitize_theme_name(request.theme_name)
         if theme_name:
             matched = self._find_registered_theme_by_name(theme_name)
             if matched is not None:
@@ -878,26 +923,45 @@ class ThemePickerService:
             else None
         )
         empty_reason = None if stocks else self._derive_empty_reason(event)
+        response_theme = themes[0] if themes else None
+        response_theme_id = (
+            None
+            if response_theme is not None and self._is_synthetic_query_id(response_theme.id)
+            else (response_theme.id if response_theme is not None else request.theme_id)
+        )
+        response_theme_name = (
+            response_theme.name
+            if response_theme is not None
+            else self._sanitize_theme_name(request.theme_name)
+        )
 
         return {
             "query": asdict(ThemePickerQueryPayload(
-                theme_id=themes[0].id if themes else request.theme_id,
-                theme_name=themes[0].name if themes else request.theme_name,
-                board_code=(themes[0].concept_board_codes[0] if themes and themes[0].concept_board_codes else request.board_code),
-                board_name=(themes[0].concept_board_names[0] if themes and themes[0].concept_board_names else request.board_name),
+                theme_id=response_theme_id,
+                theme_name=response_theme_name,
+                board_code=(
+                    response_theme.concept_board_codes[0]
+                    if response_theme and response_theme.concept_board_codes
+                    else self._sanitize_board_code(request.board_code)
+                ),
+                board_name=(
+                    response_theme.concept_board_names[0]
+                    if response_theme and response_theme.concept_board_names
+                    else self._sanitize_board_name(request.board_name)
+                ),
                 strategy_mode=request.strategy_mode,
                 max_candidates=request.max_candidates,
             )),
             "theme_insight": asdict(
                 self._build_theme_insight(
                     event,
-                    themes[0] if themes else None,
+                    response_theme,
                     deduped_signal_count=len(deduped_signals),
                 )
             ),
             "stocks": [asdict(item) for item in stocks],
             "selected_stock": asdict(selected_stock) if selected_stock else None,
-            "source_info": asdict(self._build_source_info(request, themes[0] if themes else None, event, result)),
+            "source_info": asdict(self._build_source_info(request, response_theme, event, result)),
             "empty_reason": empty_reason,
         }
 

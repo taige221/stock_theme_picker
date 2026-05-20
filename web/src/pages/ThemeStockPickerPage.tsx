@@ -73,14 +73,46 @@ type ThemeFactorSyncContext = {
 
 function isSyntheticThemeId(value?: string | null): boolean {
   const text = String(value || '').trim();
-  return text.startsWith('theme_name_');
+  return text.startsWith('theme_name_') || text.startsWith('board_') || text.startsWith('board_name_');
 }
 
 function normalizeSyncedThemeName(value?: string | null): string {
   const text = String(value || '').trim();
   if (!text) return '';
-  if (!isSyntheticThemeId(text)) return text;
-  return text.replace(/^theme_name_/, '').trim();
+  if (isSyntheticThemeId(text)) {
+    return text.replace(/^theme_name_/, '').trim();
+  }
+  const prefixedMatch = text.match(/^theme_name\s*=\s*(.+)$/i);
+  if (prefixedMatch) {
+    return prefixedMatch[1]?.trim() ?? '';
+  }
+  return text;
+}
+
+function normalizeSyncedBoardName(value?: string | null): string {
+  const text = String(value || '').trim();
+  if (!text) return '';
+  if (text.startsWith('board_name_')) {
+    return text.replace(/^board_name_/, '').trim();
+  }
+  const prefixedMatch = text.match(/^board_name\s*=\s*(.+)$/i);
+  if (prefixedMatch) {
+    return prefixedMatch[1]?.trim() ?? '';
+  }
+  return text;
+}
+
+function normalizeSyncedBoardCode(value?: string | null): string {
+  const text = String(value || '').trim();
+  if (!text) return '';
+  const prefixedMatch = text.match(/^board_code\s*=\s*(.+)$/i);
+  if (prefixedMatch) {
+    return prefixedMatch[1]?.trim().toUpperCase() ?? '';
+  }
+  if (text.startsWith('board_')) {
+    return text.replace(/^board_/, '').trim().toUpperCase();
+  }
+  return text.toUpperCase();
 }
 
 function formatNumber(value?: number | null, digits = 2): string {
@@ -506,12 +538,16 @@ const ThemeStockPickerPage: React.FC = () => {
 
   const handleBoardCodeChange = (value: string) => {
     setThemeId('');
-    setBoardCode(value.toUpperCase());
+    setBoardCode(normalizeSyncedBoardCode(value));
   };
 
   const handleBoardNameChange = (value: string) => {
+    const hadThemeBinding = Boolean(themeId);
     setThemeId('');
-    setBoardName(value);
+    if (hadThemeBinding) {
+      setBoardCode('');
+    }
+    setBoardName(normalizeSyncedBoardName(value));
   };
 
   const handleDeepAnalyze = (stockCode: string, stockName: string) => {
@@ -557,10 +593,10 @@ const ThemeStockPickerPage: React.FC = () => {
   const applyResultToPage = (result: ThemePickerScanResponse) => {
     setScanResult(result);
     setSelectedStock(selectedStockFromResult(result));
-    setThemeId(result.query.themeId ?? '');
-    setThemeName(result.query.themeName ?? '');
-    setBoardCode(result.query.boardCode ?? '');
-    setBoardName(result.query.boardName ?? '');
+    setThemeId(isSyntheticThemeId(result.query.themeId) ? '' : (result.query.themeId ?? ''));
+    setThemeName(normalizeSyncedThemeName(result.query.themeName ?? ''));
+    setBoardCode(normalizeSyncedBoardCode(result.query.boardCode ?? ''));
+    setBoardName(normalizeSyncedBoardName(result.query.boardName ?? ''));
     setStrategyMode(result.query.strategyMode);
     setMaxCandidates(String(result.query.maxCandidates ?? DEFAULT_MAX_CANDIDATES));
   };
@@ -679,8 +715,8 @@ const ThemeStockPickerPage: React.FC = () => {
     const themeNameFromParams = normalizeSyncedThemeName(searchParams.get('themeName'));
     const rawThemeIdFromParams = (searchParams.get('themeId') ?? '').trim();
     const themeIdFromParams = isSyntheticThemeId(rawThemeIdFromParams) ? '' : rawThemeIdFromParams;
-    const boardCodeFromParams = (searchParams.get('boardCode') ?? '').trim().toUpperCase();
-    const boardNameFromParams = (searchParams.get('boardName') ?? '').trim();
+    const boardCodeFromParams = normalizeSyncedBoardCode(searchParams.get('boardCode'));
+    const boardNameFromParams = normalizeSyncedBoardName(searchParams.get('boardName'));
     const strategyModeFromParams = (searchParams.get('strategyMode') ?? '').trim();
     const maxCandidatesFromParams = clampMaxCandidates(
       Number.parseInt(searchParams.get('maxCandidates') ?? String(DEFAULT_MAX_CANDIDATES), 10),

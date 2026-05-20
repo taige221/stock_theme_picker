@@ -5,7 +5,9 @@ from __future__ import annotations
 
 import logging
 import math
+import os
 import random
+import threading
 from typing import Dict, List, Optional
 
 import pandas as pd
@@ -15,10 +17,28 @@ from theme_picker.data_provider.base import normalize_stock_code
 
 logger = logging.getLogger(__name__)
 
+_UNPROXY_RETRY_EXCEPTIONS = (
+    requests.exceptions.ProxyError,
+    requests.exceptions.ConnectionError,
+    requests.exceptions.ChunkedEncodingError,
+    requests.exceptions.SSLError,
+    requests.exceptions.Timeout,
+)
+
 _BOARD_LIST_URL = "https://79.push2.eastmoney.com/api/qt/clist/get"
 _INDUSTRY_BOARD_LIST_URL = "https://17.push2.eastmoney.com/api/qt/clist/get"
 _BOARD_CONSTITUENTS_URL = "https://29.push2.eastmoney.com/api/qt/clist/get"
 _BELONG_BOARDS_URL = "https://push2.eastmoney.com/api/qt/slist/get"
+_PROXY_ENV_LOCK = threading.Lock()
+_PROXY_ENV_KEYS = (
+    "HTTP_PROXY",
+    "HTTPS_PROXY",
+    "ALL_PROXY",
+    "http_proxy",
+    "https_proxy",
+    "all_proxy",
+)
+_NO_PROXY_ENV_KEYS = ("NO_PROXY", "no_proxy")
 
 _USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
@@ -226,7 +246,7 @@ class BoardHttpProvider:
         if not normalized or not normalized.isdigit() or len(normalized) != 6:
             return pd.DataFrame(columns=["股票代码", "股票名称", "板块代码", "板块名称", "板块涨幅"])
 
-        response = requests.get(
+        response = self._request_get(
             _BELONG_BOARDS_URL,
             params=(
                 ("forcect", "1"),
@@ -240,8 +260,8 @@ class BoardHttpProvider:
                 ("invt", "2"),
                 ("secid", self._to_stock_secid(normalized)),
             ),
-            headers=self._default_headers(referer="https://quote.eastmoney.com/"),
-            timeout=timeout_seconds,
+            referer="https://quote.eastmoney.com/",
+            timeout_seconds=timeout_seconds,
         )
         response.raise_for_status()
         payload = response.json()
@@ -297,17 +317,74 @@ class BoardHttpProvider:
         return pd.concat(frames, ignore_index=True)
 
     def _request_json(self, url: str, params: Dict[str, str], *, timeout_seconds: float) -> Dict:
-        response = requests.get(
+        response = self._request_get(
             url,
             params=params,
-            headers=self._default_headers(referer="https://quote.eastmoney.com/"),
-            timeout=timeout_seconds,
+            referer="https://quote.eastmoney.com/",
+            timeout_seconds=timeout_seconds,
         )
         response.raise_for_status()
         payload = response.json()
         if not isinstance(payload, dict):
             raise ValueError(f"Eastmoney board payload invalid: {type(payload).__name__}")
         return payload
+
+    def _request_get(
+        self,
+        url: str,
+        *,
+        params,
+        referer: str,
+        timeout_seconds: float,
+    ) -> requests.Response:
+        request_kwargs = {
+            "params": params,
+            "headers": self._default_headers(referer=referer),
+            "timeout": timeout_seconds,
+        }
+        try:
+            return requests.get(url, **request_kwargs)
+        except _UNPROXY_RETRY_EXCEPTIONS as exc:
+            if not self._theme_board_http_unproxy_enabled():
+                raise
+            logger.info(
+                "东财板块抓取命中可重试网络错误，开始无代理重试: url=%s error=%s",
+                url,
+                exc,
+            )
+            return self._request_get_without_proxy(url, **request_kwargs)
+
+    def _request_get_without_proxy(self, url: str, **request_kwargs) -> requests.Response:
+        with _PROXY_ENV_LOCK:
+            snapshot = self._disable_proxy_env_for_attempt()
+            try:
+                return requests.get(url, **request_kwargs)
+            finally:
+                self._restore_proxy_env_after_attempt(snapshot)
+
+    @staticmethod
+    def _theme_board_http_unproxy_enabled() -> bool:
+        from theme_picker.config import get_config
+        return bool(getattr(get_config(), "theme_board_http_unproxy_enabled", True))
+
+    @staticmethod
+    def _disable_proxy_env_for_attempt() -> Dict[str, Optional[str]]:
+        snapshot: Dict[str, Optional[str]] = {}
+        for key in _PROXY_ENV_KEYS + _NO_PROXY_ENV_KEYS:
+            snapshot[key] = os.environ.get(key)
+        for key in _PROXY_ENV_KEYS:
+            os.environ.pop(key, None)
+        os.environ["NO_PROXY"] = "*"
+        os.environ["no_proxy"] = "*"
+        return snapshot
+
+    @staticmethod
+    def _restore_proxy_env_after_attempt(snapshot: Dict[str, Optional[str]]) -> None:
+        for key, value in snapshot.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
 
     @staticmethod
     def _to_stock_secid(stock_code: str) -> str:

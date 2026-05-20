@@ -358,6 +358,95 @@ describe('ThemeStockPickerPage', () => {
     );
   });
 
+  it('normalizes prefixed themeName from route params before submitting theme-name search', async () => {
+    render(
+      <MemoryRouter initialEntries={['/theme-picker?from=theme-factor&themeName=theme_name%3DDeepSeek']}>
+        <ThemeStockPickerPage />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByDisplayValue('DeepSeek')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '开始筛选' }));
+
+    await waitFor(() => {
+      expect(scan).toHaveBeenCalledWith(
+        expect.objectContaining({
+          themeName: 'DeepSeek',
+          strategyMode: 'holding',
+          maxCandidates: 8,
+        }),
+      );
+    });
+    expect(scan).toHaveBeenCalledWith(
+      expect.not.objectContaining({
+        themeName: 'theme_name=DeepSeek',
+      }),
+    );
+  });
+
+  it('normalizes prefixed boardName before submitting board-name search', async () => {
+    getHistory.mockResolvedValueOnce({ items: [] });
+
+    render(
+      <MemoryRouter>
+        <ThemeStockPickerPage />
+      </MemoryRouter>,
+    );
+
+    await screen.findByRole('heading', { name: '主题选股' });
+    fireEvent.change(screen.getByLabelText('板块名称（可选）'), { target: { value: 'board_name=DeepSeek概念' } });
+    expect(screen.getByDisplayValue('DeepSeek概念')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '开始筛选' }));
+
+    await waitFor(() => {
+      expect(scan).toHaveBeenCalledWith(
+        expect.objectContaining({
+          boardName: 'DeepSeek概念',
+          strategyMode: 'holding',
+          maxCandidates: 8,
+        }),
+      );
+    });
+    expect(scan).toHaveBeenCalledWith(
+      expect.not.objectContaining({
+        boardName: 'board_name=DeepSeek概念',
+      }),
+    );
+  });
+
+  it('normalizes prefixed boardCode before submitting board-code search', async () => {
+    getHistory.mockResolvedValueOnce({ items: [] });
+
+    render(
+      <MemoryRouter>
+        <ThemeStockPickerPage />
+      </MemoryRouter>,
+    );
+
+    await screen.findByRole('heading', { name: '主题选股' });
+    fireEvent.change(screen.getByLabelText('板块代码（可选）'), { target: { value: 'board_code=BK1188' } });
+    expect(screen.getByDisplayValue('BK1188')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '开始筛选' }));
+
+    await waitFor(() => {
+      expect(scan).toHaveBeenCalledWith(
+        expect.objectContaining({
+          boardCode: 'BK1188',
+          strategyMode: 'holding',
+          maxCandidates: 8,
+        }),
+      );
+    });
+    expect(scan).toHaveBeenCalledWith(
+      expect.not.objectContaining({
+        boardCode: 'board_code=BK1188',
+      }),
+    );
+  });
+
   it('opens history drawer and restores a completed historical result', async () => {
     render(
       <MemoryRouter>

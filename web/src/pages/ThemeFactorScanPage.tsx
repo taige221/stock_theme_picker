@@ -48,8 +48,14 @@ function isSyntheticThemeId(value?: string | null): boolean {
 function normalizeSyncedThemeName(value?: string | null): string {
   const text = String(value || '').trim();
   if (!text) return '';
-  if (!isSyntheticThemeId(text)) return text;
-  return text.replace(/^theme_name_/, '').trim();
+  if (isSyntheticThemeId(text)) {
+    return text.replace(/^theme_name_/, '').trim();
+  }
+  const prefixedMatch = text.match(/^theme_name\s*=\s*(.+)$/i);
+  if (prefixedMatch) {
+    return prefixedMatch[1]?.trim() ?? '';
+  }
+  return text;
 }
 
 const RECENT_SCAN_SCROLL_CLASS = 'max-h-[860px] overflow-y-auto pr-1';
