@@ -379,9 +379,9 @@ function newsSentimentVariant(value?: string): 'success' | 'warning' | 'danger' 
 }
 
 function strategyToneClasses(tone: StrategyTone): string {
-  if (tone === 'buy') return 'border-cyan/30 bg-cyan/10';
-  if (tone === 'breakout') return 'border-warning/20 bg-warning/10';
-  return 'border-danger/20 bg-danger/10';
+  if (tone === 'buy') return 'border-border/60 bg-background/72';
+  if (tone === 'breakout') return 'border-border/60 bg-background/76';
+  return 'border-border/60 bg-background/80';
 }
 
 function buildEntryPlan(result: StockQueryAnalyzeResponse): EntryPlan {
@@ -542,10 +542,10 @@ function getHistoryLabel(item: StockQueryHistoryItem): string {
 }
 
 function markerToneClasses(tone: StrategyTone | 'neutral', current = false): string {
-  if (current) return 'border-cyan bg-card shadow-lg shadow-cyan/20';
-  if (tone === 'buy') return 'border-success/50 bg-success';
-  if (tone === 'breakout') return 'border-warning/40 bg-warning';
-  if (tone === 'warn') return 'border-danger/40 bg-danger';
+  if (current) return 'border-foreground bg-card shadow-soft-card';
+  if (tone === 'buy') return 'border-foreground/70 bg-foreground';
+  if (tone === 'breakout') return 'border-foreground/55 bg-foreground/70';
+  if (tone === 'warn') return 'border-foreground/35 bg-foreground/45';
   return 'border-border/70 bg-card';
 }
 
@@ -960,13 +960,13 @@ const SingleStockQueryPage: React.FC = () => {
 
   return (
     <AppPage className="!max-w-[1680px] px-3 md:px-5 lg:px-6">
-      <section className="overflow-hidden rounded-[32px] border border-slate-800/80 bg-[radial-gradient(circle_at_top_left,_rgba(29,182,255,0.14),_transparent_24%),radial-gradient(circle_at_top_right,_rgba(91,124,255,0.12),_transparent_22%),linear-gradient(180deg,#07111f,#091a2d)] text-slate-50 shadow-soft-card">
+      <section className="overflow-hidden rounded-[32px] border border-border/70 bg-[radial-gradient(circle_at_top_left,_hsl(var(--foreground)/0.05),_transparent_24%),radial-gradient(circle_at_top_right,_hsl(var(--accent)/0.22),_transparent_22%),linear-gradient(180deg,hsl(var(--card)/0.98),hsl(var(--background)/0.95))] text-foreground shadow-soft-card">
         <div className="grid xl:grid-cols-[minmax(0,1fr)_430px]">
-          <div className="border-b border-slate-800/80 px-5 py-6 lg:px-7 xl:border-b-0 xl:border-r">
+          <div className="border-b border-border/70 px-5 py-6 lg:px-7 xl:border-b-0 xl:border-r">
             <div className="space-y-6">
               <div>
-                <h2 className="text-3xl font-semibold tracking-tight text-white">单股查询</h2>
-                <p className="mt-2 max-w-3xl text-sm leading-7 text-slate-400">
+                <h2 className="font-display text-3xl font-semibold tracking-tight text-foreground">单股查询</h2>
+                <p className="mt-2 max-w-3xl text-sm leading-7 text-secondary-text">
                   围绕“如何入场”和“买点在哪”重组信息层级，首屏先给交易结论，再把历史和辅助信息压到更合适的位置。
                 </p>
               </div>
@@ -977,7 +977,7 @@ const SingleStockQueryPage: React.FC = () => {
                     value={query}
                     onChange={(event) => setQuery(event.target.value)}
                     placeholder="输入股票或 ETF 代码/名称，例如 688629.SH / 512880.SH / 华丰科技"
-                    className="h-12 rounded-2xl border-slate-700/80 bg-[#0A1A2E] text-slate-100 placeholder:text-slate-500"
+                    className="h-12 rounded-2xl border-border/60 bg-card/92 text-foreground placeholder:text-muted-text"
                     hint="支持股票与 ETF 代码/名称。查询成功后会自动写入后端历史，方便回看和恢复查看。"
                   />
                   <Button
@@ -994,7 +994,7 @@ const SingleStockQueryPage: React.FC = () => {
                     type="button"
                     variant="secondary"
                     size="lg"
-                    className="h-12 rounded-2xl border-slate-700/80 bg-[#0B2038] text-slate-100 hover:bg-[#102744]"
+                    className="h-12 rounded-2xl border-border/60 bg-card/92 text-foreground hover:bg-hover/70"
                     onClick={() => setHistoryOpen(true)}
                   >
                     <Clock3 className="h-4 w-4" />
@@ -1010,7 +1010,7 @@ const SingleStockQueryPage: React.FC = () => {
                     label="策略视角"
                     className="max-w-[320px]"
                   />
-                  <div className="rounded-2xl border border-slate-700/80 bg-[#0E1F36] px-4 py-3 text-sm leading-6 text-slate-300">
+                  <div className="rounded-2xl border border-border/60 bg-background/70 px-4 py-3 text-sm leading-6 text-secondary-text">
                     自动模式会并行评估低吸回踩、突破确认、趋势跟随和趋势持有；如果你已经知道自己只想看某一种买点，可以直接锁定对应策略。
                   </div>
                 </div>
@@ -1024,8 +1024,8 @@ const SingleStockQueryPage: React.FC = () => {
                       className={[
                         'rounded-2xl border px-4 py-2 text-sm font-medium transition-all',
                         query === item.value
-                          ? 'border-cyan/30 bg-primary-gradient text-white shadow-lg shadow-cyan/20'
-                          : 'border-slate-700/80 bg-[#0E1F36] text-slate-200 hover:border-cyan/20 hover:bg-[#112640]',
+                          ? 'border-foreground/15 bg-foreground text-background shadow-soft-card'
+                          : 'border-border/60 bg-background/70 text-foreground hover:border-foreground/10 hover:bg-hover/70',
                       ].join(' ')}
                     >
                       {item.label}
@@ -1057,34 +1057,34 @@ const SingleStockQueryPage: React.FC = () => {
               ) : null}
 
               <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_310px]">
-                <div className="overflow-hidden rounded-[28px] border border-slate-700/80 bg-[radial-gradient(circle_at_top_left,_rgba(24,167,255,0.18),_transparent_28%),radial-gradient(circle_at_bottom_right,_rgba(77,93,255,0.18),_transparent_32%),linear-gradient(180deg,rgba(13,42,70,0.98),rgba(12,27,47,0.98))] px-5 py-6">
+                <div className="overflow-hidden rounded-[28px] border border-border/60 bg-[radial-gradient(circle_at_top_left,_hsl(var(--foreground)/0.05),_transparent_28%),radial-gradient(circle_at_bottom_right,_hsl(var(--accent)/0.18),_transparent_32%),linear-gradient(180deg,hsl(var(--card)/0.98),hsl(var(--background)/0.94))] px-5 py-6">
                   {result && entryPlan ? (
                     <div className="space-y-5">
                       <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
                         <div className="min-w-0">
-                          <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Entry Decision</p>
-                          <p className="mt-4 text-3xl font-semibold tracking-tight text-white">{entryPlan.headline}</p>
-                          <p className="mt-3 max-w-3xl text-sm leading-7 text-slate-300">{entryPlan.summary}</p>
+                          <p className="text-xs uppercase tracking-[0.18em] text-secondary-text">Entry Decision</p>
+                          <p className="mt-4 font-display text-3xl font-semibold tracking-tight text-foreground">{entryPlan.headline}</p>
+                          <p className="mt-3 max-w-3xl text-sm leading-7 text-secondary-text">{entryPlan.summary}</p>
                           <div className="mt-5 flex flex-wrap items-center gap-3">
                             <Badge variant={signalBadgeVariant(result.signal)} className="border-0 px-3 py-1">
                               {result.signal}
                             </Badge>
-                            <Badge variant="default" className="border border-cyan/20 bg-cyan/10 px-3 py-1 text-xs text-cyan-100">
+                            <Badge variant="default" className="border border-foreground/10 bg-foreground/5 px-3 py-1 text-xs text-foreground">
                               {result.strategyLabel || '自动决策'}
                             </Badge>
-                            <Badge variant="default" className="border border-slate-700/80 bg-slate-950/35 px-3 py-1 text-xs text-slate-100">
+                            <Badge variant="default" className="border border-border/60 bg-background/70 px-3 py-1 text-xs text-foreground">
                               {result.trendStatus || result.pattern || '等待结构确认'}
                             </Badge>
                           </div>
                         </div>
 
-                        <div className="rounded-[24px] border border-slate-700/80 bg-slate-950/35 px-5 py-4 xl:min-w-[248px]">
-                          <p className="text-xs uppercase tracking-[0.16em] text-slate-400">当前价格</p>
-                          <p className="mt-3 text-4xl font-semibold text-white">{formatNumber(result.currentPrice)}</p>
+                        <div className="rounded-[24px] border border-border/60 bg-background/68 px-5 py-4 xl:min-w-[248px]">
+                          <p className="text-xs uppercase tracking-[0.16em] text-secondary-text">当前价格</p>
+                          <p className="mt-3 text-4xl font-semibold text-foreground">{formatNumber(result.currentPrice)}</p>
                           <p className={`mt-2 text-sm font-medium ${signedValueClass(result.pctChg)}`}>
                             {formatPercent(result.pctChg, 2)}
                           </p>
-                          <p className="mt-3 text-xs leading-6 text-slate-400">
+                          <p className="mt-3 text-xs leading-6 text-secondary-text">
                             结论：{`回踩 ${formatRange(entryPlan.entryLower, entryPlan.entryUpper)} 再做第一笔，或站上 ${formatNumber(entryPlan.breakoutPrice)} 后做确认买点。`}
                           </p>
                         </div>
@@ -1093,18 +1093,18 @@ const SingleStockQueryPage: React.FC = () => {
                       <div className="grid gap-3 xl:grid-cols-3">
                         {entryPlan.strategies.map((strategy) => (
                           <div key={strategy.key} className={`rounded-[22px] border px-4 py-4 ${strategyToneClasses(strategy.tone)}`}>
-                            <p className="text-sm font-semibold text-white">{strategy.title}</p>
-                            <p className="mt-2 text-sm leading-6 text-slate-200">{strategy.description}</p>
+                            <p className="text-sm font-semibold text-foreground">{strategy.title}</p>
+                            <p className="mt-2 text-sm leading-6 text-secondary-text">{strategy.description}</p>
                           </div>
                         ))}
                       </div>
 
                       {result.strategyDecisions && result.strategyDecisions.length > 0 ? (
-                        <div className="rounded-[24px] border border-slate-700/80 bg-slate-950/30 p-4">
+                        <div className="rounded-[24px] border border-border/60 bg-background/68 p-4">
                           <div className="flex items-center justify-between gap-3">
                             <div>
-                              <p className="text-xs uppercase tracking-[0.16em] text-slate-400">Strategy Matrix</p>
-                              <p className="mt-2 text-sm text-slate-300">同一只票在不同策略视角下，会给出不同的买点判断。</p>
+                              <p className="text-xs uppercase tracking-[0.16em] text-secondary-text">Strategy Matrix</p>
+                              <p className="mt-2 text-sm text-secondary-text">同一只票在不同策略视角下，会给出不同的买点判断。</p>
                             </div>
                           </div>
                           <div className="mt-4 grid gap-3 xl:grid-cols-2">
@@ -1114,21 +1114,21 @@ const SingleStockQueryPage: React.FC = () => {
                                 className={`rounded-[20px] border px-4 py-4 ${
                                   decision.matched
                                     ? strategyToneClasses(strategySignalTone(decision.signal))
-                                    : 'border-slate-700/80 bg-[#0B2038] text-slate-200'
+                                    : 'border-border/60 bg-background/72 text-secondary-text'
                                 }`}
                               >
                                 <div className="flex items-center justify-between gap-3">
-                                  <p className="text-sm font-semibold text-white">{decision.label}</p>
+                                  <p className="text-sm font-semibold text-foreground">{decision.label}</p>
                                   <Badge variant={signalBadgeVariant(decision.signal)} className="border-0 px-2.5 py-1 text-[11px]">
                                     {decision.signal}
                                   </Badge>
                                 </div>
-                                <p className="mt-2 text-sm leading-6 text-slate-200">
+                                <p className="mt-2 text-sm leading-6 text-secondary-text">
                                   {(decision.matched ? decision.selectedReasons : decision.excludedReasons)?.[0]
                                     ?? (decision.matched ? '当前更适合从这套策略视角切入。' : '当前还不满足这套策略的出手条件。')}
                                 </p>
                                 {decision.pattern ? (
-                                  <p className="mt-3 text-xs uppercase tracking-[0.14em] text-slate-400">{decision.pattern}</p>
+                                  <p className="mt-3 text-xs uppercase tracking-[0.14em] text-secondary-text">{decision.pattern}</p>
                                 ) : null}
                               </div>
                             ))}
@@ -1139,9 +1139,9 @@ const SingleStockQueryPage: React.FC = () => {
                   ) : (
                     <div className="space-y-5">
                       <div>
-                        <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Entry Decision</p>
-                        <p className="mt-4 text-3xl font-semibold tracking-tight text-white">先回答现在能不能上，再展开辅助分析</p>
-                        <p className="mt-3 max-w-3xl text-sm leading-7 text-slate-300">
+                        <p className="text-xs uppercase tracking-[0.18em] text-secondary-text">Entry Decision</p>
+                        <p className="mt-4 font-display text-3xl font-semibold tracking-tight text-foreground">先回答现在能不能上，再展开辅助分析</p>
+                        <p className="mt-3 max-w-3xl text-sm leading-7 text-secondary-text">
                           查询成功后，这里会先告诉你该低吸、等突破，还是暂时不要追，不再把所有字段一口气堆到首屏。
                         </p>
                       </div>
@@ -1152,7 +1152,7 @@ const SingleStockQueryPage: React.FC = () => {
                           '历史前置：最近结论直接放进首屏，不再藏在二级页面。',
                           '辅助下沉：题材归因、数据覆盖改到右侧详情栏补充。',
                         ].map((item) => (
-                          <div key={item} className="rounded-[22px] border border-slate-700/80 bg-slate-950/35 px-4 py-4 text-sm leading-6 text-slate-200">
+                          <div key={item} className="rounded-[22px] border border-border/60 bg-background/68 px-4 py-4 text-sm leading-6 text-secondary-text">
                             {item}
                           </div>
                         ))}
@@ -1161,14 +1161,14 @@ const SingleStockQueryPage: React.FC = () => {
                   )}
                 </div>
 
-                <div className="rounded-[28px] border border-slate-700/80 bg-[#0A1A2D] px-5 py-5">
+                <div className="rounded-[28px] border border-border/60 bg-card/92 px-5 py-5">
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <p className="text-xs uppercase tracking-[0.18em] text-slate-400">History Snapshot</p>
-                      <h3 className="mt-3 text-2xl font-semibold text-white">历史入口前置</h3>
-                      <p className="mt-2 text-sm leading-6 text-slate-400">最近几次对这只票的判断，直接放在右上首屏。</p>
+                      <p className="text-xs uppercase tracking-[0.18em] text-secondary-text">History Snapshot</p>
+                      <h3 className="mt-3 font-display text-2xl font-semibold text-foreground">历史入口前置</h3>
+                      <p className="mt-2 text-sm leading-6 text-secondary-text">最近几次对这只票的判断，直接放在右上首屏。</p>
                     </div>
-                    <Button variant="ghost" size="sm" className="text-slate-300 hover:bg-slate-800/60 hover:text-white" onClick={() => setHistoryOpen(true)}>
+                    <Button variant="ghost" size="sm" className="text-secondary-text hover:bg-foreground/4 hover:text-foreground" onClick={() => setHistoryOpen(true)}>
                       全部历史
                     </Button>
                   </div>
@@ -1189,14 +1189,14 @@ const SingleStockQueryPage: React.FC = () => {
                           key={item.queryId}
                           type="button"
                           onClick={() => void handleHistoryRestore(item)}
-                          className="w-full rounded-[22px] border border-slate-700/80 bg-[#0D223A] px-4 py-4 text-left transition-colors hover:border-cyan/25 hover:bg-[#112945]"
+                          className="w-full rounded-[22px] border border-border/60 bg-background/72 px-4 py-4 text-left transition-colors hover:border-foreground/10 hover:bg-hover/70"
                         >
-                          <p className="text-xs text-slate-400">{formatHistoryTime(item.completedAt || item.createdAt)}</p>
-                          <p className="mt-2 text-sm font-semibold text-slate-100">
+                          <p className="text-xs text-secondary-text">{formatHistoryTime(item.completedAt || item.createdAt)}</p>
+                          <p className="mt-2 text-sm font-semibold text-foreground">
                             {(item.stockName || item.queryText || '单股查询')}
-                            <span className="text-slate-400">{` · ${item.signal || '仅观察'}`}</span>
+                            <span className="text-secondary-text">{` · ${item.signal || '仅观察'}`}</span>
                           </p>
-                          <p className="mt-2 text-xs leading-6 text-slate-400">
+                          <p className="mt-2 text-xs leading-6 text-secondary-text">
                             低吸 {formatRange(getHistoryEntryPlan(item)?.entryLower, getHistoryEntryPlan(item)?.entryUpper)}
                           </p>
                         </button>
@@ -1213,24 +1213,24 @@ const SingleStockQueryPage: React.FC = () => {
               </div>
 
               {isLoading && !result ? (
-                <div className="rounded-[28px] border border-slate-700/80 bg-slate-950/35 px-5 py-5">
+                <div className="rounded-[28px] border border-border/60 bg-background/68 px-5 py-5">
                   <div className="flex items-center gap-4">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-cyan/10 text-cyan">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-border/60 bg-card text-foreground">
                       <Sparkles className="h-5 w-5 animate-pulse" />
                     </div>
                     <div>
-                      <p className="text-lg font-semibold text-white">正在拉取单股诊断结果</p>
-                      <p className="mt-1 text-sm text-slate-400">会先解析股票输入，再生成入场计划、买点区间和后端历史对照。</p>
+                      <p className="text-lg font-semibold text-foreground">正在拉取单股诊断结果</p>
+                      <p className="mt-1 text-sm text-secondary-text">会先解析股票输入，再生成入场计划、买点区间和后端历史对照。</p>
                     </div>
                   </div>
                 </div>
               ) : null}
 
               {!result && !isLoading ? (
-                <div className="rounded-[28px] border border-slate-800/80 bg-[#0A1628] px-5 py-5">
-                  <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Buy Point Ruler</p>
-                  <p className="mt-3 text-2xl font-semibold text-white">买点刻度尺会放在这里</p>
-                  <p className="mt-2 text-sm leading-7 text-slate-400">
+                <div className="rounded-[28px] border border-border/70 bg-card/92 px-5 py-5">
+                  <p className="text-xs uppercase tracking-[0.18em] text-secondary-text">Buy Point Ruler</p>
+                  <p className="mt-3 font-display text-2xl font-semibold text-foreground">买点刻度尺会放在这里</p>
+                  <p className="mt-2 text-sm leading-7 text-secondary-text">
                     查询成功后，这里会把试仓区、现价、突破位和禁追区放到一条线上，让你第一眼看清“离买点还有多远”。
                   </p>
                 </div>
@@ -1238,40 +1238,40 @@ const SingleStockQueryPage: React.FC = () => {
 
               {result && entryPlan ? (
                 <>
-                  <div className="rounded-[28px] border border-slate-800/80 bg-[#0A1628] px-5 py-5">
+                  <div className="rounded-[28px] border border-border/70 bg-card/92 px-5 py-5">
                     <div className="flex flex-wrap items-start justify-between gap-4">
                       <div>
-                        <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Buy Point Ruler</p>
-                        <h3 className="mt-3 text-2xl font-semibold text-white">买点刻度尺</h3>
-                        <p className="mt-2 text-sm leading-7 text-slate-400">
+                        <p className="text-xs uppercase tracking-[0.18em] text-secondary-text">Buy Point Ruler</p>
+                        <h3 className="mt-3 font-display text-2xl font-semibold text-foreground">买点刻度尺</h3>
+                        <p className="mt-2 text-sm leading-7 text-secondary-text">
                           支撑、试仓区、当前价、突破位、禁追区放在一条线上，让页面第一眼就能读出“离买点还有多远”。
                         </p>
                       </div>
-                      <div className="rounded-[22px] border border-slate-700/80 bg-slate-950/35 px-4 py-3 text-sm text-slate-300">
-                        当前建议：<span className="font-semibold text-white">{entryPlan.headline}</span>
+                      <div className="rounded-[22px] border border-border/60 bg-background/68 px-4 py-3 text-sm text-secondary-text">
+                        当前建议：<span className="font-semibold text-foreground">{entryPlan.headline}</span>
                       </div>
                     </div>
 
                     {priceRail ? (
-                      <div className="mt-8 rounded-[24px] border border-slate-800/80 bg-[#0B1C2E] px-5 py-6">
+                      <div className="mt-8 rounded-[24px] border border-border/60 bg-background/70 px-5 py-6">
                         <div className="relative h-24">
-                          <div className="absolute left-4 right-4 top-10 h-2.5 rounded-full bg-slate-700/80" />
+                          <div className="absolute left-4 right-4 top-10 h-2.5 rounded-full bg-border/90" />
                           <div
-                            className="absolute top-[37px] h-3.5 rounded-full bg-success/80"
+                            className="absolute top-[37px] h-3.5 rounded-full bg-foreground/88"
                             style={{
                               left: `calc(${priceRail.entryStart}% + 1rem)`,
                               width: `${Math.max(priceRail.entryEnd - priceRail.entryStart, 2)}%`,
                             }}
                           />
                           <div
-                            className="absolute top-[37px] h-3.5 rounded-full bg-warning/75"
+                            className="absolute top-[37px] h-3.5 rounded-full bg-foreground/55"
                             style={{
                               left: `calc(${priceRail.points.find((point) => point.key === 'breakout')?.position ?? priceRail.noChaseStart}% + 1rem)`,
                               width: `${Math.max(priceRail.noChaseStart - (priceRail.points.find((point) => point.key === 'breakout')?.position ?? priceRail.noChaseStart), 2)}%`,
                             }}
                           />
                           <div
-                            className="absolute top-[37px] h-3.5 rounded-full bg-danger/70"
+                            className="absolute top-[37px] h-3.5 rounded-full bg-foreground/28"
                             style={{
                               left: `calc(${priceRail.noChaseStart}% + 1rem)`,
                               right: '1rem',
@@ -1281,18 +1281,18 @@ const SingleStockQueryPage: React.FC = () => {
                           {priceRail.points.map((point) => {
                             const isCurrent = point.key === 'current';
                             return (
-                              <div
-                                key={point.key}
-                                className="absolute top-2 flex -translate-x-1/2 flex-col items-center gap-2"
-                                style={{ left: `calc(${point.position}% + 1rem)` }}
-                              >
-                                <div className={`h-5 w-5 rounded-full border-4 ${markerToneClasses(point.tone, isCurrent)}`} />
-                                <div className="min-w-[78px] text-center">
-                                  <p className="text-xs font-semibold text-slate-100">{point.label}</p>
-                                  <p className="mt-1 text-xs text-slate-400">{formatNumber(point.value)}</p>
+                                <div
+                                  key={point.key}
+                                  className="absolute top-2 flex -translate-x-1/2 flex-col items-center gap-2"
+                                  style={{ left: `calc(${point.position}% + 1rem)` }}
+                                >
+                                  <div className={`h-5 w-5 rounded-full border-4 ${markerToneClasses(point.tone, isCurrent)}`} />
+                                  <div className="min-w-[78px] text-center">
+                                  <p className="text-xs font-semibold text-foreground">{point.label}</p>
+                                  <p className="mt-1 text-xs text-secondary-text">{formatNumber(point.value)}</p>
+                                  </div>
                                 </div>
-                              </div>
-                            );
+                              );
                           })}
                         </div>
 
@@ -1313,40 +1313,40 @@ const SingleStockQueryPage: React.FC = () => {
                   </div>
 
                   <div className="grid gap-5 xl:grid-cols-[0.88fr_1.06fr_1.06fr]">
-                    <div className="rounded-[28px] border border-slate-800/80 bg-[#0A1728] px-5 py-5">
+                    <div className="rounded-[28px] border border-border/60 bg-card/92 px-5 py-5">
                       <div className="flex items-center gap-3">
-                        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-cyan/10 text-cyan">
+                        <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-border/60 bg-background/80 text-foreground">
                           <Target className="h-5 w-5" />
                         </div>
                         <div>
-                          <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Checklist</p>
-                          <h3 className="mt-1 text-2xl font-semibold text-white">入场前 checklist</h3>
+                          <p className="text-xs uppercase tracking-[0.18em] text-secondary-text">Checklist</p>
+                          <h3 className="mt-1 font-display text-2xl font-semibold text-foreground">入场前 checklist</h3>
                         </div>
                       </div>
                       <div className="mt-5 space-y-3">
                         {entryPlan.checklist.map((item) => (
-                          <div key={item} className="rounded-[22px] border border-slate-800/80 bg-[#0C2236] px-4 py-4 text-sm leading-6 text-slate-100">
+                          <div key={item} className="rounded-[22px] border border-border/60 bg-background/70 px-4 py-4 text-sm leading-6 text-foreground">
                             {item}
                           </div>
                         ))}
                       </div>
                     </div>
 
-                    <div className="rounded-[28px] border border-slate-800/80 bg-[#0A1728] px-5 py-5">
+                    <div className="rounded-[28px] border border-border/60 bg-card/92 px-5 py-5">
                       <div className="flex items-center gap-3">
-                        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-success/10 text-success">
+                        <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-border/60 bg-background/80 text-foreground">
                           <TrendingUp className="h-5 w-5" />
                         </div>
                         <div>
-                          <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Why Watch</p>
-                          <h3 className="mt-1 text-2xl font-semibold text-white">为什么还值得继续看</h3>
+                          <p className="text-xs uppercase tracking-[0.18em] text-secondary-text">Why Watch</p>
+                          <h3 className="mt-1 font-display text-2xl font-semibold text-foreground">为什么还值得继续看</h3>
                         </div>
                       </div>
 
                       <div className="mt-5 space-y-3">
                         {result.selectedReasons.length > 0 ? (
                           result.selectedReasons.slice(0, 2).map((reason) => (
-                            <div key={reason} className="rounded-[22px] border border-slate-800/80 bg-[#0C2236] px-4 py-4 text-sm leading-6 text-slate-100">
+                            <div key={reason} className="rounded-[22px] border border-border/60 bg-background/70 px-4 py-4 text-sm leading-6 text-foreground">
                               {reason}
                             </div>
                           ))
@@ -1365,21 +1365,21 @@ const SingleStockQueryPage: React.FC = () => {
                       </div>
                     </div>
 
-                    <div className="rounded-[28px] border border-slate-800/80 bg-[#0A1728] px-5 py-5">
+                    <div className="rounded-[28px] border border-border/60 bg-card/92 px-5 py-5">
                       <div className="flex items-center gap-3">
-                        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-warning/10 text-warning">
+                        <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-border/60 bg-background/80 text-foreground">
                           <AlertTriangle className="h-5 w-5" />
                         </div>
                         <div>
-                          <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Why Wait</p>
-                          <h3 className="mt-1 text-2xl font-semibold text-white">为什么现在不能太激进</h3>
+                          <p className="text-xs uppercase tracking-[0.18em] text-secondary-text">Why Wait</p>
+                          <h3 className="mt-1 font-display text-2xl font-semibold text-foreground">为什么现在不能太激进</h3>
                         </div>
                       </div>
 
                       <div className="mt-5 space-y-3">
                         {result.excludedReasons.length > 0 ? (
                           result.excludedReasons.slice(0, 2).map((reason) => (
-                            <div key={reason} className="rounded-[22px] border border-slate-800/80 bg-[#2A1624] px-4 py-4 text-sm leading-6 text-slate-100">
+                            <div key={reason} className="rounded-[22px] border border-danger/20 bg-danger/10 px-4 py-4 text-sm leading-6 text-foreground">
                               {reason}
                             </div>
                           ))
@@ -1392,19 +1392,19 @@ const SingleStockQueryPage: React.FC = () => {
                         )}
                       </div>
 
-                      <div className="mt-5 rounded-[22px] border border-slate-800/80 bg-[#2A1624] px-4 py-4">
-                        <p className="text-sm leading-7 text-slate-100">{entryPlan.summary}</p>
+                      <div className="mt-5 rounded-[22px] border border-danger/20 bg-danger/10 px-4 py-4">
+                        <p className="text-sm leading-7 text-foreground">{entryPlan.summary}</p>
                       </div>
                     </div>
                   </div>
 
                   {hasFundamentalBlocks ? (
-                    <div className="rounded-[28px] border border-slate-800/80 bg-[#09192C] px-5 py-5">
+                    <div className="rounded-[28px] border border-border/60 bg-card/92 px-5 py-5">
                       <div className="flex flex-wrap items-start justify-between gap-4">
                         <div className="max-w-4xl">
-                          <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Fundamental Context</p>
-                          <h3 className="mt-1 text-2xl font-semibold text-white">基本面分块上下文</h3>
-                          <p className="mt-3 max-w-4xl text-sm leading-7 text-slate-300">
+                          <p className="text-xs uppercase tracking-[0.18em] text-secondary-text">Fundamental Context</p>
+                          <h3 className="mt-1 font-display text-2xl font-semibold text-foreground">基本面分块上下文</h3>
+                          <p className="mt-3 max-w-4xl text-sm leading-7 text-secondary-text">
                             这里优先展示底层基本面拿到了什么、缺了什么、是否能直接作为交易判断依据，比近期催化更靠前。
                           </p>
                         </div>
@@ -1530,10 +1530,10 @@ const SingleStockQueryPage: React.FC = () => {
                           {boardItems.length > 0 ? (
                             <div className="mt-3 flex flex-wrap gap-2">
                               {boardItems.slice(0, 10).map((board) => (
-                                <div key={`${board.name}-${board.code ?? ''}`} className="rounded-full border border-cyan/20 bg-cyan/10 px-3 py-2">
-                                  <p className="text-sm font-medium text-slate-100">{board.name}</p>
+                                <div key={`${board.name}-${board.code ?? ''}`} className="rounded-full border border-border/60 bg-background/70 px-3 py-2">
+                                  <p className="text-sm font-medium text-foreground">{board.name}</p>
                                   {boardCaption(board) ? (
-                                    <p className="mt-1 text-[11px] text-slate-400">{boardCaption(board)}</p>
+                                    <p className="mt-1 text-[11px] text-secondary-text">{boardCaption(board)}</p>
                                   ) : null}
                                 </div>
                               ))}
@@ -1548,17 +1548,17 @@ const SingleStockQueryPage: React.FC = () => {
             </div>
           </div>
 
-          <aside className="bg-[linear-gradient(180deg,rgba(10,22,39,0.92),rgba(8,17,31,0.96))] px-5 py-6 lg:px-6">
+          <aside className="bg-[linear-gradient(180deg,hsl(var(--card)/0.96),hsl(var(--background)/0.94))] px-5 py-6 lg:px-6">
             <div className="space-y-5 xl:sticky xl:top-24">
               <div>
-                <h3 className="text-lg font-semibold text-white">股票详情</h3>
-                <div className="mt-3 h-px bg-slate-800/80" />
+                <h3 className="text-lg font-semibold text-foreground">股票详情</h3>
+                <div className="mt-3 h-px bg-border/70" />
               </div>
 
               <div>
                 <div className="flex flex-wrap items-end gap-3">
-                  <h4 className="text-3xl font-semibold text-white">{result?.stockName ?? '等待查询结果'}</h4>
-                  <span className="text-sm text-slate-400">{result?.stockCode ?? '--'}</span>
+                  <h4 className="text-3xl font-semibold text-foreground">{result?.stockName ?? '等待查询结果'}</h4>
+                  <span className="text-sm text-secondary-text">{result?.stockCode ?? '--'}</span>
                   {instrumentBadgeLabel(result?.instrumentLabel, result?.instrumentType) ? (
                     <Badge variant="info" className="border-0 px-3 py-1">
                       {instrumentBadgeLabel(result?.instrumentLabel, result?.instrumentType)}
@@ -1566,24 +1566,24 @@ const SingleStockQueryPage: React.FC = () => {
                   ) : null}
                 </div>
                 <div className="mt-5 flex flex-wrap items-end gap-3">
-                  <p className="text-4xl font-semibold text-white">{formatNumber(result?.currentPrice)}</p>
+                  <p className="text-4xl font-semibold text-foreground">{formatNumber(result?.currentPrice)}</p>
                   <p className={`text-2xl font-semibold ${signedValueClass(result?.pctChg)}`}>
                     {formatPercent(result?.pctChg, 2)}
                   </p>
                 </div>
-                <p className="mt-3 text-sm leading-7 text-slate-400">
+                <p className="mt-3 text-sm leading-7 text-secondary-text">
                   {result && entryPlan
                     ? '右侧延续全站的详情栏语言，但内容集中服务于单股交易视图。'
                     : '查询成功后，这里会汇总股票详情、关键信号、关键位和最近几次判断。'}
                 </p>
               </div>
 
-              <div className="rounded-[24px] border border-slate-800/80 bg-[#0A1A2E] px-5 py-5">
-                <p className="text-xs uppercase tracking-[0.18em] text-slate-400">主信号相关度</p>
+              <div className="rounded-[24px] border border-border/60 bg-card/92 px-5 py-5">
+                <p className="text-xs uppercase tracking-[0.18em] text-secondary-text">主信号相关度</p>
                 <div className="mt-4 flex items-center justify-between gap-4">
                   <div className="space-y-2">
-                    <p className="text-2xl font-semibold text-cyan">{signalOverview?.label ?? '等待信号'}</p>
-                    <p className="max-w-[190px] text-sm leading-6 text-slate-400">
+                    <p className="text-2xl font-semibold text-foreground">{signalOverview?.label ?? '等待信号'}</p>
+                    <p className="max-w-[190px] text-sm leading-6 text-secondary-text">
                       {signalOverview?.description ?? '先完成一次查询，这里会告诉你更适合等回踩、等突破，还是保持观察。'}
                     </p>
                   </div>
@@ -1591,20 +1591,20 @@ const SingleStockQueryPage: React.FC = () => {
                     className="relative flex h-28 w-28 items-center justify-center rounded-full p-2"
                     style={{
                       background: signalOverview
-                        ? `conic-gradient(from 210deg, #22c55e 0deg, #1db6ff ${signalOverview.score * 3.6}deg, rgba(30,41,59,0.88) ${signalOverview.score * 3.6}deg 360deg)`
-                        : 'conic-gradient(from 210deg, rgba(51,65,85,0.95) 0deg, rgba(51,65,85,0.95) 360deg)',
+                        ? `conic-gradient(from 210deg, rgba(39,31,23,0.92) 0deg, rgba(39,31,23,0.92) ${signalOverview.score * 3.6}deg, rgba(188,177,164,0.55) ${signalOverview.score * 3.6}deg 360deg)`
+                        : 'conic-gradient(from 210deg, rgba(188,177,164,0.65) 0deg, rgba(188,177,164,0.65) 360deg)',
                     }}
                   >
-                    <div className="flex h-full w-full flex-col items-center justify-center rounded-full bg-[#081322]">
-                      <span className="text-2xl font-semibold text-white">{signalOverview?.score ?? '--'}</span>
-                      <span className="mt-1 text-[11px] text-slate-400">{signalOverview ? '可等待买点' : '等待结果'}</span>
+                    <div className="flex h-full w-full flex-col items-center justify-center rounded-full bg-card/95">
+                      <span className="text-2xl font-semibold text-foreground">{signalOverview?.score ?? '--'}</span>
+                      <span className="mt-1 text-[11px] text-secondary-text">{signalOverview ? '可等待买点' : '等待结果'}</span>
                     </div>
                   </div>
                 </div>
               </div>
 
-              <div className="rounded-[24px] border border-slate-800/80 bg-[#0A1A2E] px-5 py-5">
-                <p className="text-xs uppercase tracking-[0.18em] text-slate-400">技术结构</p>
+              <div className="rounded-[24px] border border-border/60 bg-card/92 px-5 py-5">
+                <p className="text-xs uppercase tracking-[0.18em] text-secondary-text">技术结构</p>
                 <div className="mt-5 space-y-4">
                   <DetailMetricRow label="趋势方向" value={result?.trendStatus ?? '--'} accent="success" />
                   <DetailMetricRow label="形态结构" value={result?.pattern ?? '--'} accent="success" />
@@ -1613,8 +1613,8 @@ const SingleStockQueryPage: React.FC = () => {
               </div>
 
               <div className="grid gap-4 sm:grid-cols-2">
-                <div className="rounded-[24px] border border-slate-800/80 bg-[#0A1A2E] px-5 py-5">
-                  <p className="text-xs uppercase tracking-[0.18em] text-slate-400">关键位</p>
+                <div className="rounded-[24px] border border-border/60 bg-card/92 px-5 py-5">
+                  <p className="text-xs uppercase tracking-[0.18em] text-secondary-text">关键位</p>
                   <div className="mt-5 space-y-3">
                     <DetailMetricRow label="支撑位" value={formatNumber(entryPlan?.supportPrice)} accent="success" />
                     <DetailMetricRow label="强支撑" value={formatNumber(entryPlan?.stopLossPrice)} accent="neutral" />
@@ -1622,8 +1622,8 @@ const SingleStockQueryPage: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="rounded-[24px] border border-slate-800/80 bg-[#0A1A2E] px-5 py-5">
-                  <p className="text-xs uppercase tracking-[0.18em] text-slate-400">均线位置</p>
+                <div className="rounded-[24px] border border-border/60 bg-card/92 px-5 py-5">
+                  <p className="text-xs uppercase tracking-[0.18em] text-secondary-text">均线位置</p>
                   <div className="mt-5 space-y-3">
                     <DetailMetricRow label="MA10" value={formatNumber(result?.ma10)} accent="neutral" />
                     <DetailMetricRow label="MA20" value={formatNumber(result?.ma20)} accent="neutral" />
@@ -1632,15 +1632,15 @@ const SingleStockQueryPage: React.FC = () => {
                 </div>
               </div>
 
-              <div className="rounded-[24px] border border-slate-800/80 bg-[#0A1A2E] px-5 py-5">
-                <p className="text-xs uppercase tracking-[0.18em] text-slate-400">查询历史</p>
-                <h4 className="mt-3 text-lg font-semibold text-white">这只票之前怎么看过</h4>
+              <div className="rounded-[24px] border border-border/60 bg-card/92 px-5 py-5">
+                <p className="text-xs uppercase tracking-[0.18em] text-secondary-text">查询历史</p>
+                <h4 className="mt-3 text-lg font-semibold text-foreground">这只票之前怎么看过</h4>
 
                 <div className="mt-4 space-y-3">
                   {historyComparison ? (
-                    <div className="rounded-[20px] border border-slate-800/80 bg-[#0D223A] px-4 py-4">
-                      <p className="text-sm font-semibold text-slate-100">{historyComparison.headline}</p>
-                      <p className="mt-2 text-sm leading-6 text-slate-400">{historyComparison.description}</p>
+                    <div className="rounded-[20px] border border-border/60 bg-background/72 px-4 py-4">
+                      <p className="text-sm font-semibold text-foreground">{historyComparison.headline}</p>
+                      <p className="mt-2 text-sm leading-6 text-secondary-text">{historyComparison.description}</p>
                     </div>
                   ) : null}
 
@@ -1650,14 +1650,14 @@ const SingleStockQueryPage: React.FC = () => {
                         key={item.queryId}
                         type="button"
                         onClick={() => void handleHistoryRestore(item)}
-                        className="block w-full rounded-[20px] border border-slate-800/80 bg-slate-950/35 px-4 py-3 text-left transition-colors hover:border-cyan/25 hover:bg-[#102744]"
+                        className="block w-full rounded-[20px] border border-border/60 bg-background/72 px-4 py-3 text-left transition-colors hover:border-foreground/15 hover:bg-card"
                       >
-                        <p className="text-xs text-slate-400">{formatHistoryTime(item.completedAt || item.createdAt)}</p>
-                        <p className="mt-1 text-sm text-slate-100">{getHistoryLabel(item)}</p>
+                        <p className="text-xs text-secondary-text">{formatHistoryTime(item.completedAt || item.createdAt)}</p>
+                        <p className="mt-1 text-sm text-foreground">{getHistoryLabel(item)}</p>
                       </button>
                     ))
                   ) : (
-                    <p className="text-sm leading-6 text-slate-400">查过几次之后，这里会直接显示最近几次对这只票的判断。</p>
+                    <p className="text-sm leading-6 text-secondary-text">查过几次之后，这里会直接显示最近几次对这只票的判断。</p>
                   )}
                 </div>
               </div>
@@ -1669,7 +1669,7 @@ const SingleStockQueryPage: React.FC = () => {
                       ? `/deep-analysis?queryId=${encodeURIComponent(result.queryId)}&stock=${encodeURIComponent(result.stockCode)}&name=${encodeURIComponent(result.stockName)}`
                       : '/deep-analysis'
                   }
-                  className="inline-flex items-center justify-center rounded-2xl border border-cyan/30 bg-primary-gradient px-4 py-3 text-sm font-medium text-white shadow-lg shadow-cyan/20 transition hover:brightness-105"
+                  className="inline-flex items-center justify-center rounded-2xl border border-foreground/15 bg-foreground px-4 py-3 text-sm font-medium text-background shadow-soft-card transition hover:opacity-92"
                 >
                   发起深度分析
                 </Link>
@@ -1679,7 +1679,7 @@ const SingleStockQueryPage: React.FC = () => {
                   loadingText="加入中..."
                   disabled={!result || isInWatchlist}
                   onClick={() => void handleAddToWatchlist()}
-                  className="rounded-2xl border border-purple/30 bg-gradient-to-r from-[#6444E9] to-[#8456FF] px-4 py-3 text-sm font-medium text-white shadow-lg shadow-purple/20 transition hover:brightness-105"
+                  className="rounded-2xl border border-border/60 bg-card px-4 py-3 text-sm font-medium text-foreground transition hover:bg-background"
                 >
                   {isInWatchlist ? '已在观察池' : '加入观察池'}
                 </Button>
@@ -1687,24 +1687,24 @@ const SingleStockQueryPage: React.FC = () => {
                   type="button"
                   disabled={!result || hasStockAlertRules || alertRuleLoading}
                   onClick={() => void handleCreateDefaultAlerts()}
-                  className="inline-flex items-center justify-center rounded-2xl border border-slate-700/80 bg-[#101C2F] px-4 py-3 text-sm font-medium text-slate-300 enabled:cursor-pointer enabled:hover:bg-[#16253D] enabled:hover:text-white disabled:opacity-60"
+                  className="inline-flex items-center justify-center rounded-2xl border border-border/60 bg-background/80 px-4 py-3 text-sm font-medium text-foreground enabled:cursor-pointer enabled:hover:bg-card disabled:opacity-60"
                 >
                   {alertRuleLoading ? '创建中...' : hasStockAlertRules ? '告警已设置' : '设置告警'}
                 </button>
               </div>
 
-              <div className="flex flex-co gap-3 rounded-[24px] border border-slate-800/80 bg-[#0A1A2E] px-4 py-4 md:grid-cols-[minmax(0,220px)_1fr]">
+              <div className="flex flex-co gap-3 rounded-[24px] border border-border/60 bg-card/92 px-4 py-4 md:grid-cols-[minmax(0,220px)_1fr]">
                 <Input
                   label="告警扫描间隔(分钟)"
                   value={alertScanInterval}
                   onChange={(event) => setAlertScanInterval(event.target.value)}
                   placeholder={`默认 ${MIN_ALERT_SCAN_INTERVAL_MINUTES}`}
-                  className="h-11 rounded-2xl border-slate-700/80 bg-[#071628] text-slate-100 placeholder:text-slate-500"
+                  className="h-11 rounded-2xl"
                 />
-                <div className="flex items-center justify-between gap-3 rounded-[20px] border border-slate-800/80 bg-slate-950/30 px-4 py-3">
+                <div className="flex items-center justify-between gap-3 rounded-[20px] border border-border/60 bg-background/72 px-4 py-3">
                   <div>
-                    <p className="text-sm font-medium text-slate-100">扫描频率由输入决定</p>
-                    <p className="mt-1 text-xs leading-6 text-slate-400">单位分钟，最小 {MIN_ALERT_SCAN_INTERVAL_MINUTES} 分钟。创建默认规则时会同步写入每条规则。</p>
+                    <p className="text-sm font-medium text-foreground">扫描频率由输入决定</p>
+                    <p className="mt-1 text-xs leading-6 text-secondary-text">单位分钟，最小 {MIN_ALERT_SCAN_INTERVAL_MINUTES} 分钟。创建默认规则时会同步写入每条规则。</p>
                   </div>
                   <Badge variant="info" className="border-0 px-3 py-1">
                     默认 {MIN_ALERT_SCAN_INTERVAL_MINUTES} 分钟
@@ -1715,41 +1715,41 @@ const SingleStockQueryPage: React.FC = () => {
               {(topTheme || conceptAttribution || stockContextSupplement || fundamentalCoverageEntries.length > 0) ? (
                 <div className="space-y-4">
                   {topTheme ? (
-                    <div className="rounded-[24px] border border-slate-800/80 bg-[#0A1A2E] px-5 py-5">
+                    <div className="rounded-[24px] border border-border/60 bg-card/92 px-5 py-5">
                       <div className="flex items-center justify-between gap-3">
                         <div>
-                          <p className="text-xs uppercase tracking-[0.18em] text-slate-400">辅助题材</p>
-                          <h4 className="mt-2 text-lg font-semibold text-white">{topTheme.themeName}</h4>
+                          <p className="text-xs uppercase tracking-[0.18em] text-secondary-text">辅助题材</p>
+                          <h4 className="mt-2 text-lg font-semibold text-foreground">{topTheme.themeName}</h4>
                         </div>
                         <Badge variant="info" className="border-0 px-3 py-1">
                           {themeAttributions.length} 个主题
                         </Badge>
                       </div>
-                      <p className="mt-3 text-sm leading-6 text-slate-400">
+                      <p className="mt-3 text-sm leading-6 text-secondary-text">
                         {confidenceLabel(topTheme.confidence)} · {relationTypeLabel(topTheme.relationType)}
                       </p>
-                      <p className="mt-2 text-sm leading-6 text-slate-100">{topTheme.reason}</p>
+                      <p className="mt-2 text-sm leading-6 text-foreground">{topTheme.reason}</p>
                       {topTheme.matchedBoards?.length ? (
                         <div className="mt-3 flex flex-wrap gap-2">
                           {topTheme.matchedBoards.slice(0, 4).map((item) => (
-                            <span key={item} className="rounded-full border border-cyan/20 bg-cyan/10 px-3 py-2 text-xs font-medium text-slate-100">
+                            <span key={item} className="rounded-full border border-border/60 bg-background/70 px-3 py-2 text-xs font-medium text-foreground">
                               {item}
                             </span>
                           ))}
                         </div>
                       ) : null}
                       {conceptAttribution?.summary ? (
-                        <p className="mt-3 text-xs leading-6 text-slate-400">{conceptAttribution.summary}</p>
+                        <p className="mt-3 text-xs leading-6 text-secondary-text">{conceptAttribution.summary}</p>
                       ) : null}
                     </div>
                   ) : null}
 
                   {(conceptAttribution || stockContextSupplement?.profile || stockContextSupplement?.announcements || stockContextSupplement?.lockup) ? (
-                    <div className="rounded-[24px] border border-slate-800/80 bg-[#0A1A2E] px-5 py-5">
+                    <div className="rounded-[24px] border border-border/60 bg-card/92 px-5 py-5">
                       <div className="flex flex-wrap items-center justify-between gap-3">
                         <div>
-                          <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Context Supplement</p>
-                          <h4 className="mt-2 text-lg font-semibold text-white">公司画像 / 公告 / 解禁</h4>
+                          <p className="text-xs uppercase tracking-[0.18em] text-secondary-text">Context Supplement</p>
+                          <h4 className="mt-2 text-lg font-semibold text-foreground">公司画像 / 公告 / 解禁</h4>
                         </div>
                         <Badge variant="default" className="border-0 px-3 py-1">
                           {stockContextSupplement?.profile?.provider || stockContextSupplement?.announcements?.provider || 'search'}
@@ -1757,13 +1757,13 @@ const SingleStockQueryPage: React.FC = () => {
                       </div>
 
                       {conceptAttribution?.summary ? (
-                        <div className="mt-4 rounded-[20px] border border-slate-800/80 bg-[#0C2236] px-4 py-4">
-                          <p className="text-sm font-semibold text-slate-100">概念归因</p>
-                          <p className="mt-2 text-sm leading-6 text-slate-300">{conceptAttribution.summary}</p>
+                        <div className="mt-4 rounded-[20px] border border-border/60 bg-background/72 px-4 py-4">
+                          <p className="text-sm font-semibold text-foreground">概念归因</p>
+                          <p className="mt-2 text-sm leading-6 text-secondary-text">{conceptAttribution.summary}</p>
                           {conceptAttribution.conceptNames?.length ? (
                             <div className="mt-3 flex flex-wrap gap-2">
                               {conceptAttribution.conceptNames.slice(0, 5).map((item) => (
-                                <span key={item} className="rounded-full border border-cyan/20 bg-cyan/10 px-3 py-2 text-xs font-medium text-slate-100">
+                                <span key={item} className="rounded-full border border-border/60 bg-background/70 px-3 py-2 text-xs font-medium text-foreground">
                                   {item}
                                 </span>
                               ))}
@@ -1794,11 +1794,11 @@ const SingleStockQueryPage: React.FC = () => {
                   ) : null}
 
                   {stockNewsSummary ? (
-                    <div className="rounded-[24px] border border-slate-800/80 bg-[#0A1A2E] px-5 py-5">
+                    <div className="rounded-[24px] border border-border/60 bg-card/92 px-5 py-5">
                       <div className="flex flex-wrap items-center justify-between gap-3">
                         <div>
-                          <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Recent Catalyst</p>
-                          <h4 className="mt-2 text-lg font-semibold text-white">近期催化 / 新闻摘要</h4>
+                          <p className="text-xs uppercase tracking-[0.18em] text-secondary-text">Recent Catalyst</p>
+                          <h4 className="mt-2 text-lg font-semibold text-foreground">近期催化 / 新闻摘要</h4>
                         </div>
                         <div className="flex flex-wrap items-center gap-2">
                           <Badge variant={newsSentimentVariant(stockNewsSummary.sentiment)} className="border-0 px-3 py-1">
@@ -1810,39 +1810,39 @@ const SingleStockQueryPage: React.FC = () => {
                         </div>
                       </div>
 
-                      <p className="mt-4 text-sm leading-7 text-slate-300">
+                      <p className="mt-4 text-sm leading-7 text-secondary-text">
                         {stockNewsSummary.summary || '当前没有拿到足够清晰的新闻摘要。'}
                       </p>
 
                       <div className="mt-4 space-y-3">
-                        <div className="rounded-[20px] border border-slate-800/80 bg-[#0C2236] px-4 py-4">
-                          <p className="text-sm font-semibold text-slate-100">正向催化</p>
+                        <div className="rounded-[20px] border border-border/60 bg-background/72 px-4 py-4">
+                          <p className="text-sm font-semibold text-foreground">正向催化</p>
                           <div className="mt-3 flex flex-wrap gap-2">
                             {(stockNewsSummary.catalysts?.length ? stockNewsSummary.catalysts : ['暂无明确催化']).map((item) => (
-                              <span key={item} className="rounded-full border border-cyan/20 bg-cyan/10 px-3 py-2 text-xs font-medium text-slate-100">
+                              <span key={item} className="rounded-full border border-border/60 bg-background/70 px-3 py-2 text-xs font-medium text-foreground">
                                 {item}
                               </span>
                             ))}
                           </div>
                         </div>
 
-                        <div className="rounded-[20px] border border-slate-800/80 bg-[#1B1424] px-4 py-4">
-                          <p className="text-sm font-semibold text-slate-100">明确风险</p>
+                        <div className="rounded-[20px] border border-border/60 bg-background/72 px-4 py-4">
+                          <p className="text-sm font-semibold text-foreground">明确风险</p>
                           <div className="mt-3 flex flex-wrap gap-2">
                             {(stockNewsSummary.riskEvents?.length ? stockNewsSummary.riskEvents : ['暂未识别明显利空']).map((item) => (
-                              <span key={item} className="rounded-full border border-danger/20 bg-danger/10 px-3 py-2 text-xs font-medium text-slate-100">
+                              <span key={item} className="rounded-full border border-border/60 bg-background/70 px-3 py-2 text-xs font-medium text-foreground">
                                 {item}
                               </span>
                             ))}
                           </div>
                         </div>
 
-                        <div className="rounded-[20px] border border-slate-800/80 bg-slate-950/35 px-4 py-4">
-                          <p className="text-sm font-semibold text-slate-100">最近三条标题</p>
+                        <div className="rounded-[20px] border border-border/60 bg-background/72 px-4 py-4">
+                          <p className="text-sm font-semibold text-foreground">最近三条标题</p>
                           <div className="mt-3 space-y-2">
                             {(stockNewsSummary.headlines?.length ? stockNewsSummary.headlines : ['当前没有拿到明确的相关新闻标题。']).map((headline) => (
-                              <div key={headline} className="rounded-[18px] border border-slate-800/80 bg-[#102744] px-4 py-3">
-                                <p className="text-sm leading-6 text-slate-100">{headline}</p>
+                              <div key={headline} className="rounded-[18px] border border-border/60 bg-card px-4 py-3">
+                                <p className="text-sm leading-6 text-foreground">{headline}</p>
                               </div>
                             ))}
                           </div>
@@ -1852,11 +1852,11 @@ const SingleStockQueryPage: React.FC = () => {
                   ) : null}
 
                   {fundamentalCoverageEntries.length > 0 ? (
-                    <div className="rounded-[24px] border border-slate-800/80 bg-[#0A1A2E] px-5 py-5">
+                    <div className="rounded-[24px] border border-border/60 bg-card/92 px-5 py-5">
                       <div className="flex flex-wrap items-center justify-between gap-3">
                         <div>
-                          <p className="text-xs uppercase tracking-[0.18em] text-slate-400">数据覆盖</p>
-                          <h4 className="mt-2 text-lg font-semibold text-white">基本面与数据源</h4>
+                          <p className="text-xs uppercase tracking-[0.18em] text-secondary-text">数据覆盖</p>
+                          <h4 className="mt-2 text-lg font-semibold text-foreground">基本面与数据源</h4>
                         </div>
                         <Badge variant={incompleteFundamentalEntries.length > 0 ? 'warning' : 'success'} className="border-0 px-3 py-1">
                           {incompleteFundamentalEntries.length > 0 ? `仍缺 ${incompleteFundamentalEntries.length} 项` : '已完整返回'}
@@ -1882,7 +1882,7 @@ const SingleStockQueryPage: React.FC = () => {
                       </div>
 
                       {fundamentalErrorPreview.length > 0 ? (
-                        <p className="mt-4 text-xs leading-6 text-slate-400">最近错误: {fundamentalErrorPreview.join(' | ')}</p>
+                        <p className="mt-4 text-xs leading-6 text-secondary-text">最近错误: {fundamentalErrorPreview.join(' | ')}</p>
                       ) : null}
                     </div>
                   ) : null}
@@ -1929,7 +1929,7 @@ const SingleStockQueryPage: React.FC = () => {
                   key={item.queryId}
                   className={[
                     'rounded-2xl border px-4 py-4 transition-colors',
-                    active ? 'border-cyan/40 bg-cyan/6' : 'border-border/60 bg-background/70',
+                    active ? 'border-foreground/18 bg-foreground/[0.045]' : 'border-border/60 bg-background/70',
                   ].join(' ')}
                 >
                   <div className="flex items-start justify-between gap-3">
@@ -2006,11 +2006,11 @@ type SupplementPanelProps = {
 };
 
 const FundamentalBlockCard: React.FC<FundamentalBlockCardProps> = ({ title, status, sourceChain, errors, children }) => (
-  <div className="rounded-[20px] border border-slate-800/80 bg-slate-950/35 px-4 py-4">
+  <div className="rounded-[20px] border border-border/60 bg-background/72 px-4 py-4">
     <div className="flex items-start justify-between gap-3">
       <div>
-        <p className="text-sm font-semibold text-slate-100">{title}</p>
-        <p className="mt-1 text-xs text-slate-400">来源 {sourceChainSummary(sourceChain)}</p>
+        <p className="text-sm font-semibold text-foreground">{title}</p>
+        <p className="mt-1 text-xs text-secondary-text">来源 {sourceChainSummary(sourceChain)}</p>
       </div>
       <Badge variant={status === 'ok' || status === 'full' ? 'success' : status === 'partial' ? 'warning' : 'default'} className="border-0 px-2 py-1">
         {coverageStatusLabel(status || 'failed')}
@@ -2020,7 +2020,7 @@ const FundamentalBlockCard: React.FC<FundamentalBlockCardProps> = ({ title, stat
     <div className="mt-3 space-y-3">
       {children}
       {errors && errors.length > 0 ? (
-        <p className="text-xs leading-5 text-slate-400">错误: {errors.slice(0, 2).join(' | ')}</p>
+        <p className="text-xs leading-5 text-secondary-text">错误: {errors.slice(0, 2).join(' | ')}</p>
       ) : null}
     </div>
   </div>
@@ -2029,17 +2029,17 @@ const FundamentalBlockCard: React.FC<FundamentalBlockCardProps> = ({ title, stat
 const SupplementPanel: React.FC<SupplementPanelProps> = ({ title, summary, items = [], danger = false }) => {
   if (!summary && items.length === 0) return null;
   return (
-    <div className={`rounded-[20px] border px-4 py-4 ${danger ? 'border-danger/20 bg-[#1B1424]' : 'border-slate-800/80 bg-[#0C2236]'}`}>
-      <p className="text-sm font-semibold text-slate-100">{title}</p>
+    <div className={`rounded-[20px] border px-4 py-4 ${danger ? 'border-border/60 bg-background/72' : 'border-border/60 bg-background/72'}`}>
+      <p className="text-sm font-semibold text-foreground">{title}</p>
       {summary ? (
-        <p className="mt-2 text-sm leading-6 text-slate-300">{summary}</p>
+        <p className="mt-2 text-sm leading-6 text-secondary-text">{summary}</p>
       ) : null}
       {items.length > 0 ? (
         <div className="mt-3 flex flex-wrap gap-2">
           {items.map((item) => (
             <span
               key={item}
-              className={`rounded-full border px-3 py-2 text-xs font-medium ${danger ? 'border-danger/20 bg-danger/10 text-slate-100' : 'border-cyan/20 bg-cyan/10 text-slate-100'}`}
+              className="rounded-full border border-border/60 bg-card px-3 py-2 text-xs font-medium text-foreground"
             >
               {item}
             </span>
@@ -2052,17 +2052,17 @@ const SupplementPanel: React.FC<SupplementPanelProps> = ({ title, summary, items
 
 const MiniMetric: React.FC<MiniMetricProps> = ({ label, value, tone }) => {
   const toneClass = tone === 'buy'
-    ? 'border-success/15 bg-success/10'
+    ? 'border-border/60 bg-background/72'
     : tone === 'breakout'
-      ? 'border-warning/20 bg-warning/10'
+      ? 'border-border/60 bg-background/76'
       : tone === 'warn'
-        ? 'border-danger/15 bg-danger/10'
-        : 'border-slate-700/80 bg-slate-950/35';
+        ? 'border-border/60 bg-background/80'
+        : 'border-border/60 bg-card/92';
 
   return (
     <div className={`rounded-[22px] border px-4 py-4 ${toneClass}`}>
-      <p className="text-xs uppercase tracking-[0.14em] text-slate-400">{label}</p>
-      <p className="mt-3 text-sm font-semibold text-slate-100">{value}</p>
+      <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">{label}</p>
+      <p className="mt-3 text-sm font-semibold text-foreground">{value}</p>
     </div>
   );
 };
@@ -2075,14 +2075,14 @@ type DetailMetricRowProps = {
 
 const DetailMetricRow: React.FC<DetailMetricRowProps> = ({ label, value, accent = 'neutral' }) => {
   const valueClass = accent === 'success'
-    ? 'text-success'
+    ? 'text-foreground'
     : accent === 'warning'
-      ? 'text-warning'
-      : 'text-slate-100';
+      ? 'text-foreground'
+      : 'text-foreground';
 
   return (
     <div className="flex items-center justify-between gap-4 text-sm">
-      <span className="text-slate-400">{label}</span>
+      <span className="text-secondary-text">{label}</span>
       <span className={`text-right font-semibold ${valueClass}`}>{value}</span>
     </div>
   );

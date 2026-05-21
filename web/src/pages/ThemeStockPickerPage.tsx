@@ -732,12 +732,12 @@ const ThemeStockPickerPage: React.FC = () => {
 
   return (
     <AppPage className="space-y-6 !max-w-[1640px] px-3 md:px-5 lg:px-6">
-      <section className="overflow-hidden rounded-[32px] border border-border/60 bg-[radial-gradient(circle_at_top_left,_rgba(6,182,212,0.14),_transparent_32%),linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,250,252,0.95))] shadow-soft-card dark:bg-[radial-gradient(circle_at_top_left,_rgba(34,211,238,0.18),_transparent_28%),radial-gradient(circle_at_top_right,_rgba(129,140,248,0.12),_transparent_30%),linear-gradient(180deg,rgba(10,15,26,0.98),rgba(14,20,32,0.95))]">
+      <section className="overflow-hidden rounded-[32px] border border-border/60 bg-[radial-gradient(circle_at_top_left,_rgba(34,24,16,0.08),_transparent_32%),linear-gradient(180deg,rgba(248,244,236,0.98),rgba(241,235,226,0.95))] shadow-soft-card">
         <div className="grid gap-6 px-5 py-5 lg:grid-cols-[1.15fr_0.85fr] lg:px-7 lg:py-7">
           <div className="space-y-5">
             <div className="flex items-start justify-between gap-4">
               <div className="flex items-center gap-4">
-                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-cyan/10 text-cyan shadow-soft-card">
+                <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-border/60 bg-card/90 text-foreground shadow-soft-card">
                   <Target className="h-7 w-7" />
                 </div>
                 <div>
@@ -775,7 +775,7 @@ const ThemeStockPickerPage: React.FC = () => {
                 onClick={() => setHistoryOpen(true)}
                 className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-background/80 px-4 py-2 text-sm text-foreground transition-colors hover:bg-hover/40 dark:bg-background/60"
               >
-                <Clock3 className="h-4 w-4 text-cyan" />
+                <Clock3 className="h-4 w-4 text-foreground" />
                 <span>历史记录</span>
               </button>
               <div className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-background/80 px-4 py-2 text-sm text-secondary-text dark:bg-background/60">
@@ -870,7 +870,7 @@ const ThemeStockPickerPage: React.FC = () => {
                       className={[
                         'inline-flex items-center rounded-full border px-4 py-2 text-sm transition-all',
                         active
-                          ? 'border-cyan/30 bg-primary-gradient text-primary-foreground shadow-lg shadow-cyan/20'
+                          ? 'border-foreground/15 bg-foreground text-background shadow-soft-card'
                           : 'border-border/60 bg-background/80 text-secondary-text hover:text-foreground',
                       ].join(' ')}
                     >
@@ -934,7 +934,7 @@ const ThemeStockPickerPage: React.FC = () => {
           <section className="grid gap-4 lg:grid-cols-4">
             <Card variant="bordered" padding="lg" className="rounded-[24px]">
               <div className="flex items-start gap-4">
-                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-500/10 text-blue-500">
+                <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-border/60 bg-background/80 text-foreground">
                   <BrainCircuit className="h-7 w-7" />
                 </div>
                 <div>
@@ -947,7 +947,7 @@ const ThemeStockPickerPage: React.FC = () => {
 
             <Card variant="bordered" padding="lg" className="rounded-[24px]">
               <div className="flex items-start gap-4">
-                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-500">
+                <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-border/60 bg-background/80 text-foreground">
                   <Layers3 className="h-7 w-7" />
                 </div>
                 <div>
@@ -960,7 +960,7 @@ const ThemeStockPickerPage: React.FC = () => {
 
             <Card variant="bordered" padding="lg" className="rounded-[24px]">
               <div className="flex items-start gap-4">
-                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-orange-500/10 text-orange-500">
+                <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-border/60 bg-background/80 text-foreground">
                   <Flame className="h-7 w-7" />
                 </div>
                 <div>
@@ -973,7 +973,7 @@ const ThemeStockPickerPage: React.FC = () => {
 
             <Card variant="bordered" padding="lg" className="rounded-[24px]">
               <div className="flex items-start gap-4">
-                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-cyan/10 text-cyan">
+                <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-border/60 bg-background/80 text-foreground">
                   <Sparkles className="h-7 w-7" />
                 </div>
                 <div>
@@ -1043,14 +1043,14 @@ const ThemeStockPickerPage: React.FC = () => {
                         padding="lg"
                         className={[
                           'rounded-[26px] border-border/60 transition-all',
-                          active ? 'border-cyan/40 bg-cyan/5 shadow-soft-card' : 'bg-card/90 hover:border-cyan/20 hover:bg-card',
+                          active ? 'border-foreground/18 bg-foreground/[0.045] shadow-soft-card' : 'bg-card/90 hover:border-foreground/15 hover:bg-card',
                         ].join(' ')}
                       >
                         <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
                           <div className="flex min-w-0 flex-1 items-start gap-4">
                             <div className={[
                               'flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl text-base font-semibold',
-                              stock.rank === 1 ? 'bg-orange-400 text-white' : 'bg-muted text-secondary-text',
+                              stock.rank === 1 ? 'bg-foreground text-background' : 'bg-muted text-secondary-text',
                             ].join(' ')}
                             >
                               {stock.rank}
@@ -1139,38 +1139,38 @@ const ThemeStockPickerPage: React.FC = () => {
                     </button>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="rounded-2xl border border-border/60 bg-background/80 px-4 py-4 text-center">
-                      <p className="text-sm text-secondary-text">题材关联度</p>
-                      <p className="mt-2 text-4xl font-semibold text-blue-600">{themeRelevanceScore(selectedStock.themeRelevance)}<span className="text-lg">分</span></p>
-                      <p className="mt-1 text-sm font-medium text-blue-600">{themeRelevanceLabel(selectedStock.themeRelevance)}</p>
-                    </div>
-                    <div className="rounded-2xl border border-border/60 bg-background/80 px-4 py-4 text-center">
-                      <p className="text-sm text-secondary-text">趋势分</p>
-                      <p className="mt-2 text-4xl font-semibold text-emerald-600">{formatNumber(selectedStock.trendScore, 0)}<span className="text-lg">分</span></p>
-                      <p className="mt-1 text-sm font-medium text-emerald-600">{trendBandLabel(selectedStock.trendScore)}</p>
-                    </div>
-                    <div className="rounded-2xl border border-border/60 bg-background/80 px-4 py-4 text-center">
-                      <p className="text-sm text-secondary-text">技术信号</p>
-                      <p className="mt-2 text-3xl font-semibold text-danger">{selectedStock.buySignal || '--'}</p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="rounded-2xl border border-border/60 bg-background/80 px-4 py-4 text-center">
+                        <p className="text-sm text-secondary-text">题材关联度</p>
+                      <p className="mt-2 text-4xl font-semibold text-foreground">{themeRelevanceScore(selectedStock.themeRelevance)}<span className="text-lg">分</span></p>
+                      <p className="mt-1 text-sm font-medium text-secondary-text">{themeRelevanceLabel(selectedStock.themeRelevance)}</p>
+                      </div>
+                      <div className="rounded-2xl border border-border/60 bg-background/80 px-4 py-4 text-center">
+                        <p className="text-sm text-secondary-text">趋势分</p>
+                      <p className="mt-2 text-4xl font-semibold text-foreground">{formatNumber(selectedStock.trendScore, 0)}<span className="text-lg">分</span></p>
+                      <p className="mt-1 text-sm font-medium text-secondary-text">{trendBandLabel(selectedStock.trendScore)}</p>
+                      </div>
+                      <div className="rounded-2xl border border-border/60 bg-background/80 px-4 py-4 text-center">
+                        <p className="text-sm text-secondary-text">技术信号</p>
+                      <p className="mt-2 text-3xl font-semibold text-foreground">{selectedStock.buySignal || '--'}</p>
                       <p className="mt-1 text-sm font-medium text-secondary-text">{selectedStock.currentPattern || activeStockItem?.currentPattern || '关注均线与支撑结构'}</p>
-                    </div>
-                    <div className="rounded-2xl border border-border/60 bg-background/80 px-4 py-4 text-center">
-                      <p className="text-sm text-secondary-text">偏离 MA10</p>
-                      <p className="mt-2 text-4xl font-semibold text-emerald-600">{formatPercent(selectedStock.biasMa10, 1)}</p>
+                      </div>
+                      <div className="rounded-2xl border border-border/60 bg-background/80 px-4 py-4 text-center">
+                        <p className="text-sm text-secondary-text">偏离 MA10</p>
+                      <p className="mt-2 text-4xl font-semibold text-foreground">{formatPercent(selectedStock.biasMa10, 1)}</p>
                       <p className="mt-1 text-sm font-medium text-secondary-text">{selectedStock.trendStatus || '运行健康'}</p>
+                      </div>
                     </div>
-                  </div>
 
                   <Card variant="bordered" padding="md" className="rounded-2xl">
                     <div className="flex items-start justify-between gap-3">
                       <h3 className="text-xl font-semibold text-foreground">新闻摘要</h3>
-                      <button type="button" className="text-sm font-medium text-blue-600">更多新闻</button>
+                      <button type="button" className="text-sm font-medium text-foreground">更多新闻</button>
                     </div>
                     <ul className="mt-3 space-y-3">
                       {(selectedStock.newsSummary.length > 0 ? selectedStock.newsSummary : ['当前没有返回新闻摘要。']).map((item) => (
                         <li key={item} className="flex items-start gap-2 text-sm text-foreground">
-                          <span className="mt-1 h-2 w-2 rounded-full bg-blue-500" />
+                          <span className="mt-1 h-2 w-2 rounded-full bg-foreground/65" />
                           <span>{item}</span>
                         </li>
                       ))}
@@ -1183,7 +1183,7 @@ const ThemeStockPickerPage: React.FC = () => {
                       <ul className="mt-3 space-y-3 text-sm text-foreground">
                         {(selectedStock.selectedReasons.length > 0 ? selectedStock.selectedReasons : ['当前未返回更细的结构说明。']).slice(0, 4).map((reason) => (
                           <li key={reason} className="flex items-start gap-2">
-                            <TrendingUp className="mt-0.5 h-4 w-4 text-emerald-500" />
+                            <TrendingUp className="mt-0.5 h-4 w-4 text-foreground" />
                             <span>{reason}</span>
                           </li>
                         ))}
@@ -1198,11 +1198,11 @@ const ThemeStockPickerPage: React.FC = () => {
                           <span className="font-mono text-lg text-foreground">{formatNumber(selectedStock.currentPrice)}</span>
                         </div>
                         <div className="flex items-center justify-between gap-3">
-                          <Badge variant="danger" className="border-0 bg-danger/12 px-3 py-1.5 text-sm">压力位</Badge>
+                          <Badge variant="default" className="border-border/60 bg-background/70 px-3 py-1.5 text-sm">压力位</Badge>
                           <span className="font-mono text-lg text-foreground">{formatNumber(selectedStock.pressureLevel)}</span>
                         </div>
                         <div className="flex items-center justify-between gap-3">
-                          <Badge variant="success" className="border-0 bg-success/12 px-3 py-1.5 text-sm">支撑位</Badge>
+                          <Badge variant="default" className="border-border/60 bg-background/70 px-3 py-1.5 text-sm">支撑位</Badge>
                           <span className="font-mono text-lg text-foreground">{formatNumber(selectedStock.supportLevel)}</span>
                         </div>
                         <div className="flex items-center justify-between gap-3">
@@ -1222,21 +1222,21 @@ const ThemeStockPickerPage: React.FC = () => {
                     <ul className="mt-3 space-y-2 text-sm text-foreground">
                       {(selectedStock.selectedReasons.length > 0 ? selectedStock.selectedReasons : ['当前未返回更细的入选理由。']).map((reason) => (
                         <li key={reason} className="flex items-start gap-2">
-                          <ArrowRight className="mt-0.5 h-4 w-4 text-cyan" />
+                          <ArrowRight className="mt-0.5 h-4 w-4 text-foreground" />
                           <span>{reason}</span>
                         </li>
                       ))}
                     </ul>
                   </Card>
 
-                  <Card variant="bordered" padding="md" className="rounded-2xl border-danger/30">
+                  <Card variant="bordered" padding="md" className="rounded-2xl border-border/60 bg-background/70">
                     <h3 className="text-xl font-semibold text-foreground">风险提示</h3>
                     <ul className="mt-3 space-y-2 text-sm leading-7 text-secondary-text">
                       {(selectedStock.riskReasons.length > 0
                         ? selectedStock.riskReasons
                         : ['短期涨幅较大时，优先观察回踩承接和量能延续。']).slice(0, 3).map((reason) => (
                         <li key={reason} className="flex items-start gap-2">
-                          <span className="mt-2 h-1.5 w-1.5 rounded-full bg-danger" />
+                          <span className="mt-2 h-1.5 w-1.5 rounded-full bg-foreground/65" />
                           <span>{reason}</span>
                         </li>
                       ))}
@@ -1385,7 +1385,7 @@ const ThemeStockPickerPage: React.FC = () => {
                   key={item.taskId}
                   className={[
                     'w-full rounded-2xl border px-4 py-4 text-left transition-colors',
-                    active ? 'border-cyan/40 bg-cyan/6' : 'border-border/60 bg-background/70 hover:bg-hover/30',
+                    active ? 'border-foreground/18 bg-foreground/[0.045]' : 'border-border/60 bg-background/70 hover:bg-hover/30',
                   ].join(' ')}
                 >
                   <div className="flex items-start justify-between gap-3">

@@ -70,17 +70,17 @@ function analysisStatusLabel(value?: string | null): string {
 }
 
 function coverageVariant(value?: string): string {
-  if (value === 'ok' || value === 'full') return 'border-success/20 bg-success/10 text-foreground';
-  if (value === 'partial') return 'border-warning/20 bg-warning/10 text-foreground';
-  if (value === 'failed') return 'border-danger/20 bg-danger/10 text-foreground';
+  if (value === 'ok' || value === 'full') return 'border-border/60 bg-background/60 text-foreground';
+  if (value === 'partial') return 'border-border/60 bg-background/70 text-foreground';
+  if (value === 'failed') return 'border-border/60 bg-background/75 text-foreground';
   return 'border-border/60 bg-background/60 text-secondary-text';
 }
 
 function roleBubbleClass(role: string): string {
   if (role === 'assistant') {
-    return 'border-cyan/20 bg-cyan/10 text-foreground';
+    return 'border-border/60 bg-background/72 text-foreground';
   }
-  return 'border-purple/20 bg-purple/10 text-foreground';
+  return 'border-border/60 bg-card/85 text-foreground';
 }
 
 function supplementItems(value?: string[] | null, fallback?: string[] | null): string[] {
@@ -374,11 +374,11 @@ const DeepAnalysisPage: React.FC = () => {
     <AppPage className="max-w-[1680px] py-6">
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
         <div className="space-y-6">
-          <section className="rounded-[32px] border border-cyan/15 bg-[radial-gradient(circle_at_top_right,rgba(17,200,255,0.18),transparent_28%),linear-gradient(180deg,#0b1f35_0%,#081422_100%)] p-6 shadow-[0_24px_80px_rgba(3,10,24,0.42)]">
+          <section className="rounded-[32px] border border-border/70 bg-[radial-gradient(circle_at_top_right,hsl(var(--foreground)/0.05),transparent_28%),linear-gradient(180deg,hsl(var(--card)/0.98),hsl(var(--background)/0.95))] p-6 shadow-soft-card">
             <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
               <div className="max-w-3xl">
                 <div className="flex flex-wrap items-center gap-3">
-                  <Badge variant="info" className="border-cyan/20 bg-cyan/10 px-3 py-1 text-cyan">
+                  <Badge variant="info" className="border-0 px-3 py-1">
                     <BrainCircuit className="h-3.5 w-3.5" />
                     Deep Analysis
                   </Badge>
@@ -398,14 +398,14 @@ const DeepAnalysisPage: React.FC = () => {
                 </div>
 
                 <div className="mt-4">
-                  <p className="text-sm uppercase tracking-[0.18em] text-cyan/80">Single Stock Cockpit</p>
-                  <h1 className="mt-3 text-3xl font-semibold tracking-tight text-white md:text-4xl">
+                  <p className="text-sm uppercase tracking-[0.18em] text-secondary-text">Single Stock Cockpit</p>
+                  <h1 className="font-display mt-3 text-3xl font-semibold tracking-tight text-foreground md:text-4xl">
                     {analysis?.stockName || stockNameHint || '单股深度分析'}
                     {analysis?.stockCode ? (
-                      <span className="ml-3 text-lg font-medium text-slate-400">{analysis.stockCode}</span>
+                      <span className="ml-3 text-lg font-medium text-secondary-text">{analysis.stockCode}</span>
                     ) : null}
                   </h1>
-                  <p className="mt-4 max-w-3xl text-sm leading-7 text-slate-300">
+                  <p className="mt-4 max-w-3xl text-sm leading-7 text-secondary-text">
                     {analysis?.summary || '深度分析会围绕一次已完成的单股查询结果，生成结构化交易计划，并支持受控追问与告警规则生成。'}
                   </p>
                 </div>
@@ -460,7 +460,7 @@ const DeepAnalysisPage: React.FC = () => {
           {loading && !analysis ? (
             <Card variant="bordered" padding="lg" className="rounded-[28px] border-border/60 bg-card/90">
               <div className="flex items-center gap-3 text-secondary-text">
-                <RefreshCw className="h-4 w-4 animate-spin text-cyan" />
+                <RefreshCw className="h-4 w-4 animate-spin text-foreground" />
                 <span>正在生成深度分析...</span>
               </div>
             </Card>
@@ -472,7 +472,7 @@ const DeepAnalysisPage: React.FC = () => {
                 {analysis.status === 'failed' ? (
                   <AlertTriangle className="h-5 w-5 text-danger" />
                 ) : (
-                  <RefreshCw className="h-5 w-5 animate-spin text-cyan" />
+                  <RefreshCw className="h-5 w-5 animate-spin text-foreground" />
                 )}
                 <div>
                   <p className="text-base font-semibold text-foreground">
@@ -501,28 +501,28 @@ const DeepAnalysisPage: React.FC = () => {
                   </div>
 
                   <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                    <div className="rounded-2xl border border-success/15 bg-success/10 p-4">
+                    <div className="rounded-2xl border border-border/60 bg-background/72 p-4">
                       <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">试仓位</p>
-                      <p className="mt-3 text-2xl font-semibold text-success">{formatNumber(levels?.trialPrice)}</p>
+                      <p className="mt-3 text-2xl font-semibold text-foreground">{formatNumber(levels?.trialPrice)}</p>
                     </div>
-                    <div className="rounded-2xl border border-cyan/15 bg-cyan/10 p-4">
+                    <div className="rounded-2xl border border-border/60 bg-background/72 p-4">
                       <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">确认位</p>
-                      <p className="mt-3 text-2xl font-semibold text-cyan">{formatNumber(levels?.confirmPrice)}</p>
+                      <p className="mt-3 text-2xl font-semibold text-foreground">{formatNumber(levels?.confirmPrice)}</p>
                     </div>
-                    <div className="rounded-2xl border border-danger/15 bg-danger/10 p-4">
+                    <div className="rounded-2xl border border-border/60 bg-background/72 p-4">
                       <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">止损位</p>
-                      <p className="mt-3 text-2xl font-semibold text-danger">{formatNumber(levels?.stopLoss)}</p>
+                      <p className="mt-3 text-2xl font-semibold text-foreground">{formatNumber(levels?.stopLoss)}</p>
                     </div>
-                    <div className="rounded-2xl border border-warning/15 bg-warning/10 p-4">
+                    <div className="rounded-2xl border border-border/60 bg-background/72 p-4">
                       <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">目标位</p>
-                      <p className="mt-3 text-2xl font-semibold text-warning">{formatNumber(levels?.targetPrice)}</p>
+                      <p className="mt-3 text-2xl font-semibold text-foreground">{formatNumber(levels?.targetPrice)}</p>
                     </div>
                   </div>
 
                   <div className="mt-6 grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
                     <div className="rounded-3xl border border-border/60 bg-background/60 p-5">
                       <div className="flex items-center gap-2">
-                        <Target className="h-4 w-4 text-cyan" />
+                        <Target className="h-4 w-4 text-foreground" />
                         <h3 className="text-lg font-semibold text-foreground">执行步骤</h3>
                       </div>
                       <div className="mt-4 space-y-3">
@@ -536,7 +536,7 @@ const DeepAnalysisPage: React.FC = () => {
 
                     <div className="rounded-3xl border border-border/60 bg-background/60 p-5">
                       <div className="flex items-center gap-2">
-                        <ShieldAlert className="h-4 w-4 text-warning" />
+                        <ShieldAlert className="h-4 w-4 text-foreground" />
                         <h3 className="text-lg font-semibold text-foreground">仓位建议</h3>
                       </div>
                       <div className="mt-4 space-y-3 text-sm text-secondary-text">
@@ -603,7 +603,7 @@ const DeepAnalysisPage: React.FC = () => {
                 <div className="space-y-6">
                   <Card variant="bordered" padding="lg" className="rounded-[28px] border-border/60 bg-card/95">
                     <div className="flex items-center gap-2">
-                      <Sparkles className="h-4 w-4 text-cyan" />
+                      <Sparkles className="h-4 w-4 text-foreground" />
                       <h2 className="text-xl font-semibold text-foreground">分析拆解</h2>
                     </div>
                     <div className="mt-5 grid gap-4">
@@ -619,8 +619,8 @@ const DeepAnalysisPage: React.FC = () => {
                         <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">风险清单</p>
                         <div className="mt-3 space-y-2">
                           {(analysis.risk?.items ?? []).map((item, index) => (
-                            <div key={`${item}-${index}`} className="flex gap-3 rounded-2xl border border-danger/10 bg-danger/5 px-4 py-3">
-                              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-danger" />
+                            <div key={`${item}-${index}`} className="flex gap-3 rounded-2xl border border-border/60 bg-background/70 px-4 py-3">
+                              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-foreground" />
                               <p className="text-sm leading-6 text-foreground">{item}</p>
                             </div>
                           ))}
@@ -657,7 +657,7 @@ const DeepAnalysisPage: React.FC = () => {
 
                   <Card variant="bordered" padding="lg" className="rounded-[28px] border-border/60 bg-card/95">
                     <div className="flex items-center gap-2">
-                      <Database className="h-4 w-4 text-cyan" />
+                      <Database className="h-4 w-4 text-foreground" />
                       <h2 className="text-xl font-semibold text-foreground">数据覆盖与来源</h2>
                     </div>
                     <div className="mt-5 grid gap-3 sm:grid-cols-2">
@@ -689,7 +689,7 @@ const DeepAnalysisPage: React.FC = () => {
                   <Card variant="bordered" padding="lg" className="rounded-[28px] border-border/60 bg-card/95">
                     <div className="flex items-center justify-between gap-3">
                       <div className="flex items-center gap-2">
-                        <BrainCircuit className="h-4 w-4 text-cyan" />
+                        <BrainCircuit className="h-4 w-4 text-foreground" />
                         <h2 className="text-xl font-semibold text-foreground">受控追问</h2>
                       </div>
                       <Badge variant="info" className="border-0 px-3 py-1">不重新搜索</Badge>
@@ -734,7 +734,7 @@ const DeepAnalysisPage: React.FC = () => {
                         <button
                           type="button"
                           onClick={() => setFollowUp('跌破哪里需要放弃？')}
-                          className="inline-flex items-center rounded-2xl border border-border/60 bg-background/60 px-4 py-2 text-sm text-secondary-text transition hover:border-cyan/20 hover:text-foreground"
+                          className="inline-flex items-center rounded-2xl border border-border/60 bg-background/60 px-4 py-2 text-sm text-secondary-text transition hover:border-foreground/15 hover:text-foreground"
                         >
                           跌破哪里需要放弃？
                         </button>
@@ -744,7 +744,7 @@ const DeepAnalysisPage: React.FC = () => {
 
                   <Card variant="bordered" padding="lg" className="rounded-[28px] border-border/60 bg-card/95">
                     <div className="flex items-center gap-2">
-                      <Radar className="h-4 w-4 text-cyan" />
+                      <Radar className="h-4 w-4 text-foreground" />
                       <h2 className="text-xl font-semibold text-foreground">生成告警规则</h2>
                     </div>
                     <div className="mt-5 grid gap-4">
@@ -791,7 +791,7 @@ const DeepAnalysisPage: React.FC = () => {
           {!analysis && !loading && historyItems.length > 0 ? (
             <Card variant="bordered" padding="lg" className="rounded-[28px] border-border/60 bg-card/95">
               <div className="flex items-center gap-2">
-                <History className="h-4 w-4 text-cyan" />
+                <History className="h-4 w-4 text-foreground" />
                 <h2 className="text-xl font-semibold text-foreground">最近的深度分析</h2>
               </div>
               <div className="mt-4 flex justify-end">
@@ -808,7 +808,7 @@ const DeepAnalysisPage: React.FC = () => {
                     key={item.analysisId}
                     type="button"
                     onClick={() => void handleHistoryOpen(item)}
-                    className="block w-full rounded-2xl border border-border/60 bg-background/60 px-4 py-4 text-left transition hover:border-cyan/20 hover:bg-card"
+                    className="block w-full rounded-2xl border border-border/60 bg-background/60 px-4 py-4 text-left transition hover:border-foreground/15 hover:bg-card"
                   >
                     <div className="flex items-center justify-between gap-3">
                       <div className="flex min-w-0 items-center gap-3">
@@ -835,7 +835,7 @@ const DeepAnalysisPage: React.FC = () => {
           <Card variant="bordered" padding="lg" className="rounded-[28px] border-border/60 bg-card/95">
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2">
-                <History className="h-4 w-4 text-cyan" />
+                <History className="h-4 w-4 text-foreground" />
                 <h2 className="text-xl font-semibold text-foreground">历史分析</h2>
               </div>
               <Button variant="ghost" size="sm" className="rounded-2xl" onClick={() => void handleOpenHistoryDrawer()}>
@@ -848,7 +848,7 @@ const DeepAnalysisPage: React.FC = () => {
                   key={item.analysisId}
                   type="button"
                   onClick={() => void handleHistoryOpen(item)}
-                  className="block w-full rounded-2xl border border-border/60 bg-background/60 px-4 py-4 text-left transition hover:border-cyan/20 hover:bg-card"
+                  className="block w-full rounded-2xl border border-border/60 bg-background/60 px-4 py-4 text-left transition hover:border-foreground/15 hover:bg-card"
                 >
                   <div className="flex items-center justify-between gap-3">
                     <p className="text-sm font-medium text-foreground">
@@ -870,7 +870,7 @@ const DeepAnalysisPage: React.FC = () => {
 
           <Card variant="bordered" padding="lg" className="rounded-[28px] border-border/60 bg-card/95">
             <div className="flex items-center gap-2">
-              <Clock3 className="h-4 w-4 text-cyan" />
+              <Clock3 className="h-4 w-4 text-foreground" />
               <h2 className="text-xl font-semibold text-foreground">最近更新</h2>
             </div>
             <div className="mt-5 space-y-3 text-sm text-secondary-text">
@@ -933,7 +933,7 @@ const DeepAnalysisPage: React.FC = () => {
                   key={item.analysisId}
                   className={[
                     'rounded-2xl border px-4 py-4 transition-colors',
-                    active ? 'border-cyan/40 bg-cyan/6' : 'border-border/60 bg-background/70',
+                    active ? 'border-foreground/18 bg-foreground/[0.045]' : 'border-border/60 bg-background/70',
                   ].join(' ')}
                 >
                   <div className="flex items-start justify-between gap-3">
@@ -985,7 +985,7 @@ type DeepSupplementBlockProps = {
 const DeepSupplementBlock: React.FC<DeepSupplementBlockProps> = ({ title, summary, items = [], danger = false }) => {
   if (!summary && items.length === 0) return null;
   return (
-    <div className={`rounded-2xl border px-4 py-3 ${danger ? 'border-danger/15 bg-danger/5' : 'border-border/60 bg-card/80'}`}>
+    <div className={`rounded-2xl border px-4 py-3 ${danger ? 'border-border/60 bg-background/72' : 'border-border/60 bg-card/80'}`}>
       <p className="text-sm font-medium text-foreground">{title}</p>
       {summary ? (
         <p className="mt-2 text-sm leading-6 text-secondary-text">{summary}</p>
@@ -996,7 +996,7 @@ const DeepSupplementBlock: React.FC<DeepSupplementBlockProps> = ({ title, summar
             <Badge
               key={item}
               variant="default"
-              className={danger ? 'border-danger/20 bg-danger/10 px-3 py-1 text-foreground' : 'border-border/60 bg-background/60 px-3 py-1 text-foreground'}
+              className={danger ? 'border-border/60 bg-background/70 px-3 py-1 text-foreground' : 'border-border/60 bg-background/60 px-3 py-1 text-foreground'}
             >
               {item}
             </Badge>

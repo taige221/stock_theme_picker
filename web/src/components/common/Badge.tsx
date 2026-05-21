@@ -13,12 +13,12 @@ interface BadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
 }
 
 const variantStyles: Record<BadgeVariant, string> = {
-  default: 'border-border/55 bg-elevated/75 text-secondary-text',
+  default: 'border-border/70 bg-elevated/80 text-secondary-text',
   success: 'border-success/20 bg-success/10 text-success',
   warning: 'border-warning/20 bg-warning/10 text-warning',
   danger: 'border-danger/20 bg-danger/10 text-danger',
-  info: 'border-cyan/30 bg-cyan/12 text-cyan',
-  history: 'border-purple/20 bg-purple/10 text-purple',
+  info: 'border-foreground/12 bg-foreground/5 text-foreground',
+  history: 'border-foreground/10 bg-foreground/4 text-secondary-text',
 };
 
 const glowStyles: Record<BadgeVariant, string> = {

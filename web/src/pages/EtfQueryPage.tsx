@@ -277,11 +277,11 @@ const EtfQueryPage: React.FC = () => {
 
   return (
     <AppPage className="space-y-6 !max-w-[1680px] px-3 md:px-5 lg:px-6">
-      <section className="overflow-hidden rounded-[32px] border border-border/60 bg-[radial-gradient(circle_at_top_left,_rgba(6,182,212,0.18),_transparent_30%),radial-gradient(circle_at_bottom_right,_rgba(16,185,129,0.14),_transparent_26%),linear-gradient(180deg,rgba(255,255,255,0.98),rgba(245,250,252,0.95))] shadow-soft-card dark:bg-[radial-gradient(circle_at_top_left,_rgba(34,211,238,0.2),_transparent_32%),radial-gradient(circle_at_bottom_right,_rgba(16,185,129,0.16),_transparent_28%),linear-gradient(180deg,rgba(10,15,26,0.98),rgba(14,20,32,0.96))]">
+      <section className="overflow-hidden rounded-[32px] border border-border/60 bg-[radial-gradient(circle_at_top_left,_rgba(34,24,16,0.08),_transparent_30%),radial-gradient(circle_at_bottom_right,_rgba(34,24,16,0.05),_transparent_26%),linear-gradient(180deg,rgba(248,244,236,0.98),rgba(241,235,226,0.95))] shadow-soft-card">
         <div className="grid gap-6 px-5 py-6 lg:grid-cols-[1.1fr_0.9fr] lg:px-7 lg:py-7">
           <div className="space-y-5">
             <div className="flex items-center gap-4">
-              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-cyan/10 text-cyan shadow-soft-card">
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-border/60 bg-card/90 text-foreground shadow-soft-card">
                 <Layers3 className="h-7 w-7" />
               </div>
               <div>
@@ -306,7 +306,7 @@ const EtfQueryPage: React.FC = () => {
                   <button
                     key={item.value}
                     type="button"
-                    className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-card/75 px-3 py-1.5 text-sm text-secondary-text transition hover:border-cyan/25 hover:text-foreground"
+                    className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-card/75 px-3 py-1.5 text-sm text-secondary-text transition hover:border-foreground/15 hover:text-foreground"
                     onClick={() => setQuery(item.value)}
                   >
                     <Search className="h-3.5 w-3.5" />
@@ -452,7 +452,7 @@ const EtfQueryPage: React.FC = () => {
 
             <Card variant="bordered" padding="lg" className="rounded-[28px]">
               <div className="flex items-center gap-3">
-                <Activity className="h-5 w-5 text-cyan" />
+                <Activity className="h-5 w-5 text-foreground" />
                 <div>
                   <p className="text-xs uppercase tracking-[0.16em] text-secondary-text">ETF Judgment</p>
                   <h3 className="mt-1 text-2xl font-semibold text-foreground">ETF 专属结论</h3>
@@ -477,11 +477,11 @@ const EtfQueryPage: React.FC = () => {
                 <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
                   <div className="rounded-2xl border border-border/60 bg-card/60 p-4">
                     <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">支撑位</p>
-                    <p className="mt-2 text-xl font-semibold text-success">{formatNumber(analysis?.support, 3)}</p>
+                    <p className="mt-2 text-xl font-semibold text-foreground">{formatNumber(analysis?.support, 3)}</p>
                   </div>
                   <div className="rounded-2xl border border-border/60 bg-card/60 p-4">
                     <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">压力位</p>
-                    <p className="mt-2 text-xl font-semibold text-danger">{formatNumber(analysis?.pressure, 3)}</p>
+                    <p className="mt-2 text-xl font-semibold text-foreground">{formatNumber(analysis?.pressure, 3)}</p>
                   </div>
                   <div className="rounded-2xl border border-border/60 bg-card/60 p-4">
                     <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">MA10</p>
@@ -686,7 +686,7 @@ const EtfQueryPage: React.FC = () => {
           <section className="grid gap-5 xl:grid-cols-[1fr_1fr]">
             <Card variant="bordered" padding="lg" className="rounded-[28px]">
               <div className="flex items-center gap-3">
-                <BarChart3 className="h-5 w-5 text-cyan" />
+                <BarChart3 className="h-5 w-5 text-foreground" />
                 <div>
                   <p className="text-xs uppercase tracking-[0.16em] text-secondary-text">Daily Bars</p>
                   <h3 className="mt-1 text-2xl font-semibold text-foreground">最近日线状态</h3>
@@ -720,7 +720,7 @@ const EtfQueryPage: React.FC = () => {
 
             <Card variant="bordered" padding="lg" className="rounded-[28px]">
               <div className="flex items-center gap-3">
-                <ShieldAlert className="h-5 w-5 text-cyan" />
+                <ShieldAlert className="h-5 w-5 text-foreground" />
                 <div>
                   <p className="text-xs uppercase tracking-[0.16em] text-secondary-text">Tracking Profile</p>
                   <h3 className="mt-1 text-2xl font-semibold text-foreground">跟踪标的与基金档案</h3>
@@ -832,7 +832,7 @@ const EtfQueryPage: React.FC = () => {
                   key={item.queryId}
                   className={[
                     'rounded-2xl border px-4 py-4 transition-colors',
-                    active ? 'border-cyan/40 bg-cyan/6' : 'border-border/60 bg-background/70',
+                    active ? 'border-foreground/18 bg-foreground/[0.045]' : 'border-border/60 bg-background/70',
                   ].join(' ')}
                 >
                   <div className="flex items-start justify-between gap-3">

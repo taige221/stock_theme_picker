@@ -375,11 +375,11 @@ const WatchlistPage: React.FC = () => {
 
   return (
     <AppPage className="space-y-6 !max-w-[1680px] px-3 md:px-5 lg:px-6">
-      <section className="overflow-hidden rounded-[32px] border border-border/60 bg-[radial-gradient(circle_at_top_left,_rgba(6,182,212,0.15),_transparent_34%),linear-gradient(180deg,rgba(255,255,255,0.98),rgba(246,249,252,0.96))] shadow-soft-card dark:bg-[radial-gradient(circle_at_top_left,_rgba(34,211,238,0.16),_transparent_30%),radial-gradient(circle_at_bottom_right,_rgba(129,140,248,0.12),_transparent_30%),linear-gradient(180deg,rgba(10,15,26,0.98),rgba(14,20,32,0.96))]">
+      <section className="overflow-hidden rounded-[32px] border border-border/60 bg-[radial-gradient(circle_at_top_left,_rgba(34,24,16,0.08),_transparent_34%),linear-gradient(180deg,rgba(248,244,236,0.98),rgba(241,235,226,0.96))] shadow-soft-card">
         <div className="grid gap-6 px-5 py-6 lg:grid-cols-[1fr_0.9fr] lg:px-7 lg:py-7">
           <div className="space-y-5">
             <div className="flex items-center gap-4">
-              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-cyan/10 text-cyan shadow-soft-card">
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-border/60 bg-card/90 text-foreground shadow-soft-card">
                 <Star className="h-7 w-7" />
               </div>
               <div>
@@ -398,7 +398,7 @@ const WatchlistPage: React.FC = () => {
                   className={[
                     'inline-flex items-center rounded-full border px-4 py-2 text-sm transition-all',
                     index === 0
-                      ? 'border-cyan/30 bg-primary-gradient text-primary-foreground shadow-lg shadow-cyan/20'
+                      ? 'border-foreground/15 bg-foreground text-background shadow-soft-card'
                       : 'border-border/60 bg-background/80 text-secondary-text',
                   ].join(' ')}
                 >
@@ -442,7 +442,7 @@ const WatchlistPage: React.FC = () => {
       <Card variant="bordered" padding="lg" className="rounded-[28px]">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-cyan/10 text-cyan">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-border/60 bg-background/80 text-foreground">
               <Activity className="h-5 w-5" />
             </div>
             <div>
@@ -497,7 +497,7 @@ const WatchlistPage: React.FC = () => {
         <Card variant="bordered" padding="lg" className="rounded-[28px]">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-500">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-border/60 bg-background/80 text-foreground">
                 <TrendingUp className="h-5 w-5" />
               </div>
               <div>
@@ -570,7 +570,7 @@ const WatchlistPage: React.FC = () => {
           <Card variant="bordered" padding="lg" className="rounded-[28px]">
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-3">
-                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-cyan/10 text-cyan">
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-border/60 bg-background/80 text-foreground">
                   <Bell className="h-5 w-5" />
                 </div>
                 <div>
@@ -656,7 +656,7 @@ const WatchlistPage: React.FC = () => {
 
           <Card variant="bordered" padding="lg" className="rounded-[28px]">
             <div className="flex items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-purple/10 text-purple">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-border/60 bg-background/80 text-foreground">
                 <Layers3 className="h-5 w-5" />
               </div>
               <div>
@@ -673,7 +673,7 @@ const WatchlistPage: React.FC = () => {
 
           <Card variant="bordered" padding="lg" className="rounded-[28px]">
             <div className="flex items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-cyan/10 text-cyan">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-border/60 bg-background/80 text-foreground">
                 <Bell className="h-5 w-5" />
               </div>
               <div>

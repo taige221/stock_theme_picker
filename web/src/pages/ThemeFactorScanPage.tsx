@@ -34,9 +34,8 @@ function scanStatusVariant(status: string): 'default' | 'success' | 'warning' | 
 
 function scoreTone(score?: number | null): string {
   const safe = Number(score ?? 0);
-  if (safe >= 80) return 'text-success';
-  if (safe >= 65) return 'text-cyan';
-  if (safe >= 50) return 'text-warning';
+  if (safe >= 65) return 'text-foreground';
+  if (safe >= 50) return 'text-secondary-text';
   return 'text-secondary-text';
 }
 
@@ -180,11 +179,11 @@ const ThemeFactorScanPage: React.FC = () => {
 
   return (
     <AppPage className="space-y-6 !max-w-[1680px] px-3 md:px-5 lg:px-6">
-      <section className="overflow-hidden rounded-[32px] border border-border/60 bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.16),_transparent_30%),radial-gradient(circle_at_bottom_right,_rgba(6,182,212,0.16),_transparent_28%),linear-gradient(180deg,rgba(255,255,255,0.98),rgba(246,249,252,0.96))] shadow-soft-card dark:bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.16),_transparent_30%),radial-gradient(circle_at_bottom_right,_rgba(34,211,238,0.14),_transparent_28%),linear-gradient(180deg,rgba(10,15,26,0.98),rgba(14,20,32,0.96))]">
+      <section className="overflow-hidden rounded-[32px] border border-border/60 bg-[radial-gradient(circle_at_top_left,_rgba(34,24,16,0.08),_transparent_32%),radial-gradient(circle_at_bottom_right,_rgba(34,24,16,0.05),_transparent_26%),linear-gradient(180deg,rgba(248,244,236,0.98),rgba(241,235,226,0.96))] shadow-soft-card">
         <div className="grid gap-6 px-5 py-6 lg:grid-cols-12 lg:px-7 lg:py-7">
           <div className="space-y-5 lg:col-span-7">
             <div className="flex items-center gap-4">
-              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-success/10 text-success shadow-soft-card">
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-border/60 bg-card/90 text-foreground shadow-soft-card">
                 <Workflow className="h-7 w-7" />
               </div>
               <div>
@@ -441,7 +440,7 @@ const ThemeFactorScanPage: React.FC = () => {
           {reviewSummary ? (
             <Card variant="bordered" padding="lg" className="rounded-[28px] xl:min-h-[360px]">
               <div className="flex items-center gap-3">
-                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-success/10 text-success">
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-border/60 bg-background/80 text-foreground">
                   <Sparkles className="h-5 w-5" />
                 </div>
                 <div>
@@ -493,7 +492,7 @@ const ThemeFactorScanPage: React.FC = () => {
 
           <Card variant="bordered" padding="lg" className="rounded-[28px] xl:min-h-[460px]">
             <div className="flex items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-cyan/10 text-cyan">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-border/60 bg-background/80 text-foreground">
                 <Radar className="h-5 w-5" />
               </div>
               <div>
@@ -541,7 +540,7 @@ const ThemeFactorScanPage: React.FC = () => {
 
           <Card variant="bordered" padding="lg" className="rounded-[28px] xl:min-h-[200px]">
             <div className="flex items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-purple/10 text-purple">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-border/60 bg-background/80 text-foreground">
                 <Sparkles className="h-5 w-5" />
               </div>
               <div>

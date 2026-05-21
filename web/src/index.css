@@ -7,13 +7,24 @@
    ========================================= */
 :root {
   /* Typography */
-  font-family:
-    "Inter",
-    "SF Pro Display",
+  --font-sans:
+    "SF Pro Text",
+    "PingFang SC",
+    "Hiragino Sans GB",
+    "Noto Sans CJK SC",
     "Segoe UI",
     system-ui,
     -apple-system,
     sans-serif;
+  --font-display:
+    "Iowan Old Style",
+    "Baskerville",
+    "Songti SC",
+    "STSong",
+    "Times New Roman",
+    serif;
+  font-family:
+    var(--font-sans);
   line-height: 1.5;
   font-weight: 400;
   font-synthesis: none;
@@ -23,48 +34,48 @@
 
   /* HSL tokens used by Tailwind-based components */
 
-  --background: 216 33% 97%;
-  --foreground: 228 35% 12%;
-  --card: 0 0% 100%;
-  --card-foreground: 228 35% 12%;
-  --popover: 0 0% 100%;
-  --popover-foreground: 228 35% 12%;
-  --primary: 193 100% 43%;
-  --primary-foreground: 216 33% 97%;
-  --secondary: 214 32% 91%;
-  --secondary-foreground: 228 35% 16%;
-  --muted: 214 30% 94%;
-  --muted-foreground: 224 12% 42%;
-  --accent: 214 32% 93%;
-  --accent-foreground: 228 35% 16%;
-  --destructive: 349 82% 56%;
-  --destructive-foreground: 210 33% 98%;
-  --border: 217 28% 84%;
-  --input: 217 28% 84%;
-  --ring: 193 100% 43%;
-  --radius: 1rem;
-  --elevated: 0 0% 100%;
-  --hover: 214 29% 90%;
-  --secondary-text: 224 18% 28%;
-  --muted-text: 224 12% 35%;
+  --background: 38 28% 92%;
+  --foreground: 28 13% 12%;
+  --card: 36 24% 95%;
+  --card-foreground: 28 13% 12%;
+  --popover: 36 24% 96%;
+  --popover-foreground: 28 13% 12%;
+  --primary: 28 11% 16%;
+  --primary-foreground: 36 24% 95%;
+  --secondary: 35 16% 88%;
+  --secondary-foreground: 28 13% 14%;
+  --muted: 35 18% 90%;
+  --muted-foreground: 28 8% 34%;
+  --accent: 32 12% 82%;
+  --accent-foreground: 28 13% 16%;
+  --destructive: 2 61% 44%;
+  --destructive-foreground: 36 24% 95%;
+  --border: 30 16% 76%;
+  --input: 30 16% 76%;
+  --ring: 28 11% 16%;
+  --radius: 1.2rem;
+  --elevated: 38 25% 97%;
+  --hover: 36 18% 88%;
+  --secondary-text: 28 10% 28%;
+  --muted-text: 28 7% 40%;
 
   --color-cyan: hsl(var(--primary));
   --color-cyan-dim: hsl(var(--primary) / 0.8);
   --color-cyan-glow: hsl(var(--primary) / 0.18);
-  --color-purple: 247 84% 66%;
-  --color-purple-dim: 247 84% 56%;
-  --color-purple-glow: hsl(247 84% 66% / 0.18);
-  --color-success: 152 69% 40%;
-  --color-warning: 37 92% 50%;
-  --color-danger: 0 90% 55%;
-  --color-danger-alert-text: 349 82% 35%; /* Darker red for light mode */
-  --color-danger-alert-border: 349 82% 56%;
-  --color-danger-alert-bg: 349 82% 56%;
+  --color-purple: 28 9% 32%;
+  --color-purple-dim: 28 9% 24%;
+  --color-purple-glow: hsl(28 9% 32% / 0.12);
+  --color-success: 145 25% 31%;
+  --color-warning: 36 48% 38%;
+  --color-danger: 2 61% 44%;
+  --color-danger-alert-text: 2 61% 30%;
+  --color-danger-alert-border: 2 61% 44%;
+  --color-danger-alert-bg: 2 61% 44%;
   /* Tailwind-compatible accent colors (Light theme) */
-  --color-cyan-400: 188 78% 41%;
-  --color-emerald-400: 152 69% 40%;
-  --color-red-400: 0 90% 55%;
-  --color-amber-400: 37 92% 50%;
+  --color-cyan-400: 28 11% 16%;
+  --color-emerald-400: 145 25% 31%;
+  --color-red-400: 2 61% 44%;
+  --color-amber-400: 36 48% 38%;
   /* Tailwind aliases (for hsl(var(--success))) */
   --success: var(--color-success);
   --warning: var(--color-warning);
@@ -121,8 +132,8 @@
   /* Navigation related (using HSL format) */
   --nav-active-bg: hsl(var(--primary) / 0.09);
   --nav-active-border: hsl(var(--primary) / 0.24);
-  --nav-active-shadow: hsl(var(--primary) / 0.04);
-  --nav-hover-bg: hsl(var(--primary) / 0.05);
+  --nav-active-shadow: hsl(var(--foreground) / 0.04);
+  --nav-hover-bg: hsl(var(--foreground) / 0.04);
   --nav-icon-active: hsl(var(--primary));
   --nav-item-height: 2.75rem;
   --nav-item-padding-x: 1rem;
@@ -130,10 +141,10 @@
   --nav-indicator-bg: hsl(var(--primary));
   --nav-indicator-shadow: hsl(var(--primary) / 0.52);
   --nav-badge-bg: hsl(var(--primary));
-  --nav-brand-shadow: hsl(var(--primary) / 0.2);
+  --nav-brand-shadow: hsl(var(--foreground) / 0.1);
 
   /* Shell Sidebar Custom */
-  --shell-sidebar-border: hsl(193 100% 43% / 0.35);
+  --shell-sidebar-border: hsl(var(--foreground) / 0.18);
 
   /* Home page related (using HSL format) */
   --home-loading-ring-track: hsl(var(--primary) / 0.2);
@@ -200,8 +211,8 @@
   --autocomplete-hover-bg: #04d1f6;
 
   /* Shadows (using HSL format) */
-  --shadow-soft-card: 0 12px 24px hsl(220 20% 34% / 0.09), 0 3px 8px hsl(220 16% 28% / 0.05);
-  --shadow-soft-card-strong: 0 18px 34px hsl(220 20% 32% / 0.12), 0 6px 16px hsl(220 16% 28% / 0.07);
+  --shadow-soft-card: 0 10px 24px hsl(28 16% 18% / 0.06), 0 1px 0 hsl(36 30% 99% / 0.9);
+  --shadow-soft-card-strong: 0 14px 30px hsl(28 16% 18% / 0.09), 0 1px 0 hsl(36 30% 99% / 0.92);
   --settings-surface: hsl(0 0% 100% / 0.97);
   --settings-surface-hover: hsl(214 44% 95% / 0.99);
   --settings-surface-strong: hsl(0 0% 100% / 0.99);
@@ -234,7 +245,7 @@
   --input-surface-focus-ring: 0 0 0 4px hsl(var(--primary) / 0.15);
   --settings-input-rest-border: hsl(218 22% 82% / 0.72);
   --gradient-primary:
-    linear-gradient(135deg, hsl(var(--primary)), hsl(var(--primary) / 0.74));
+    linear-gradient(135deg, hsl(var(--foreground)), hsl(var(--secondary-text)));
 
   /* Chat UI Tokens (Light) */
   --chat-avatar-user-bg: hsl(var(--primary) / 0.5 );
@@ -302,48 +313,48 @@
 }
 
 .dark {
-  --background: 228 35% 7%;
-  --foreground: 210 33% 98%;
-  --card: 230 24% 10%;
-  --card-foreground: 210 33% 98%;
-  --popover: 230 24% 10%;
-  --popover-foreground: 210 33% 98%;
-  --primary: 190 100% 50%;
-  --primary-foreground: 228 35% 8%;
-  --secondary: 231 19% 15%;
-  --secondary-foreground: 210 33% 94%;
-  --muted: 230 18% 14%;
-  --muted-foreground: 228 13% 66%;
-  --accent: 231 18% 16%;
-  --accent-foreground: 210 33% 98%;
-  --destructive: 349 100% 63%;
-  --destructive-foreground: 210 33% 98%;
-  --border: 226 19% 20%;
-  --input: 226 19% 20%;
-  --ring: 190 100% 50%;
-  --elevated: 230 22% 12%;
-  --hover: 231 20% 16%;
-  --secondary-text: 228 16% 72%;
-  --muted-text: 228 10% 48%;
+  --background: 30 14% 8%;
+  --foreground: 36 18% 90%;
+  --card: 30 12% 10%;
+  --card-foreground: 36 18% 90%;
+  --popover: 30 12% 10%;
+  --popover-foreground: 36 18% 90%;
+  --primary: 36 18% 90%;
+  --primary-foreground: 30 14% 8%;
+  --secondary: 28 10% 16%;
+  --secondary-foreground: 36 18% 90%;
+  --muted: 30 10% 14%;
+  --muted-foreground: 34 9% 62%;
+  --accent: 28 9% 18%;
+  --accent-foreground: 36 18% 90%;
+  --destructive: 2 68% 60%;
+  --destructive-foreground: 36 18% 90%;
+  --border: 30 8% 22%;
+  --input: 30 8% 22%;
+  --ring: 36 18% 90%;
+  --elevated: 30 12% 12%;
+  --hover: 30 10% 16%;
+  --secondary-text: 34 12% 72%;
+  --muted-text: 34 8% 50%;
 
   --color-cyan: hsl(var(--primary));
   --color-cyan-dim: hsl(var(--primary) / 0.8);
   --color-cyan-glow: hsl(var(--primary) / 0.4);
-  --color-purple: 247 84% 72%;
-  --color-purple-dim: 247 84% 62%;
-  --color-purple-glow: hsl(247 84% 72% / 0.3);
-  --color-success: 152 69% 40%;
-  --color-warning: 37 92% 50%;
-  --color-danger: 0 90% 55%;
-  --color-danger-alert-text: 349 100% 75%; /* Bright/light pink for dark mode */
-  --color-danger-alert-border: 349 100% 63%;
-  --color-danger-alert-bg: 349 100% 63%;
-  --autocomplete-hover-bg: #2dcae6;
+  --color-purple: 34 12% 72%;
+  --color-purple-dim: 34 12% 62%;
+  --color-purple-glow: hsl(34 12% 72% / 0.16);
+  --color-success: 145 28% 60%;
+  --color-warning: 36 55% 62%;
+  --color-danger: 2 68% 60%;
+  --color-danger-alert-text: 8 78% 78%;
+  --color-danger-alert-border: 2 68% 60%;
+  --color-danger-alert-bg: 2 68% 60%;
+  --autocomplete-hover-bg: hsl(var(--foreground) / 0.12);
   /* Tailwind-compatible accent colors (Dark theme) */
-  --color-cyan-400: 188 78% 41%;
-  --color-emerald-400: 152 69% 40%;
-  --color-red-400: 0 90% 55%;
-  --color-amber-400: 37 92% 50%;
+  --color-cyan-400: 36 18% 90%;
+  --color-emerald-400: 145 28% 60%;
+  --color-red-400: 2 68% 60%;
+  --color-amber-400: 36 55% 62%;
   /* Tailwind aliases (for hsl(var(--success))) */
   --success: var(--color-success);
   --warning: var(--color-warning);
@@ -463,8 +474,8 @@
   --home-prose-blockquote-bg: hsl(247 84% 72% / 0.1);
 
   /* Shadows (Dark theme) */
-  --shadow-soft-card: 0 18px 48px hsl(215 25% 10% / 0.4);
-  --shadow-soft-card-strong: 0 24px 56px hsl(215 25% 10% / 0.5);
+  --shadow-soft-card: 0 18px 42px hsl(30 22% 2% / 0.34);
+  --shadow-soft-card-strong: 0 22px 50px hsl(30 22% 2% / 0.46);
   --settings-surface: hsl(0 0% 100% / 0.02);
   --settings-surface-hover: hsl(0 0% 100% / 0.05);
   --settings-surface-strong: hsl(var(--card) / 0.92);
@@ -497,7 +508,7 @@
   --input-surface-focus-ring: 0 0 0 4px hsl(var(--primary) / 0.18);
   --settings-input-rest-border: hsl(var(--border) / 0.58);
   --gradient-primary:
-    linear-gradient(135deg, rgba(0, 212, 255, 0.96), rgba(0, 168, 204, 0.96));
+    linear-gradient(135deg, hsl(var(--foreground)), hsl(var(--secondary-text)));
 
   /* Chat UI Tokens (Dark) */
   --chat-avatar-user-bg: hsl(var(--primary) / 0.8);
@@ -576,8 +587,22 @@
     margin: 0;
     min-width: 320px;
     min-height: 100vh;
-    background: hsl(var(--background));
+    background:
+      radial-gradient(circle at top left, hsl(38 34% 96% / 0.72), transparent 24%),
+      radial-gradient(circle at bottom right, hsl(34 20% 86% / 0.52), transparent 26%),
+      hsl(var(--background));
     color: hsl(var(--foreground));
+    font-family: var(--font-sans);
+    background-attachment: fixed;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  .font-display {
+    font-family: var(--font-display);
+    letter-spacing: -0.025em;
   }
 }
 
@@ -1106,12 +1131,12 @@ textarea {
   --terminal-card-shadow-hover: var(--shadow-soft-card-strong);
   position: relative;
   overflow: hidden;
-  border-radius: 1rem;
+  border-radius: 1.35rem;
   border: 1px solid var(--terminal-card-border);
   background: linear-gradient(
     180deg,
-    hsl(var(--card) / 0.96),
-    hsl(var(--background) / 0.96)
+    hsl(var(--card) / 0.95),
+    hsl(var(--background) / 0.92)
   );
   box-shadow: var(--terminal-card-shadow);
 }
@@ -1120,12 +1145,12 @@ textarea {
   content: "";
   position: absolute;
   inset: 0;
-  border-radius: 1rem;
+  border-radius: 1.35rem;
   padding: 1px;
   background: linear-gradient(
     135deg,
     var(--terminal-card-gradient-start) 0%,
-    var(--terminal-card-gradient-mid) 52%,
+    var(--terminal-card-gradient-mid) 45%,
     var(--terminal-card-gradient-end) 100%
   );
   -webkit-mask:
@@ -1155,7 +1180,7 @@ textarea {
 
 .gradient-border-card {
   position: relative;
-  border-radius: 1rem;
+  border-radius: 1.35rem;
   padding: 1px;
   background: linear-gradient(
     180deg,
@@ -1168,11 +1193,11 @@ textarea {
 
 .gradient-border-card-inner {
   height: 100%;
-  border-radius: calc(1rem - 1px);
+  border-radius: calc(1.35rem - 1px);
   background: linear-gradient(
     180deg,
     hsl(var(--elevated) / 0.98),
-    hsl(var(--card) / 0.98)
+    hsl(var(--card) / 0.96)
   );
 }
 
@@ -1937,10 +1962,10 @@ textarea {
   display: inline-flex;
   align-items: center;
   gap: 0.45rem;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
   line-height: 1;
-  letter-spacing: 0.24em;
+  letter-spacing: 0.22em;
   text-transform: uppercase;
   color: var(--text-secondary-text);
 }
