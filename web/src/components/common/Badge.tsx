@@ -13,26 +13,23 @@ interface BadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
 }
 
 const variantStyles: Record<BadgeVariant, string> = {
-  default: 'border-border/70 bg-elevated/80 text-secondary-text',
-  success: 'border-success/20 bg-success/10 text-success',
-  warning: 'border-warning/20 bg-warning/10 text-warning',
-  danger: 'border-danger/20 bg-danger/10 text-danger',
+  default: 'border-border/80 bg-card/92 text-secondary-text',
+  success: 'border-success/18 bg-success/8 text-[hsl(var(--success)/0.92)]',
+  warning: 'border-warning/18 bg-warning/9 text-[hsl(var(--warning)/0.92)]',
+  danger: 'border-danger/18 bg-danger/8 text-[hsl(var(--danger)/0.92)]',
   info: 'border-foreground/12 bg-foreground/5 text-foreground',
-  history: 'border-foreground/10 bg-foreground/4 text-secondary-text',
+  history: 'border-border/70 bg-background/55 text-secondary-text',
 };
 
 const glowStyles: Record<BadgeVariant, string> = {
-  default: '',
-  success: 'shadow-success/20',
-  warning: 'shadow-warning/20',
-  danger: 'shadow-danger/20',
-  info: 'shadow-cyan/20',
-  history: 'shadow-purple/20',
+  default: 'shadow-[0_8px_20px_hsl(var(--foreground)/0.05)]',
+  success: 'shadow-[0_8px_20px_hsl(var(--success)/0.08)]',
+  warning: 'shadow-[0_8px_20px_hsl(var(--warning)/0.08)]',
+  danger: 'shadow-[0_8px_20px_hsl(var(--danger)/0.08)]',
+  info: 'shadow-[0_8px_20px_hsl(var(--foreground)/0.06)]',
+  history: 'shadow-[0_8px_20px_hsl(var(--foreground)/0.05)]',
 };
 
-/**
- * Badge component with multiple variants and optional glow styling.
- */
 export const Badge: React.FC<BadgeProps> = ({
   children,
   variant = 'default',
@@ -42,7 +39,7 @@ export const Badge: React.FC<BadgeProps> = ({
   style,
   ...rest
 }) => {
-  const sizeStyles = size === 'sm' ? 'px-2 py-0.5 text-xs' : 'px-3 py-1 text-sm';
+  const sizeStyles = size === 'sm' ? 'px-2.5 py-1 text-[11px]' : 'px-3 py-1.5 text-sm';
 
   return (
     <span
@@ -52,7 +49,7 @@ export const Badge: React.FC<BadgeProps> = ({
         'inline-flex items-center gap-1 rounded-full border font-medium backdrop-blur-sm',
         sizeStyles,
         variantStyles[variant],
-        glow && `shadow-lg ${glowStyles[variant]}`,
+        glow && glowStyles[variant],
         className,
       )}
     >

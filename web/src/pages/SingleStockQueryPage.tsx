@@ -21,7 +21,24 @@ import {
   type StockQueryTaskStatus,
 } from '../api/stockQuery';
 import { watchlistApi, type StockAlertRuleItem, type StockWatchlistItem } from '../api/watchlist';
-import { ApiErrorAlert, AppPage, Badge, Button, Drawer, EmptyState, InlineAlert, Input, Select } from '../components/common';
+import {
+  ApiErrorAlert,
+  AppPage,
+  Badge,
+  Button,
+  Drawer,
+  EmptyState,
+  InlineAlert,
+  Input,
+  PaperDataBlockCard,
+  PaperHeroHeader,
+  PaperListBlock,
+  PaperMetricCard,
+  PaperSectionCard,
+  PaperSummaryBlock,
+  Select,
+} from '../components/common';
+import { cn } from '../utils/cn';
 
 const QUICK_QUERIES = [
   { label: '华丰科技', value: '688629.SH', note: '算力链中的高热度样本' },
@@ -379,9 +396,9 @@ function newsSentimentVariant(value?: string): 'success' | 'warning' | 'danger' 
 }
 
 function strategyToneClasses(tone: StrategyTone): string {
-  if (tone === 'buy') return 'border-border/60 bg-background/72';
-  if (tone === 'breakout') return 'border-border/60 bg-background/76';
-  return 'border-border/60 bg-background/80';
+  if (tone === 'buy') return 'paper-list-card';
+  if (tone === 'breakout') return 'paper-panel-muted';
+  return 'paper-alert-card';
 }
 
 function buildEntryPlan(result: StockQueryAnalyzeResponse): EntryPlan {
@@ -869,6 +886,10 @@ const SingleStockQueryPage: React.FC = () => {
   );
   const priceRail = useMemo(() => (result && entryPlan ? buildPriceRail(result, entryPlan) : null), [entryPlan, result]);
   const recentHistory = useMemo(() => historyItems.slice(0, 4), [historyItems]);
+  const activeHistoryItem = useMemo(() => {
+    if (!currentHistoryId) return null;
+    return historyItems.find((item) => item.queryId === currentHistoryId) ?? null;
+  }, [currentHistoryId, historyItems]);
   const previousSameStock = useMemo(() => {
     if (!result) return null;
     return historyItems.find((item) => item.stockCode === result.stockCode && item.queryId !== currentHistoryId) ?? null;
@@ -886,6 +907,19 @@ const SingleStockQueryPage: React.FC = () => {
     if (!result || !previousSameStock) return null;
     return buildHistoryComparison(result, previousSameStock);
   }, [previousSameStock, result]);
+  const historyPreviewItems = useMemo(
+    () => (result ? rightRailHistory : recentHistory).slice(0, 2),
+    [recentHistory, result, rightRailHistory],
+  );
+  const historyCardItems = useMemo(
+    () => (result ? rightRailHistory : recentHistory).slice(0, 5),
+    [recentHistory, result, rightRailHistory],
+  );
+  const resultTimestamp = activeHistoryItem?.completedAt
+    ?? queryTask?.completedAt
+    ?? queryTask?.startedAt
+    ?? queryTask?.createdAt
+    ?? null;
 
   const handleAddToWatchlist = async () => {
     if (!result) return;
@@ -958,26 +992,867 @@ const SingleStockQueryPage: React.FC = () => {
     }
   };
 
-  return (
-    <AppPage className="!max-w-[1680px] px-3 md:px-5 lg:px-6">
-      <section className="overflow-hidden rounded-[32px] border border-border/70 bg-[radial-gradient(circle_at_top_left,_hsl(var(--foreground)/0.05),_transparent_24%),radial-gradient(circle_at_top_right,_hsl(var(--accent)/0.22),_transparent_22%),linear-gradient(180deg,hsl(var(--card)/0.98),hsl(var(--background)/0.95))] text-foreground shadow-soft-card">
-        <div className="grid xl:grid-cols-[minmax(0,1fr)_430px]">
-          <div className="border-b border-border/70 px-5 py-6 lg:px-7 xl:border-b-0 xl:border-r">
-            <div className="space-y-6">
-              <div>
-                <h2 className="font-display text-3xl font-semibold tracking-tight text-foreground">单股查询</h2>
-                <p className="mt-2 max-w-3xl text-sm leading-7 text-secondary-text">
-                  围绕“如何入场”和“买点在哪”重组信息层级，首屏先给交易结论，再把历史和辅助信息压到更合适的位置。
+  const useRedesignedLayout = true;
+
+  if (useRedesignedLayout) {
+    return (
+      <AppPage className="!max-w-[1680px] px-3 md:px-5 lg:px-6">
+        <section className="paper-hero text-foreground">
+          <div className="px-5 py-6 lg:px-7">
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-end justify-between gap-4 border-b border-border/70 pb-4">
+                <div>
+                  <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-secondary-text">Stock Query</p>
+                  <h1 className="mt-2 text-[1.7rem] font-semibold tracking-[-0.03em] text-foreground">单股查询</h1>
+                </div>
+                <p className="max-w-[520px] text-sm leading-6 text-secondary-text">
+                  检索、回看、信号和历史扫描记录收在同一页里，优先保证高频判断顺手。
                 </p>
               </div>
 
-              <form className="space-y-3" onSubmit={handleSubmit}>
-                <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_104px_118px]">
+              <form className="paper-panel-subtle space-y-3 px-4 py-4 md:px-5" onSubmit={handleSubmit}>
+                <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_240px_120px]">
                   <Input
                     value={query}
                     onChange={(event) => setQuery(event.target.value)}
                     placeholder="输入股票或 ETF 代码/名称，例如 688629.SH / 512880.SH / 华丰科技"
-                    className="h-12 rounded-2xl border-border/60 bg-card/92 text-foreground placeholder:text-muted-text"
+                    className="h-12 rounded-2xl border-border/60 bg-background/78 text-foreground placeholder:text-muted-text"
+                    hint="支持股票与 ETF 代码/名称。查询成功后会自动写入后端历史，方便回看和恢复查看。"
+                  />
+                  <Select
+                    value={strategy}
+                    onChange={setStrategy}
+                    options={STRATEGY_OPTIONS.map((item) => ({ value: item.value, label: item.label }))}
+                    label="策略视角"
+                  />
+                  <Button
+                    type="submit"
+                    size="lg"
+                    isLoading={isLoading}
+                    loadingText="正在分析..."
+                    className="h-12 rounded-2xl"
+                  >
+                    <Search className="h-4 w-4" />
+                    开始查询
+                  </Button>
+                </div>
+
+                <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_136px]">
+                  <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                    {QUICK_QUERIES.map((item) => (
+                      <button
+                        key={item.value}
+                        type="button"
+                        onClick={() => handleQuickQuery(item.value)}
+                        className={cn(
+                          'paper-list-card text-left transition-colors',
+                          query === item.value
+                            ? 'border-foreground/16 bg-foreground/[0.05]'
+                            : 'hover:border-foreground/12 hover:bg-card',
+                        )}
+                      >
+                        <p className="text-sm font-semibold text-foreground">{item.label}</p>
+                        <p className="mt-2 text-xs leading-5 text-secondary-text">{item.note}</p>
+                      </button>
+                    ))}
+                  </div>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="lg"
+                    className="h-full min-h-12 rounded-2xl border-border/60 bg-background/78 text-foreground hover:bg-card"
+                    onClick={() => setHistoryOpen(true)}
+                  >
+                    <Clock3 className="h-4 w-4" />
+                    历史查询
+                  </Button>
+                </div>
+              </form>
+
+              <div className="paper-panel-subtle flex flex-col gap-3 px-4 py-3 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-secondary-text">History</p>
+                  <p className="mt-1 text-sm leading-6 text-secondary-text">最近回看</p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  {historyPreviewItems.length > 0 ? (
+                    historyPreviewItems.map((item) => (
+                      <button
+                        key={item.queryId}
+                        type="button"
+                        onClick={() => void handleHistoryRestore(item)}
+                        className="paper-chip rounded-full px-3 py-2 text-xs font-medium text-foreground transition hover:border-foreground/12 hover:bg-card"
+                      >
+                        {item.stockName || item.queryText || item.stockCode || '历史记录'}
+                      </button>
+                    ))
+                  ) : (
+                    <span className="text-sm text-secondary-text">执行几次查询后，这里会出现最近回看链接。</span>
+                  )}
+                  <Button variant="ghost" size="sm" className="text-secondary-text hover:bg-foreground/4 hover:text-foreground" onClick={() => setHistoryOpen(true)}>
+                    查看全部
+                  </Button>
+                </div>
+              </div>
+
+              {error ? <ApiErrorAlert error={error} /> : null}
+              {watchlistActionError ? <ApiErrorAlert error={watchlistActionError} /> : null}
+              {watchlistActionMessage ? (
+                <InlineAlert variant="success" title="观察池已更新" message={watchlistActionMessage} />
+              ) : null}
+
+              {isLoading && queryTask ? (
+                <InlineAlert
+                  variant="info"
+                  title="单股查询正在后台处理"
+                  message={queryTask.message || '正在获取日线、实时行情和基本面，请稍候。'}
+                />
+              ) : null}
+
+              {result && hasPendingInputChange ? (
+                <InlineAlert
+                  title="输入已更新，当前结果还没有刷新"
+                  message={`现在输入框里是 ${query.trim() || '--'}，页面仍然展示上一次查询：${lastResolvedInput || '--'}。点击“开始查询”后会重新分析。`}
+                  variant="info"
+                />
+              ) : null}
+
+              <div className="grid gap-4 xl:grid-cols-[minmax(0,1.12fr)_minmax(0,0.88fr)]">
+                <div className="space-y-4">
+                  <PaperSectionCard
+                    eyebrow="个股信息"
+                    title={result ? `${result.stockName} · ${result.stockCode}` : '个股信息'}
+                    description={result
+                      ? '价格、估值、资金和补充信息放在一张主卡里。'
+                      : '查询成功后展示价格概览、基本面和补充信息。'}
+                    className="px-5 py-5"
+                    actions={result ? (
+                      <div className="flex flex-wrap items-center gap-2">
+                        {instrumentBadgeLabel(result.instrumentLabel, result.instrumentType) ? (
+                          <Badge variant="info" className="border-0 px-3 py-1">
+                            {instrumentBadgeLabel(result.instrumentLabel, result.instrumentType)}
+                          </Badge>
+                        ) : null}
+                        <Badge variant={signalBadgeVariant(result.signal)} className="border-0 px-3 py-1">
+                          {result.signal}
+                        </Badge>
+                      </div>
+                    ) : null}
+                  >
+                    {result ? (
+                      <div className="space-y-4">
+                        <div className="grid gap-3 xl:grid-cols-[minmax(0,1.06fr)_minmax(0,0.94fr)]">
+                          <div className="paper-panel-subtle px-4 py-4">
+                            <div className="flex flex-wrap items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <p className="text-base font-semibold text-foreground">
+                                  {result.stockCode} {result.stockName}
+                                </p>
+                                <p className="mt-1 text-sm text-secondary-text">{resultTimestamp ? `数据更新 ${formatHistoryTime(resultTimestamp)}` : '等待更新时间'}</p>
+                              </div>
+                              <div className="text-right">
+                                <p className="text-[2rem] font-semibold tracking-[-0.03em] text-foreground">{formatNumber(result.currentPrice)}</p>
+                                <p className={`mt-1 text-lg font-semibold ${signedValueClass(result.pctChg)}`}>
+                                  {formatPercent(result.pctChg, 2)}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="mt-4 flex flex-wrap gap-2">
+                              <span className="paper-chip px-3 py-2 text-xs font-medium text-foreground">{result.strategyLabel || '自动决策'}</span>
+                              <span className="paper-chip px-3 py-2 text-xs font-medium text-foreground">{result.trendStatus || result.pattern || '等待结构确认'}</span>
+                            </div>
+                          </div>
+
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            <PaperMetricCard label="换手率" value={formatPercent(result.turnoverRate, 2)} tone="muted" />
+                            <PaperMetricCard label="量比" value={formatNumber(result.volumeRatio, 2)} tone="muted" />
+                            <PaperMetricCard label="趋势分" value={formatNumber(result.trendScore, 1)} tone="default" />
+                            <PaperMetricCard label="PE / PB" value={`PE ${formatNumber(result.peRatio)} / PB ${formatNumber(result.pbRatio)}`} tone="muted" />
+                          </div>
+                        </div>
+
+                        {hasFundamentalBlocks ? (
+                          <div className="grid gap-3 xl:grid-cols-2">
+                            <PaperDataBlockCard
+                              title="估值"
+                              subtitle={`来源 ${sourceChainSummary(valuationBlock?.sourceChain)}`}
+                              status={(
+                                <Badge variant={valuationBlock?.status === 'ok' || valuationBlock?.status === 'full' ? 'success' : valuationBlock?.status === 'partial' ? 'warning' : 'default'} className="border-0 px-2 py-1">
+                                  {coverageStatusLabel(valuationBlock?.status || 'failed')}
+                                </Badge>
+                              )}
+                              footer={valuationBlock?.errors?.length ? <p className="text-xs leading-5 text-secondary-text">错误: {valuationBlock.errors.slice(0, 2).join(' | ')}</p> : null}
+                            >
+                              <div className="grid gap-3 sm:grid-cols-2">
+                                <MiniMetric label="PE" value={formatNumber(valuation?.peRatio)} tone="neutral" />
+                                <MiniMetric label="PB" value={formatNumber(valuation?.pbRatio)} tone="neutral" />
+                                <MiniMetric label="总市值" value={formatMoney(valuation?.totalMv)} tone="neutral" />
+                                <MiniMetric label="流通市值" value={formatMoney(valuation?.circMv)} tone="neutral" />
+                              </div>
+                            </PaperDataBlockCard>
+
+                            <PaperDataBlockCard
+                              title="成长"
+                              subtitle={`来源 ${sourceChainSummary(growthBlock?.sourceChain)}`}
+                              status={(
+                                <Badge variant={growthBlock?.status === 'ok' || growthBlock?.status === 'full' ? 'success' : growthBlock?.status === 'partial' ? 'warning' : 'default'} className="border-0 px-2 py-1">
+                                  {coverageStatusLabel(growthBlock?.status || 'failed')}
+                                </Badge>
+                              )}
+                              footer={growthBlock?.errors?.length ? <p className="text-xs leading-5 text-secondary-text">错误: {growthBlock.errors.slice(0, 2).join(' | ')}</p> : null}
+                            >
+                              <div className="grid gap-3 sm:grid-cols-2">
+                                <MiniMetric label="营收同比" value={formatPercent(growth?.revenueYoy, 1)} tone="neutral" />
+                                <MiniMetric label="净利同比" value={formatPercent(growth?.netProfitYoy, 1)} tone="neutral" />
+                                <MiniMetric label="ROE" value={formatPercent(growth?.roe, 1)} tone="neutral" />
+                                <MiniMetric label="毛利率" value={formatPercent(growth?.grossMargin, 1)} tone="neutral" />
+                              </div>
+                            </PaperDataBlockCard>
+
+                            <PaperDataBlockCard
+                              title="资金流"
+                              subtitle={`来源 ${sourceChainSummary(capitalFlowBlock?.sourceChain)}`}
+                              status={(
+                                <Badge variant={capitalFlowBlock?.status === 'ok' || capitalFlowBlock?.status === 'full' ? 'success' : capitalFlowBlock?.status === 'partial' ? 'warning' : 'default'} className="border-0 px-2 py-1">
+                                  {coverageStatusLabel(capitalFlowBlock?.status || 'failed')}
+                                </Badge>
+                              )}
+                              footer={capitalFlowBlock?.errors?.length ? <p className="text-xs leading-5 text-secondary-text">错误: {capitalFlowBlock.errors.slice(0, 2).join(' | ')}</p> : null}
+                            >
+                              <div className="grid gap-3 sm:grid-cols-3">
+                                <MiniMetric label="主力净流入" value={formatMoney(capitalFlow?.mainNetInflow)} tone="neutral" />
+                                <MiniMetric label="5日净流入" value={formatMoney(capitalFlow?.inflow5d)} tone="neutral" />
+                                <MiniMetric label="10日净流入" value={formatMoney(capitalFlow?.inflow10d)} tone="neutral" />
+                              </div>
+                            </PaperDataBlockCard>
+
+                            <PaperDataBlockCard
+                              title="龙虎榜"
+                              subtitle={`来源 ${sourceChainSummary(dragonTigerBlock?.sourceChain)}`}
+                              status={(
+                                <Badge variant={dragonTigerBlock?.status === 'ok' || dragonTigerBlock?.status === 'full' ? 'success' : dragonTigerBlock?.status === 'partial' ? 'warning' : 'default'} className="border-0 px-2 py-1">
+                                  {coverageStatusLabel(dragonTigerBlock?.status || 'failed')}
+                                </Badge>
+                              )}
+                              footer={dragonTiger?.reason ? <p className="text-xs leading-5 text-secondary-text">上榜原因：{dragonTiger.reason}</p> : null}
+                            >
+                              <div className="grid gap-3 sm:grid-cols-2">
+                                <MiniMetric label="近20日状态" value={dragonTiger?.isOnList ? `上榜 ${dragonTiger.recentCount ?? 0} 次` : '未识别到上榜'} tone="neutral" />
+                                <MiniMetric label="最近日期" value={dragonTiger?.latestDate ?? '--'} tone="neutral" />
+                                <MiniMetric label="净买额" value={formatMoney(dragonTiger?.netBuyAmount)} tone="neutral" />
+                                <MiniMetric label="机构净买" value={formatMoney(dragonTiger?.institutionNetBuy)} tone="neutral" />
+                              </div>
+                            </PaperDataBlockCard>
+                          </div>
+                        ) : null}
+
+                        {(stockContextSupplement?.profile || stockContextSupplement?.announcements || stockContextSupplement?.lockup) ? (
+                          <div className="grid gap-3 xl:grid-cols-3">
+                            <PaperSummaryBlock title="公司画像" summary={stockContextSupplement?.profile?.summary} items={profileHighlights} />
+                            <PaperSummaryBlock title="近期公告" summary={stockContextSupplement?.announcements?.summary} items={announcementHighlights} />
+                            <PaperSummaryBlock title="解禁提示" summary={stockContextSupplement?.lockup?.summary} items={lockupHighlights} danger />
+                          </div>
+                        ) : null}
+
+                        {fundamentalCoverageEntries.length > 0 ? (
+                          <div className="paper-panel-subtle px-4 py-4">
+                            <div className="flex flex-wrap items-center justify-between gap-3">
+                              <div>
+                                <p className="text-sm font-semibold text-foreground">数据覆盖</p>
+                                <p className="mt-1 text-xs leading-6 text-secondary-text">日线、实时和基本面返回状态。</p>
+                              </div>
+                              <Badge variant={incompleteFundamentalEntries.length > 0 ? 'warning' : 'success'} className="border-0 px-3 py-1">
+                                {incompleteFundamentalEntries.length > 0 ? `仍缺 ${incompleteFundamentalEntries.length} 项` : '已完整返回'}
+                              </Badge>
+                            </div>
+                            <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                              <PaperMetricCard label="日线" value={sourceLabel(result.dataSources.daily)} valueClassName="text-sm font-medium" tone="muted" />
+                              <PaperMetricCard label="实时" value={sourceLabel(result.dataSources.realtime)} valueClassName="text-sm font-medium" tone="muted" />
+                              <PaperMetricCard label="基本面" value={sourceLabel(result.dataSources.fundamental ?? fundamentalContext?.status)} valueClassName="text-sm font-medium" tone="muted" />
+                            </div>
+                            {fundamentalErrorPreview.length > 0 ? (
+                              <p className="mt-4 text-xs leading-6 text-secondary-text">最近错误: {fundamentalErrorPreview.join(' | ')}</p>
+                            ) : null}
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <InlineAlert
+                        variant="info"
+                        title="等待个股信息"
+                        message="查询成功后，这里会先收纳股票本身的概览、估值、资金、公司画像和数据覆盖。"
+                      />
+                    )}
+                  </PaperSectionCard>
+
+                  <PaperSectionCard
+                    eyebrow="K 线"
+                    title={result ? 'K 线与价格结构' : 'K 线'}
+                    description={result
+                      ? '先用支撑、试仓区、现价和突破位表达当前结构。'
+                      : '查询成功后展示 K 线相关结构。'}
+                    className="px-5 py-5"
+                  >
+                    {result && entryPlan ? (
+                      <div className="space-y-4">
+                        {priceRail ? (
+                          <div className="paper-panel-muted px-5 py-6">
+                            <div className="relative h-24">
+                              <div className="absolute left-4 right-4 top-10 h-2.5 rounded-full bg-border/90" />
+                              <div
+                                className="absolute top-[37px] h-3.5 rounded-full bg-foreground/88"
+                                style={{
+                                  left: `calc(${priceRail.entryStart}% + 1rem)`,
+                                  width: `${Math.max(priceRail.entryEnd - priceRail.entryStart, 2)}%`,
+                                }}
+                              />
+                              <div
+                                className="absolute top-[37px] h-3.5 rounded-full bg-foreground/55"
+                                style={{
+                                  left: `calc(${priceRail.points.find((point) => point.key === 'breakout')?.position ?? priceRail.noChaseStart}% + 1rem)`,
+                                  width: `${Math.max(priceRail.noChaseStart - (priceRail.points.find((point) => point.key === 'breakout')?.position ?? priceRail.noChaseStart), 2)}%`,
+                                }}
+                              />
+                              <div
+                                className="absolute top-[37px] h-3.5 rounded-full bg-foreground/28"
+                                style={{
+                                  left: `calc(${priceRail.noChaseStart}% + 1rem)`,
+                                  right: '1rem',
+                                }}
+                              />
+
+                              {priceRail.points.map((point) => {
+                                const isCurrent = point.key === 'current';
+                                return (
+                                  <div
+                                    key={point.key}
+                                    className="absolute top-2 flex -translate-x-1/2 flex-col items-center gap-2"
+                                    style={{ left: `calc(${point.position}% + 1rem)` }}
+                                  >
+                                    <div className={`h-5 w-5 rounded-full border-4 ${markerToneClasses(point.tone, isCurrent)}`} />
+                                    <div className="min-w-[78px] text-center">
+                                      <p className="text-xs font-semibold text-foreground">{point.label}</p>
+                                      <p className="mt-1 text-xs text-secondary-text">{formatNumber(point.value)}</p>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ) : (
+                          <InlineAlert
+                            variant="info"
+                            title="价格结构暂时无法计算"
+                            message="当前价格或关键位信息不够完整，先参考下面的结构位卡片。"
+                          />
+                        )}
+
+                        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                          <MiniMetric label="当前价" value={formatNumber(result.currentPrice)} tone="neutral" />
+                          <MiniMetric label="支撑位" value={formatNumber(entryPlan.supportPrice)} tone="buy" />
+                          <MiniMetric label="试仓区" value={formatRange(entryPlan.entryLower, entryPlan.entryUpper)} tone="buy" />
+                          <MiniMetric label="突破位" value={formatNumber(entryPlan.breakoutPrice)} tone="breakout" />
+                          <MiniMetric label="MA10 / MA20" value={`${formatNumber(result.ma10)} / ${formatNumber(result.ma20)}`} tone="neutral" />
+                          <MiniMetric label="禁追区" value={`${formatNumber(entryPlan.noChasePrice)} 以上`} tone="warn" />
+                        </div>
+                      </div>
+                    ) : (
+                      <InlineAlert
+                        variant="info"
+                        title="等待 K 线结构"
+                        message="查询成功后，这里会把买点刻度尺和关键价格结构集中展示。"
+                      />
+                    )}
+                  </PaperSectionCard>
+
+                  <PaperSectionCard
+                    eyebrow="技术信号"
+                    title={result ? (signalOverview?.label ?? result.signal) : '技术信号'}
+                    description={result
+                      ? (signalOverview?.description ?? '趋势、形态、动量和催化风险放在同一张卡里。')
+                      : '查询成功后展示技术信号、趋势结构和催化/风险。'}
+                    className="px-5 py-5"
+                    actions={result ? (
+                      <Badge variant={signalBadgeVariant(result.signal)} className="border-0 px-3 py-1">
+                        {result.signal}
+                      </Badge>
+                    ) : null}
+                  >
+                    {result ? (
+                      <div className="space-y-4">
+                        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                          <PaperMetricCard label="信号分" value={signalOverview?.score ?? '--'} valueClassName="text-[1.35rem]" tone="default" />
+                          <PaperMetricCard label="趋势状态" value={result.trendStatus ?? '--'} tone="muted" />
+                          <PaperMetricCard label="形态结构" value={result.pattern ?? '--'} tone="muted" />
+                          <PaperMetricCard label="动量信号" value={result.buySignal ?? result.signal} tone="muted" />
+                        </div>
+
+                        <div className="grid gap-3 xl:grid-cols-2">
+                          <PaperListBlock>
+                            <p className="text-sm font-semibold text-foreground">值得继续看的信号</p>
+                            <div className="mt-3 space-y-2">
+                              {result.selectedReasons.length > 0 ? (
+                                result.selectedReasons.slice(0, 3).map((reason) => (
+                                  <div key={reason} className="paper-panel-subtle px-4 py-3 text-sm leading-6 text-foreground">
+                                    {reason}
+                                  </div>
+                                ))
+                              ) : (
+                                <p className="text-sm leading-6 text-secondary-text">当前没有特别强的做多理由。</p>
+                              )}
+                            </div>
+                          </PaperListBlock>
+
+                          <div className="paper-alert-card px-4 py-4">
+                            <p className="text-sm font-semibold text-foreground">需要等待或规避的信号</p>
+                            <div className="mt-3 space-y-2">
+                              {result.excludedReasons.length > 0 ? (
+                                result.excludedReasons.slice(0, 3).map((reason) => (
+                                  <div key={reason} className="paper-panel-subtle px-4 py-3 text-sm leading-6 text-foreground">
+                                    {reason}
+                                  </div>
+                                ))
+                              ) : (
+                                <p className="text-sm leading-6 text-secondary-text">当前没有特别显眼的排除项，但仍需结合买点执行。</p>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        {stockNewsSummary ? (
+                          <div className="grid gap-3 xl:grid-cols-3">
+                            <PaperListBlock>
+                              <div className="flex items-center justify-between gap-3">
+                                <p className="text-sm font-semibold text-foreground">新闻摘要</p>
+                                <Badge variant={newsSentimentVariant(stockNewsSummary.sentiment)} className="border-0 px-2.5 py-1 text-[11px]">
+                                  {newsSentimentLabel(stockNewsSummary.sentiment)}
+                                </Badge>
+                              </div>
+                              <p className="mt-3 text-sm leading-6 text-secondary-text">{stockNewsSummary.summary || '当前没有拿到足够清晰的新闻摘要。'}</p>
+                            </PaperListBlock>
+
+                            <PaperListBlock>
+                              <p className="text-sm font-semibold text-foreground">正向催化</p>
+                              <div className="mt-3 flex flex-wrap gap-2">
+                                {(stockNewsSummary.catalysts?.length ? stockNewsSummary.catalysts : ['暂无明确催化']).map((item) => (
+                                  <span key={item} className="paper-chip px-3 py-2 text-xs font-medium text-foreground">
+                                    {item}
+                                  </span>
+                                ))}
+                              </div>
+                            </PaperListBlock>
+
+                            <div className="paper-alert-card px-4 py-4">
+                              <p className="text-sm font-semibold text-foreground">明确风险</p>
+                              <div className="mt-3 flex flex-wrap gap-2">
+                                {(stockNewsSummary.riskEvents?.length ? stockNewsSummary.riskEvents : ['暂未识别明显利空']).map((item) => (
+                                  <span key={item} className="paper-chip px-3 py-2 text-xs font-medium text-foreground">
+                                    {item}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <InlineAlert
+                        variant="info"
+                        title="等待技术信号"
+                        message="查询成功后，这里会展示趋势、形态、动量和催化/风险判断。"
+                      />
+                    )}
+                  </PaperSectionCard>
+                </div>
+
+                <div className="space-y-4">
+                  <PaperSectionCard
+                    eyebrow="相关主题"
+                    title={topTheme?.themeName || '相关主题'}
+                    description={topTheme
+                      ? '主题归因、概念映射和关联板块。'
+                      : '查询成功后展示主题归因、概念摘要和关联板块。'}
+                    className="px-5 py-5"
+                    actions={themeAttributions.length > 0 ? (
+                      <Badge variant="info" className="border-0 px-3 py-1">
+                        {themeAttributions.length} 个主题
+                      </Badge>
+                    ) : null}
+                  >
+                    {(topTheme || themeAttributions.length > 0 || conceptAttribution || boardItems.length > 0) ? (
+                      <div className="space-y-4">
+                        {topTheme ? (
+                          <div className="paper-panel-subtle px-4 py-4">
+                            <div className="flex flex-wrap items-start justify-between gap-3">
+                              <div>
+                                <p className="text-sm font-semibold text-foreground">{topTheme.themeName}</p>
+                                <p className="mt-1 text-xs leading-6 text-secondary-text">
+                                  {confidenceLabel(topTheme.confidence)} · {relationTypeLabel(topTheme.relationType)}
+                                </p>
+                              </div>
+                              <Badge variant="default" className="border-0 px-3 py-1">
+                                主主题
+                              </Badge>
+                            </div>
+                            <p className="mt-3 text-sm leading-6 text-foreground">{topTheme.reason}</p>
+                          </div>
+                        ) : null}
+
+                        {themeAttributions.slice(1, 4).length > 0 ? (
+                          <div className="grid gap-3">
+                            {themeAttributions.slice(1, 4).map((theme) => (
+                              <PaperListBlock key={`${theme.themeName}-${theme.relationType}`}>
+                                <div className="flex items-center justify-between gap-3">
+                                  <p className="text-sm font-semibold text-foreground">{theme.themeName}</p>
+                                  <span className="text-xs text-secondary-text">{confidenceLabel(theme.confidence)}</span>
+                                </div>
+                                <p className="mt-2 text-sm leading-6 text-secondary-text">{theme.reason}</p>
+                              </PaperListBlock>
+                            ))}
+                          </div>
+                        ) : null}
+
+                        {conceptAttribution ? (
+                          <PaperListBlock>
+                            <p className="text-sm font-semibold text-foreground">概念归因</p>
+                            <p className="mt-2 text-sm leading-6 text-secondary-text">{conceptAttribution.summary}</p>
+                            {conceptAttribution.conceptNames?.length ? (
+                              <div className="mt-3 flex flex-wrap gap-2">
+                                {conceptAttribution.conceptNames.slice(0, 6).map((item) => (
+                                  <span key={item} className="paper-chip px-3 py-2 text-xs font-medium text-foreground">
+                                    {item}
+                                  </span>
+                                ))}
+                              </div>
+                            ) : null}
+                          </PaperListBlock>
+                        ) : null}
+
+                        {boardItems.length > 0 ? (
+                          <PaperListBlock>
+                            <div className="flex flex-wrap items-center justify-between gap-3">
+                              <p className="text-sm font-semibold text-foreground">关联板块</p>
+                              <span className="text-xs text-secondary-text">{boardSourceLabel(boardSource, boardProvider)}</span>
+                            </div>
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              {boardItems.slice(0, 10).map((board) => (
+                                <span key={`${board.name}-${board.code ?? ''}`} className="paper-chip px-3 py-2 text-xs font-medium text-foreground">
+                                  {board.name}
+                                </span>
+                              ))}
+                            </div>
+                          </PaperListBlock>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <InlineAlert
+                        variant="info"
+                        title="等待主题归因"
+                        message="查询成功后，这里会把最相关的主题、概念和板块映射出来。"
+                      />
+                    )}
+                  </PaperSectionCard>
+
+                  <PaperSectionCard
+                    eyebrow="信号点"
+                    title={entryPlan?.headline || '信号点'}
+                    description={entryPlan?.summary || '这里只放真正影响出手动作的信号点。'}
+                    className="px-5 py-5"
+                    actions={result && entryPlan ? (
+                      <div className="space-y-2 text-right">
+                        <Badge variant={signalBadgeVariant(result.signal)} className="border-0 px-3 py-1">
+                          {result.signal}
+                        </Badge>
+                        <p className="text-xs leading-6 text-secondary-text">{result.stockCode}</p>
+                      </div>
+                    ) : null}
+                  >
+                    {result && entryPlan ? (
+                      <div className="space-y-4">
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <PaperMetricCard label="试仓区" value={formatRange(entryPlan.entryLower, entryPlan.entryUpper)} detail="优先等回踩到位" tone="muted" />
+                          <PaperMetricCard label="突破确认" value={formatNumber(entryPlan.breakoutPrice)} detail="放量再跟" tone="muted" />
+                          <PaperMetricCard label="止损线" value={formatNumber(entryPlan.stopLossPrice)} detail="跌破减仓" tone="alert" />
+                          <PaperMetricCard label="禁追区" value={formatNumber(entryPlan.noChasePrice)} detail="超过这里尽量不追" tone="alert" />
+                        </div>
+
+                        <div className="grid gap-3 xl:grid-cols-3">
+                          {entryPlan.strategies.map((strategy) => (
+                            <PaperListBlock key={strategy.key} className={strategyToneClasses(strategy.tone)}>
+                              <p className="text-sm font-semibold text-foreground">{strategy.title}</p>
+                              <p className="mt-2 text-sm leading-6 text-secondary-text">{strategy.description}</p>
+                            </PaperListBlock>
+                          ))}
+                        </div>
+
+                        <div className="grid gap-3">
+                          {entryPlan.checklist.map((item) => (
+                            <PaperListBlock key={item} className="text-sm leading-6 text-foreground">
+                              {item}
+                            </PaperListBlock>
+                          ))}
+                        </div>
+
+                        {result.strategyDecisions && result.strategyDecisions.length > 0 ? (
+                          <div className="paper-panel-muted p-4">
+                            <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-secondary-text">Strategy Matrix</p>
+                            <div className="mt-4 grid gap-3 xl:grid-cols-2">
+                              {result.strategyDecisions.map((decision) => (
+                                <PaperListBlock
+                                  key={decision.key}
+                                  className={decision.matched ? strategyToneClasses(strategySignalTone(decision.signal)) : 'paper-panel-subtle text-secondary-text'}
+                                >
+                                  <div className="flex items-center justify-between gap-3">
+                                    <p className="text-sm font-semibold text-foreground">{decision.label}</p>
+                                    <Badge variant={signalBadgeVariant(decision.signal)} className="border-0 px-2.5 py-1 text-[11px]">
+                                      {decision.signal}
+                                    </Badge>
+                                  </div>
+                                  <p className="mt-2 text-sm leading-6 text-secondary-text">
+                                    {(decision.matched ? decision.selectedReasons : decision.excludedReasons)?.[0]
+                                      ?? (decision.matched ? '当前更适合从这套策略视角切入。' : '当前还不满足这套策略的出手条件。')}
+                                  </p>
+                                </PaperListBlock>
+                              ))}
+                            </div>
+                          </div>
+                        ) : null}
+
+                        <div className="grid gap-3 sm:grid-cols-3">
+                          <Link
+                            to={
+                              result.queryId
+                                ? `/deep-analysis?queryId=${encodeURIComponent(result.queryId)}&stock=${encodeURIComponent(result.stockCode)}&name=${encodeURIComponent(result.stockName)}`
+                                : '/deep-analysis'
+                            }
+                            className="inline-flex min-h-12 items-center justify-center rounded-2xl border border-foreground/15 bg-foreground px-4 py-3 text-sm font-medium text-background shadow-soft-card transition hover:opacity-92"
+                          >
+                            发起深度分析
+                          </Link>
+                          <Button
+                            type="button"
+                            isLoading={watchlistLoading}
+                            loadingText="加入中..."
+                            disabled={!result || isInWatchlist}
+                            onClick={() => void handleAddToWatchlist()}
+                            className="min-h-12 rounded-2xl border border-border/60 bg-card px-4 py-3 text-sm font-medium text-foreground transition hover:bg-background"
+                          >
+                            {isInWatchlist ? '已在观察池' : '加入观察池'}
+                          </Button>
+                          <button
+                            type="button"
+                            disabled={!result || hasStockAlertRules || alertRuleLoading}
+                            onClick={() => void handleCreateDefaultAlerts()}
+                            className="paper-panel-subtle inline-flex min-h-12 items-center justify-center rounded-2xl px-4 py-3 text-sm font-medium text-foreground enabled:cursor-pointer enabled:hover:border-foreground/12 enabled:hover:bg-card disabled:opacity-60"
+                          >
+                            {alertRuleLoading ? '创建中...' : hasStockAlertRules ? '告警已设置' : '设置告警'}
+                          </button>
+                        </div>
+
+                        <div className="grid gap-3 md:grid-cols-[minmax(0,220px)_1fr]">
+                          <Input
+                            label="告警扫描间隔(分钟)"
+                            value={alertScanInterval}
+                            onChange={(event) => setAlertScanInterval(event.target.value)}
+                            placeholder={`默认 ${MIN_ALERT_SCAN_INTERVAL_MINUTES}`}
+                            className="h-11 rounded-2xl"
+                          />
+                          <div className="paper-panel-muted flex items-center justify-between gap-3 px-4 py-3">
+                            <div>
+                              <p className="text-sm font-medium text-foreground">扫描频率由输入决定</p>
+                              <p className="mt-1 text-xs leading-6 text-secondary-text">单位分钟，最小 {MIN_ALERT_SCAN_INTERVAL_MINUTES} 分钟。创建默认规则时会同步写入每条规则。</p>
+                            </div>
+                            <Badge variant="info" className="border-0 px-3 py-1">
+                              默认 {MIN_ALERT_SCAN_INTERVAL_MINUTES} 分钟
+                            </Badge>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <InlineAlert
+                        variant="info"
+                        title="等待信号点"
+                        message="查询成功后，这里会展示试仓区、突破位、止损线、策略矩阵和后续动作。"
+                      />
+                    )}
+                  </PaperSectionCard>
+
+                  <PaperSectionCard
+                    eyebrow="历史扫描记录"
+                    title={result ? `${result.stockName} 的最近记录` : '历史扫描记录'}
+                    description="保留同票回看和历史扫描记录。"
+                    className="px-5 py-5"
+                    actions={(
+                      <Button variant="ghost" size="sm" className="text-secondary-text hover:bg-foreground/4 hover:text-foreground" onClick={() => setHistoryOpen(true)}>
+                        全部历史
+                      </Button>
+                    )}
+                  >
+                    <div className="space-y-3">
+                      {historyError ? <ApiErrorAlert error={historyError} /> : null}
+                      {historyLoading ? (
+                        <InlineAlert
+                          variant="info"
+                          title="正在读取历史记录"
+                          message="正在从后端加载最近的单股查询记录。"
+                        />
+                      ) : null}
+
+                      {historyComparison ? (
+                        <PaperListBlock>
+                          <p className="text-sm font-semibold text-foreground">{historyComparison.headline}</p>
+                          <p className="mt-2 text-sm leading-6 text-secondary-text">{historyComparison.description}</p>
+                        </PaperListBlock>
+                      ) : null}
+
+                      {historyCardItems.length > 0 ? (
+                        historyCardItems.map((item) => (
+                          <button
+                            key={item.queryId}
+                            type="button"
+                            onClick={() => void handleHistoryRestore(item)}
+                            className="block w-full text-left"
+                          >
+                            <PaperListBlock className="transition-colors hover:border-foreground/15 hover:bg-card">
+                              <div className="flex items-center justify-between gap-3">
+                                <p className="text-xs text-secondary-text">{formatHistoryTime(item.completedAt || item.createdAt)}</p>
+                                <Badge variant={signalBadgeVariant(item.signal || '仅观察')} className="border-0 px-2.5 py-1 text-[11px]">
+                                  {item.signal || '仅观察'}
+                                </Badge>
+                              </div>
+                              <p className="mt-2 text-sm font-semibold text-foreground">{getHistoryLabel(item)}</p>
+                              <p className="mt-2 text-xs leading-6 text-secondary-text">
+                                试仓区 {formatRange(getHistoryEntryPlan(item)?.entryLower, getHistoryEntryPlan(item)?.entryUpper)}
+                              </p>
+                            </PaperListBlock>
+                          </button>
+                        ))
+                      ) : (
+                        <InlineAlert
+                          variant="info"
+                          title="还没有扫描记录"
+                          message="执行过几次单股查询后，这里会自动加载最近结果，方便回看。"
+                        />
+                      )}
+                    </div>
+                  </PaperSectionCard>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <Drawer
+          isOpen={historyOpen}
+          onClose={() => setHistoryOpen(false)}
+          title="单股查询历史"
+          width="max-w-xl"
+          side="right"
+        >
+          <div className="space-y-4">
+            {historyError ? <ApiErrorAlert error={historyError} /> : null}
+
+            {historyLoading ? (
+              <InlineAlert
+                variant="info"
+                title="正在加载历史记录"
+                message="正在从后端读取最近的单股查询结果。"
+              />
+            ) : null}
+
+            {historyItems.length === 0 ? (
+              <EmptyState
+                title="暂无单股查询历史"
+                description="查过几次股票之后，这里会从后端返回最近记录，方便你恢复查看和对照买点。"
+                icon={<Clock3 className="h-8 w-8" />}
+              />
+            ) : null}
+
+            <div className="space-y-3">
+              {historyItems.map((item) => {
+                const active = item.queryId === currentHistoryId;
+                const restoring = historyRestoreId === item.queryId;
+                const historyPlan = getHistoryEntryPlan(item);
+                return (
+                  <PaperListBlock
+                    key={item.queryId}
+                    className={[
+                      'transition-colors',
+                      active ? 'border-foreground/18 bg-foreground/[0.045]' : 'border-border/60 bg-background/70',
+                    ].join(' ')}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-base font-semibold text-foreground">
+                          {item.stockName || item.queryText || '单股查询'} <span className="text-secondary-text">{item.stockCode || '--'}</span>
+                        </p>
+                        <p className="mt-1 text-sm text-secondary-text">{formatHistoryTime(item.completedAt || item.createdAt)}</p>
+                      </div>
+                      <Badge variant={signalBadgeVariant(item.signal || '仅观察')} className="border-0">
+                        {item.signal || '仅观察'}
+                      </Badge>
+                    </div>
+
+                    <div className="mt-3 space-y-2 text-sm">
+                      <p className="text-foreground">{getHistoryLabel(item)}</p>
+                      <p className="text-secondary-text">
+                        试仓区 {formatRange(historyPlan?.entryLower, historyPlan?.entryUpper)} · 突破 {formatNumber(historyPlan?.breakoutPrice)}
+                      </p>
+                    </div>
+
+                    <div className="mt-4 flex items-center justify-end gap-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        disabled={!item.stockCode}
+                        onClick={() => {
+                          if (item.stockCode) {
+                            setQuery(item.stockCode);
+                          }
+                        }}
+                      >
+                        填入代码
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        isLoading={restoring}
+                        loadingText="恢复中..."
+                        onClick={() => void handleHistoryRestore(item)}
+                      >
+                        恢复查看
+                      </Button>
+                    </div>
+                  </PaperListBlock>
+                );
+              })}
+            </div>
+          </div>
+        </Drawer>
+      </AppPage>
+    );
+  }
+
+  return (
+    <AppPage className="!max-w-[1680px] px-3 md:px-5 lg:px-6">
+      <section className="paper-hero text-foreground">
+        <div className="grid xl:grid-cols-[minmax(0,1fr)_430px]">
+          <div className="border-b border-border/70 px-5 py-6 lg:px-7 xl:border-b-0 xl:border-r">
+            <div className="space-y-6">
+              <PaperHeroHeader
+                eyebrow="Single Stock Query"
+                title="单股查询"
+                description="把高频用到的输入、买点、历史回看和右侧总览收成一套更稳定的交易工作台，先回答现在怎么做，再展开辅助信息。"
+                icon={<Target className="h-7 w-7" />}
+              />
+
+              <form className="paper-panel-subtle space-y-4 px-4 py-4 md:px-5" onSubmit={handleSubmit}>
+                <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_110px_110px]">
+                  <Input
+                    value={query}
+                    onChange={(event) => setQuery(event.target.value)}
+                    placeholder="输入股票或 ETF 代码/名称，例如 688629.SH / 512880.SH / 华丰科技"
+                    className="h-12 rounded-2xl border-border/60 bg-background/78 text-foreground placeholder:text-muted-text"
                     hint="支持股票与 ETF 代码/名称。查询成功后会自动写入后端历史，方便回看和恢复查看。"
                   />
                   <Button
@@ -994,7 +1869,7 @@ const SingleStockQueryPage: React.FC = () => {
                     type="button"
                     variant="secondary"
                     size="lg"
-                    className="h-12 rounded-2xl border-border/60 bg-card/92 text-foreground hover:bg-hover/70"
+                    className="h-12 rounded-2xl border-border/60 bg-background/78 text-foreground hover:bg-card"
                     onClick={() => setHistoryOpen(true)}
                   >
                     <Clock3 className="h-4 w-4" />
@@ -1010,25 +1885,26 @@ const SingleStockQueryPage: React.FC = () => {
                     label="策略视角"
                     className="max-w-[320px]"
                   />
-                  <div className="rounded-2xl border border-border/60 bg-background/70 px-4 py-3 text-sm leading-6 text-secondary-text">
+                  <div className="paper-panel px-4 py-3 text-sm leading-6 text-secondary-text">
                     自动模式会并行评估低吸回踩、突破确认、趋势跟随和趋势持有；如果你已经知道自己只想看某一种买点，可以直接锁定对应策略。
                   </div>
                 </div>
 
-                <div className="flex flex-wrap gap-3">
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                   {QUICK_QUERIES.map((item) => (
                     <button
                       key={item.value}
                       type="button"
                       onClick={() => handleQuickQuery(item.value)}
-                      className={[
-                        'rounded-2xl border px-4 py-2 text-sm font-medium transition-all',
+                      className={cn(
+                        'paper-list-card text-left transition-colors',
                         query === item.value
-                          ? 'border-foreground/15 bg-foreground text-background shadow-soft-card'
-                          : 'border-border/60 bg-background/70 text-foreground hover:border-foreground/10 hover:bg-hover/70',
-                      ].join(' ')}
+                          ? 'border-foreground/16 bg-foreground/[0.05]'
+                          : 'hover:border-foreground/12 hover:bg-card',
+                      )}
                     >
-                      {item.label}
+                      <p className="text-sm font-semibold text-foreground">{item.label}</p>
+                      <p className="mt-2 text-xs leading-5 text-secondary-text">{item.note}</p>
                     </button>
                   ))}
                 </div>
@@ -1057,65 +1933,86 @@ const SingleStockQueryPage: React.FC = () => {
               ) : null}
 
               <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_310px]">
-                <div className="overflow-hidden rounded-[28px] border border-border/60 bg-[radial-gradient(circle_at_top_left,_hsl(var(--foreground)/0.05),_transparent_28%),radial-gradient(circle_at_bottom_right,_hsl(var(--accent)/0.18),_transparent_32%),linear-gradient(180deg,hsl(var(--card)/0.98),hsl(var(--background)/0.94))] px-5 py-6">
+                <PaperSectionCard
+                  eyebrow="Entry Decision"
+                  title={result && entryPlan ? entryPlan.headline : '先回答现在能不能上，再展开辅助分析'}
+                  description={result && entryPlan
+                    ? entryPlan.summary
+                    : '查询成功后，这里会先告诉你该低吸、等突破，还是暂时不要追，不再把所有字段一口气堆到首屏。'}
+                  className="overflow-hidden"
+                  actions={result && entryPlan ? (
+                    <div className="space-y-2 xl:min-w-[228px]">
+                      <Badge variant={signalBadgeVariant(result.signal)} className="border-0 px-3 py-1">
+                        {result.signal}
+                      </Badge>
+                      <p className="text-xs leading-6 text-secondary-text">
+                        {result.stockCode} {resultTimestamp ? `· 数据更新 ${formatHistoryTime(resultTimestamp)}` : ''}
+                      </p>
+                    </div>
+                  ) : null}
+                >
                   {result && entryPlan ? (
                     <div className="space-y-5">
-                      <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
-                        <div className="min-w-0">
-                          <p className="text-xs uppercase tracking-[0.18em] text-secondary-text">Entry Decision</p>
-                          <p className="mt-4 font-display text-3xl font-semibold tracking-tight text-foreground">{entryPlan.headline}</p>
-                          <p className="mt-3 max-w-3xl text-sm leading-7 text-secondary-text">{entryPlan.summary}</p>
-                          <div className="mt-5 flex flex-wrap items-center gap-3">
-                            <Badge variant={signalBadgeVariant(result.signal)} className="border-0 px-3 py-1">
-                              {result.signal}
-                            </Badge>
-                            <Badge variant="default" className="border border-foreground/10 bg-foreground/5 px-3 py-1 text-xs text-foreground">
-                              {result.strategyLabel || '自动决策'}
-                            </Badge>
-                            <Badge variant="default" className="border border-border/60 bg-background/70 px-3 py-1 text-xs text-foreground">
-                              {result.trendStatus || result.pattern || '等待结构确认'}
-                            </Badge>
-                          </div>
-                        </div>
+                      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                        <PaperMetricCard
+                          label="当前价格"
+                          value={formatNumber(result.currentPrice)}
+                          detail={formatPercent(result.pctChg, 2)}
+                          valueClassName="text-[1.45rem]"
+                          detailClassName={signedValueClass(result.pctChg)}
+                          tone="default"
+                        />
+                        <PaperMetricCard
+                          label="试仓区"
+                          value={formatRange(entryPlan.entryLower, entryPlan.entryUpper)}
+                          detail="优先等回踩到位"
+                          tone="muted"
+                        />
+                        <PaperMetricCard
+                          label="突破确认"
+                          value={formatNumber(entryPlan.breakoutPrice)}
+                          detail="放量再跟"
+                          tone="muted"
+                        />
+                        <PaperMetricCard
+                          label="禁追区"
+                          value={formatNumber(entryPlan.noChasePrice)}
+                          detail="超过这里尽量不追"
+                          tone="alert"
+                        />
+                      </div>
 
-                        <div className="rounded-[24px] border border-border/60 bg-background/68 px-5 py-4 xl:min-w-[248px]">
-                          <p className="text-xs uppercase tracking-[0.16em] text-secondary-text">当前价格</p>
-                          <p className="mt-3 text-4xl font-semibold text-foreground">{formatNumber(result.currentPrice)}</p>
-                          <p className={`mt-2 text-sm font-medium ${signedValueClass(result.pctChg)}`}>
-                            {formatPercent(result.pctChg, 2)}
-                          </p>
-                          <p className="mt-3 text-xs leading-6 text-secondary-text">
-                            结论：{`回踩 ${formatRange(entryPlan.entryLower, entryPlan.entryUpper)} 再做第一笔，或站上 ${formatNumber(entryPlan.breakoutPrice)} 后做确认买点。`}
-                          </p>
-                        </div>
+                      <div className="flex flex-wrap items-center gap-3">
+                        <Badge variant="default" className="border border-foreground/10 bg-foreground/5 px-3 py-1 text-xs text-foreground">
+                          {result.strategyLabel || '自动决策'}
+                        </Badge>
+                        <Badge variant="default" className="border border-border/60 bg-background/70 px-3 py-1 text-xs text-foreground">
+                          {result.trendStatus || result.pattern || '等待结构确认'}
+                        </Badge>
                       </div>
 
                       <div className="grid gap-3 xl:grid-cols-3">
                         {entryPlan.strategies.map((strategy) => (
-                          <div key={strategy.key} className={`rounded-[22px] border px-4 py-4 ${strategyToneClasses(strategy.tone)}`}>
+                          <PaperListBlock key={strategy.key} className={strategyToneClasses(strategy.tone)}>
                             <p className="text-sm font-semibold text-foreground">{strategy.title}</p>
                             <p className="mt-2 text-sm leading-6 text-secondary-text">{strategy.description}</p>
-                          </div>
+                          </PaperListBlock>
                         ))}
                       </div>
 
                       {result.strategyDecisions && result.strategyDecisions.length > 0 ? (
-                        <div className="rounded-[24px] border border-border/60 bg-background/68 p-4">
+                        <div className="paper-panel-muted p-4">
                           <div className="flex items-center justify-between gap-3">
                             <div>
-                              <p className="text-xs uppercase tracking-[0.16em] text-secondary-text">Strategy Matrix</p>
+                              <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-secondary-text">Strategy Matrix</p>
                               <p className="mt-2 text-sm text-secondary-text">同一只票在不同策略视角下，会给出不同的买点判断。</p>
                             </div>
                           </div>
                           <div className="mt-4 grid gap-3 xl:grid-cols-2">
                             {result.strategyDecisions.map((decision) => (
-                              <div
+                              <PaperListBlock
                                 key={decision.key}
-                                className={`rounded-[20px] border px-4 py-4 ${
-                                  decision.matched
-                                    ? strategyToneClasses(strategySignalTone(decision.signal))
-                                    : 'border-border/60 bg-background/72 text-secondary-text'
-                                }`}
+                                className={decision.matched ? strategyToneClasses(strategySignalTone(decision.signal)) : 'paper-panel-subtle text-secondary-text'}
                               >
                                 <div className="flex items-center justify-between gap-3">
                                   <p className="text-sm font-semibold text-foreground">{decision.label}</p>
@@ -1130,50 +2027,38 @@ const SingleStockQueryPage: React.FC = () => {
                                 {decision.pattern ? (
                                   <p className="mt-3 text-xs uppercase tracking-[0.14em] text-secondary-text">{decision.pattern}</p>
                                 ) : null}
-                              </div>
+                              </PaperListBlock>
                             ))}
                           </div>
                         </div>
                       ) : null}
                     </div>
                   ) : (
-                    <div className="space-y-5">
-                      <div>
-                        <p className="text-xs uppercase tracking-[0.18em] text-secondary-text">Entry Decision</p>
-                        <p className="mt-4 font-display text-3xl font-semibold tracking-tight text-foreground">先回答现在能不能上，再展开辅助分析</p>
-                        <p className="mt-3 max-w-3xl text-sm leading-7 text-secondary-text">
-                          查询成功后，这里会先告诉你该低吸、等突破，还是暂时不要追，不再把所有字段一口气堆到首屏。
-                        </p>
-                      </div>
-
-                      <div className="grid gap-3 xl:grid-cols-3">
-                        {[
-                          '买点优先：试仓区、突破位、止损线放在最前面。',
-                          '历史前置：最近结论直接放进首屏，不再藏在二级页面。',
-                          '辅助下沉：题材归因、数据覆盖改到右侧详情栏补充。',
-                        ].map((item) => (
-                          <div key={item} className="rounded-[22px] border border-border/60 bg-background/68 px-4 py-4 text-sm leading-6 text-secondary-text">
-                            {item}
-                          </div>
-                        ))}
-                      </div>
+                    <div className="grid gap-3 xl:grid-cols-3">
+                      {[
+                        '买点优先：试仓区、突破位、止损线放在最前面。',
+                        '历史前置：最近结论直接放进首屏，不再藏在二级页面。',
+                        '辅助下沉：题材归因、数据覆盖改到右侧详情栏补充。',
+                      ].map((item) => (
+                        <PaperListBlock key={item} className="text-sm leading-6 text-secondary-text">
+                          {item}
+                        </PaperListBlock>
+                      ))}
                     </div>
                   )}
-                </div>
+                </PaperSectionCard>
 
-                <div className="rounded-[28px] border border-border/60 bg-card/92 px-5 py-5">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-xs uppercase tracking-[0.18em] text-secondary-text">History Snapshot</p>
-                      <h3 className="mt-3 font-display text-2xl font-semibold text-foreground">历史入口前置</h3>
-                      <p className="mt-2 text-sm leading-6 text-secondary-text">最近几次对这只票的判断，直接放在右上首屏。</p>
-                    </div>
+                <PaperSectionCard
+                  eyebrow="History Snapshot"
+                  title="最近回看"
+                  description="保留最近两次判断做对照，完整历史放到右侧详情和抽屉。"
+                  actions={(
                     <Button variant="ghost" size="sm" className="text-secondary-text hover:bg-foreground/4 hover:text-foreground" onClick={() => setHistoryOpen(true)}>
                       全部历史
                     </Button>
-                  </div>
-
-                  <div className="mt-5 space-y-3">
+                  )}
+                >
+                  <div className="space-y-3">
                     {historyError ? <ApiErrorAlert error={historyError} /> : null}
                     {historyLoading ? (
                       <InlineAlert
@@ -1183,22 +2068,24 @@ const SingleStockQueryPage: React.FC = () => {
                       />
                     ) : null}
 
-                    {(result ? rightRailHistory : recentHistory).slice(0, 2).length > 0 ? (
-                      (result ? rightRailHistory : recentHistory).slice(0, 2).map((item) => (
+                    {historyPreviewItems.length > 0 ? (
+                      historyPreviewItems.map((item) => (
                         <button
                           key={item.queryId}
                           type="button"
                           onClick={() => void handleHistoryRestore(item)}
-                          className="w-full rounded-[22px] border border-border/60 bg-background/72 px-4 py-4 text-left transition-colors hover:border-foreground/10 hover:bg-hover/70"
+                          className="block w-full text-left"
                         >
-                          <p className="text-xs text-secondary-text">{formatHistoryTime(item.completedAt || item.createdAt)}</p>
-                          <p className="mt-2 text-sm font-semibold text-foreground">
-                            {(item.stockName || item.queryText || '单股查询')}
-                            <span className="text-secondary-text">{` · ${item.signal || '仅观察'}`}</span>
-                          </p>
-                          <p className="mt-2 text-xs leading-6 text-secondary-text">
-                            低吸 {formatRange(getHistoryEntryPlan(item)?.entryLower, getHistoryEntryPlan(item)?.entryUpper)}
-                          </p>
+                          <PaperListBlock className="transition-colors hover:border-foreground/10 hover:bg-card">
+                            <p className="text-xs text-secondary-text">{formatHistoryTime(item.completedAt || item.createdAt)}</p>
+                            <p className="mt-2 text-sm font-semibold text-foreground">
+                              {(item.stockName || item.queryText || '单股查询')}
+                              <span className="text-secondary-text">{` · ${item.signal || '仅观察'}`}</span>
+                            </p>
+                            <p className="mt-2 text-xs leading-6 text-secondary-text">
+                              低吸 {formatRange(getHistoryEntryPlan(item)?.entryLower, getHistoryEntryPlan(item)?.entryUpper)}
+                            </p>
+                          </PaperListBlock>
                         </button>
                       ))
                     ) : (
@@ -1209,51 +2096,43 @@ const SingleStockQueryPage: React.FC = () => {
                       />
                     )}
                   </div>
-                </div>
+                </PaperSectionCard>
               </div>
 
               {isLoading && !result ? (
-                <div className="rounded-[28px] border border-border/60 bg-background/68 px-5 py-5">
+                <PaperSectionCard eyebrow="Loading" title="正在拉取单股诊断结果" description="会先解析股票输入，再生成入场计划、买点区间和后端历史对照。">
                   <div className="flex items-center gap-4">
                     <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-border/60 bg-card text-foreground">
                       <Sparkles className="h-5 w-5 animate-pulse" />
                     </div>
-                    <div>
-                      <p className="text-lg font-semibold text-foreground">正在拉取单股诊断结果</p>
-                      <p className="mt-1 text-sm text-secondary-text">会先解析股票输入，再生成入场计划、买点区间和后端历史对照。</p>
-                    </div>
                   </div>
-                </div>
+                </PaperSectionCard>
               ) : null}
 
               {!result && !isLoading ? (
-                <div className="rounded-[28px] border border-border/70 bg-card/92 px-5 py-5">
-                  <p className="text-xs uppercase tracking-[0.18em] text-secondary-text">Buy Point Ruler</p>
-                  <p className="mt-3 font-display text-2xl font-semibold text-foreground">买点刻度尺会放在这里</p>
-                  <p className="mt-2 text-sm leading-7 text-secondary-text">
-                    查询成功后，这里会把试仓区、现价、突破位和禁追区放到一条线上，让你第一眼看清“离买点还有多远”。
-                  </p>
-                </div>
+                <PaperSectionCard
+                  eyebrow="Buy Point Ruler"
+                  title="买点刻度尺会放在这里"
+                  description="查询成功后，这里会把试仓区、现价、突破位和禁追区放到一条线上，让你第一眼看清离买点还有多远。"
+                >
+                  <div />
+                </PaperSectionCard>
               ) : null}
 
               {result && entryPlan ? (
                 <>
-                  <div className="rounded-[28px] border border-border/70 bg-card/92 px-5 py-5">
-                    <div className="flex flex-wrap items-start justify-between gap-4">
-                      <div>
-                        <p className="text-xs uppercase tracking-[0.18em] text-secondary-text">Buy Point Ruler</p>
-                        <h3 className="mt-3 font-display text-2xl font-semibold text-foreground">买点刻度尺</h3>
-                        <p className="mt-2 text-sm leading-7 text-secondary-text">
-                          支撑、试仓区、当前价、突破位、禁追区放在一条线上，让页面第一眼就能读出“离买点还有多远”。
-                        </p>
-                      </div>
-                      <div className="rounded-[22px] border border-border/60 bg-background/68 px-4 py-3 text-sm text-secondary-text">
+                  <PaperSectionCard
+                    eyebrow="Buy Point Ruler"
+                    title="买点刻度尺"
+                    description="支撑、试仓区、当前价、突破位、禁追区放在一条线上，让页面第一眼就能读出离买点还有多远。"
+                    actions={(
+                      <div className="paper-panel-muted px-4 py-3 text-sm text-secondary-text">
                         当前建议：<span className="font-semibold text-foreground">{entryPlan.headline}</span>
                       </div>
-                    </div>
-
+                    )}
+                  >
                     {priceRail ? (
-                      <div className="mt-8 rounded-[24px] border border-border/60 bg-background/70 px-5 py-6">
+                      <div className="paper-panel-muted px-5 py-6">
                         <div className="relative h-24">
                           <div className="absolute left-4 right-4 top-10 h-2.5 rounded-full bg-border/90" />
                           <div
@@ -1281,18 +2160,18 @@ const SingleStockQueryPage: React.FC = () => {
                           {priceRail.points.map((point) => {
                             const isCurrent = point.key === 'current';
                             return (
-                                <div
-                                  key={point.key}
-                                  className="absolute top-2 flex -translate-x-1/2 flex-col items-center gap-2"
-                                  style={{ left: `calc(${point.position}% + 1rem)` }}
-                                >
-                                  <div className={`h-5 w-5 rounded-full border-4 ${markerToneClasses(point.tone, isCurrent)}`} />
-                                  <div className="min-w-[78px] text-center">
+                              <div
+                                key={point.key}
+                                className="absolute top-2 flex -translate-x-1/2 flex-col items-center gap-2"
+                                style={{ left: `calc(${point.position}% + 1rem)` }}
+                              >
+                                <div className={`h-5 w-5 rounded-full border-4 ${markerToneClasses(point.tone, isCurrent)}`} />
+                                <div className="min-w-[78px] text-center">
                                   <p className="text-xs font-semibold text-foreground">{point.label}</p>
                                   <p className="mt-1 text-xs text-secondary-text">{formatNumber(point.value)}</p>
-                                  </div>
                                 </div>
-                              );
+                              </div>
+                            );
                           })}
                         </div>
 
@@ -1310,45 +2189,26 @@ const SingleStockQueryPage: React.FC = () => {
                         message="当前价格或关键位信息不够完整，先参考下方的入场清单和风险说明。"
                       />
                     )}
-                  </div>
+                  </PaperSectionCard>
 
                   <div className="grid gap-5 xl:grid-cols-[0.88fr_1.06fr_1.06fr]">
-                    <div className="rounded-[28px] border border-border/60 bg-card/92 px-5 py-5">
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-border/60 bg-background/80 text-foreground">
-                          <Target className="h-5 w-5" />
-                        </div>
-                        <div>
-                          <p className="text-xs uppercase tracking-[0.18em] text-secondary-text">Checklist</p>
-                          <h3 className="mt-1 font-display text-2xl font-semibold text-foreground">入场前 checklist</h3>
-                        </div>
-                      </div>
-                      <div className="mt-5 space-y-3">
+                    <PaperSectionCard eyebrow="Checklist" title="入场前 checklist" icon={<Target className="h-5 w-5" />} className="px-5 py-5">
+                      <div className="space-y-3">
                         {entryPlan.checklist.map((item) => (
-                          <div key={item} className="rounded-[22px] border border-border/60 bg-background/70 px-4 py-4 text-sm leading-6 text-foreground">
+                          <PaperListBlock key={item} className="text-sm leading-6 text-foreground">
                             {item}
-                          </div>
+                          </PaperListBlock>
                         ))}
                       </div>
-                    </div>
+                    </PaperSectionCard>
 
-                    <div className="rounded-[28px] border border-border/60 bg-card/92 px-5 py-5">
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-border/60 bg-background/80 text-foreground">
-                          <TrendingUp className="h-5 w-5" />
-                        </div>
-                        <div>
-                          <p className="text-xs uppercase tracking-[0.18em] text-secondary-text">Why Watch</p>
-                          <h3 className="mt-1 font-display text-2xl font-semibold text-foreground">为什么还值得继续看</h3>
-                        </div>
-                      </div>
-
-                      <div className="mt-5 space-y-3">
+                    <PaperSectionCard eyebrow="Why Watch" title="为什么还值得继续看" icon={<TrendingUp className="h-5 w-5" />} className="px-5 py-5">
+                      <div className="space-y-3">
                         {result.selectedReasons.length > 0 ? (
                           result.selectedReasons.slice(0, 2).map((reason) => (
-                            <div key={reason} className="rounded-[22px] border border-border/60 bg-background/70 px-4 py-4 text-sm leading-6 text-foreground">
+                            <PaperListBlock key={reason} className="text-sm leading-6 text-foreground">
                               {reason}
-                            </div>
+                            </PaperListBlock>
                           ))
                         ) : (
                           <InlineAlert
@@ -1363,23 +2223,13 @@ const SingleStockQueryPage: React.FC = () => {
                         <MiniMetric label="趋势分" value={formatNumber(result.trendScore, 1)} tone="buy" />
                         <MiniMetric label="趋势状态" value={result.trendStatus ?? '--'} tone="neutral" />
                       </div>
-                    </div>
+                    </PaperSectionCard>
 
-                    <div className="rounded-[28px] border border-border/60 bg-card/92 px-5 py-5">
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-border/60 bg-background/80 text-foreground">
-                          <AlertTriangle className="h-5 w-5" />
-                        </div>
-                        <div>
-                          <p className="text-xs uppercase tracking-[0.18em] text-secondary-text">Why Wait</p>
-                          <h3 className="mt-1 font-display text-2xl font-semibold text-foreground">为什么现在不能太激进</h3>
-                        </div>
-                      </div>
-
-                      <div className="mt-5 space-y-3">
+                    <PaperSectionCard eyebrow="Why Wait" title="为什么现在不能太激进" icon={<AlertTriangle className="h-5 w-5" />} className="px-5 py-5">
+                      <div className="space-y-3">
                         {result.excludedReasons.length > 0 ? (
                           result.excludedReasons.slice(0, 2).map((reason) => (
-                            <div key={reason} className="rounded-[22px] border border-danger/20 bg-danger/10 px-4 py-4 text-sm leading-6 text-foreground">
+                            <div key={reason} className="paper-alert-card px-4 py-4 text-sm leading-6 text-foreground">
                               {reason}
                             </div>
                           ))
@@ -1392,33 +2242,33 @@ const SingleStockQueryPage: React.FC = () => {
                         )}
                       </div>
 
-                      <div className="mt-5 rounded-[22px] border border-danger/20 bg-danger/10 px-4 py-4">
-                        <p className="text-sm leading-7 text-foreground">{entryPlan.summary}</p>
+                      <div className="paper-alert-card mt-5 px-4 py-4">
+                        <p className="text-sm leading-6 text-foreground">{entryPlan.summary}</p>
                       </div>
-                    </div>
+                    </PaperSectionCard>
                   </div>
 
                   {hasFundamentalBlocks ? (
-                    <div className="rounded-[28px] border border-border/60 bg-card/92 px-5 py-5">
-                      <div className="flex flex-wrap items-start justify-between gap-4">
-                        <div className="max-w-4xl">
-                          <p className="text-xs uppercase tracking-[0.18em] text-secondary-text">Fundamental Context</p>
-                          <h3 className="mt-1 font-display text-2xl font-semibold text-foreground">基本面分块上下文</h3>
-                          <p className="mt-3 max-w-4xl text-sm leading-7 text-secondary-text">
-                            这里优先展示底层基本面拿到了什么、缺了什么、是否能直接作为交易判断依据，比近期催化更靠前。
-                          </p>
-                        </div>
+                    <PaperSectionCard
+                      eyebrow="Fundamental Context"
+                      title="基本面分块上下文"
+                      description="这里优先展示底层基本面拿到了什么、缺了什么、是否能直接作为交易判断依据，比近期催化更靠前。"
+                      actions={(
                         <Badge variant={fundamentalContext?.status === 'ok' ? 'success' : 'warning'} className="border-0 px-3 py-1">
                           {coverageStatusLabel(fundamentalContext?.status || 'partial')}
                         </Badge>
-                      </div>
-
-                      <div className="mt-5 grid gap-3 xl:grid-cols-3">
-                        <FundamentalBlockCard
+                      )}
+                    >
+                      <div className="grid gap-3 xl:grid-cols-3">
+                        <PaperDataBlockCard
                           title="估值"
-                          status={valuationBlock?.status}
-                          sourceChain={valuationBlock?.sourceChain}
-                          errors={valuationBlock?.errors}
+                          subtitle={`来源 ${sourceChainSummary(valuationBlock?.sourceChain)}`}
+                          status={(
+                            <Badge variant={valuationBlock?.status === 'ok' || valuationBlock?.status === 'full' ? 'success' : valuationBlock?.status === 'partial' ? 'warning' : 'default'} className="border-0 px-2 py-1">
+                              {coverageStatusLabel(valuationBlock?.status || 'failed')}
+                            </Badge>
+                          )}
+                          footer={valuationBlock?.errors?.length ? <p className="text-xs leading-5 text-secondary-text">错误: {valuationBlock.errors.slice(0, 2).join(' | ')}</p> : null}
                         >
                           <div className="grid gap-3 sm:grid-cols-2">
                             <MiniMetric label="PE" value={formatNumber(valuation?.peRatio)} tone="neutral" />
@@ -1426,13 +2276,17 @@ const SingleStockQueryPage: React.FC = () => {
                             <MiniMetric label="总市值" value={formatMoney(valuation?.totalMv)} tone="neutral" />
                             <MiniMetric label="流通市值" value={formatMoney(valuation?.circMv)} tone="neutral" />
                           </div>
-                        </FundamentalBlockCard>
+                        </PaperDataBlockCard>
 
-                        <FundamentalBlockCard
+                        <PaperDataBlockCard
                           title="成长"
-                          status={growthBlock?.status}
-                          sourceChain={growthBlock?.sourceChain}
-                          errors={growthBlock?.errors}
+                          subtitle={`来源 ${sourceChainSummary(growthBlock?.sourceChain)}`}
+                          status={(
+                            <Badge variant={growthBlock?.status === 'ok' || growthBlock?.status === 'full' ? 'success' : growthBlock?.status === 'partial' ? 'warning' : 'default'} className="border-0 px-2 py-1">
+                              {coverageStatusLabel(growthBlock?.status || 'failed')}
+                            </Badge>
+                          )}
+                          footer={growthBlock?.errors?.length ? <p className="text-xs leading-5 text-secondary-text">错误: {growthBlock.errors.slice(0, 2).join(' | ')}</p> : null}
                         >
                           <div className="grid gap-3 sm:grid-cols-2">
                             <MiniMetric label="营收同比" value={formatPercent(growth?.revenueYoy, 1)} tone="neutral" />
@@ -1440,13 +2294,24 @@ const SingleStockQueryPage: React.FC = () => {
                             <MiniMetric label="ROE" value={formatPercent(growth?.roe, 1)} tone="neutral" />
                             <MiniMetric label="毛利率" value={formatPercent(growth?.grossMargin, 1)} tone="neutral" />
                           </div>
-                        </FundamentalBlockCard>
+                        </PaperDataBlockCard>
 
-                        <FundamentalBlockCard
+                        <PaperDataBlockCard
                           title="盈利"
-                          status={earningsBlock?.status}
-                          sourceChain={earningsBlock?.sourceChain}
-                          errors={earningsBlock?.errors}
+                          subtitle={`来源 ${sourceChainSummary(earningsBlock?.sourceChain)}`}
+                          status={(
+                            <Badge variant={earningsBlock?.status === 'ok' || earningsBlock?.status === 'full' ? 'success' : earningsBlock?.status === 'partial' ? 'warning' : 'default'} className="border-0 px-2 py-1">
+                              {coverageStatusLabel(earningsBlock?.status || 'failed')}
+                            </Badge>
+                          )}
+                          footer={(
+                            <>
+                              <p className="text-xs leading-5 text-secondary-text">
+                                {earnings?.forecastSummary || earnings?.quickReportSummary || '当前没有拿到明确的业绩预告摘要。'}
+                              </p>
+                              {earningsBlock?.errors?.length ? <p className="text-xs leading-5 text-secondary-text">错误: {earningsBlock.errors.slice(0, 2).join(' | ')}</p> : null}
+                            </>
+                          )}
                         >
                           <div className="grid gap-3 sm:grid-cols-2">
                             <MiniMetric label="报告期" value={earnings?.financialReport?.reportDate ?? '--'} tone="neutral" />
@@ -1454,50 +2319,70 @@ const SingleStockQueryPage: React.FC = () => {
                             <MiniMetric label="营收" value={formatMoney(earnings?.financialReport?.revenue)} tone="neutral" />
                             <MiniMetric label="净利润" value={formatMoney(earnings?.financialReport?.netProfitParent)} tone="neutral" />
                           </div>
-                          <p className="mt-3 text-xs leading-5 text-slate-400">
-                            {earnings?.forecastSummary || earnings?.quickReportSummary || '当前没有拿到明确的业绩预告摘要。'}
-                          </p>
-                        </FundamentalBlockCard>
+                        </PaperDataBlockCard>
                       </div>
 
                       <div className="mt-3 grid gap-3 xl:grid-cols-2">
-                        <FundamentalBlockCard
+                        <PaperDataBlockCard
                           title="机构"
-                          status={institutionBlock?.status}
-                          sourceChain={institutionBlock?.sourceChain}
-                          errors={institutionBlock?.errors}
+                          subtitle={`来源 ${sourceChainSummary(institutionBlock?.sourceChain)}`}
+                          status={(
+                            <Badge variant={institutionBlock?.status === 'ok' || institutionBlock?.status === 'full' ? 'success' : institutionBlock?.status === 'partial' ? 'warning' : 'default'} className="border-0 px-2 py-1">
+                              {coverageStatusLabel(institutionBlock?.status || 'failed')}
+                            </Badge>
+                          )}
+                          footer={(
+                            <>
+                              {institution?.textSummary ? (
+                                <p className="text-xs leading-5 text-secondary-text">
+                                  文本补充{institution.textProvider ? ` · ${institution.textProvider}` : ''}：{institution.textSummary}
+                                </p>
+                              ) : null}
+                              {institutionBlock?.errors?.length ? <p className="text-xs leading-5 text-secondary-text">错误: {institutionBlock.errors.slice(0, 2).join(' | ')}</p> : null}
+                            </>
+                          )}
                         >
                           <div className="grid gap-3 sm:grid-cols-2">
                             <MiniMetric label="机构持仓变化" value={formatPercent(institution?.institutionHoldingChange, 1)} tone="neutral" />
                             <MiniMetric label="前十股东变化" value={formatPercent(institution?.top10HolderChange, 1)} tone="neutral" />
                           </div>
-                          {institution?.textSummary ? (
-                            <p className="mt-3 text-xs leading-5 text-slate-300">
-                              文本补充{institution.textProvider ? ` · ${institution.textProvider}` : ''}：{institution.textSummary}
-                            </p>
-                          ) : null}
-                        </FundamentalBlockCard>
+                        </PaperDataBlockCard>
 
-                        <FundamentalBlockCard
+                        <PaperDataBlockCard
                           title="资金流"
-                          status={capitalFlowBlock?.status}
-                          sourceChain={capitalFlowBlock?.sourceChain}
-                          errors={capitalFlowBlock?.errors}
+                          subtitle={`来源 ${sourceChainSummary(capitalFlowBlock?.sourceChain)}`}
+                          status={(
+                            <Badge variant={capitalFlowBlock?.status === 'ok' || capitalFlowBlock?.status === 'full' ? 'success' : capitalFlowBlock?.status === 'partial' ? 'warning' : 'default'} className="border-0 px-2 py-1">
+                              {coverageStatusLabel(capitalFlowBlock?.status || 'failed')}
+                            </Badge>
+                          )}
+                          footer={capitalFlowBlock?.errors?.length ? <p className="text-xs leading-5 text-secondary-text">错误: {capitalFlowBlock.errors.slice(0, 2).join(' | ')}</p> : null}
                         >
                           <div className="grid gap-3 sm:grid-cols-3">
                             <MiniMetric label="主力净流入" value={formatMoney(capitalFlow?.mainNetInflow)} tone="neutral" />
                             <MiniMetric label="5日净流入" value={formatMoney(capitalFlow?.inflow5d)} tone="neutral" />
                             <MiniMetric label="10日净流入" value={formatMoney(capitalFlow?.inflow10d)} tone="neutral" />
                           </div>
-                        </FundamentalBlockCard>
+                        </PaperDataBlockCard>
                       </div>
 
                       <div className="mt-3 grid gap-3 xl:grid-cols-[0.85fr_1.15fr]">
-                        <FundamentalBlockCard
+                        <PaperDataBlockCard
                           title="龙虎榜"
-                          status={dragonTigerBlock?.status}
-                          sourceChain={dragonTigerBlock?.sourceChain}
-                          errors={dragonTigerBlock?.errors}
+                          subtitle={`来源 ${sourceChainSummary(dragonTigerBlock?.sourceChain)}`}
+                          status={(
+                            <Badge variant={dragonTigerBlock?.status === 'ok' || dragonTigerBlock?.status === 'full' ? 'success' : dragonTigerBlock?.status === 'partial' ? 'warning' : 'default'} className="border-0 px-2 py-1">
+                              {coverageStatusLabel(dragonTigerBlock?.status || 'failed')}
+                            </Badge>
+                          )}
+                          footer={(
+                            <>
+                              {dragonTiger?.reason ? <p className="text-xs leading-5 text-secondary-text">上榜原因：{dragonTiger.reason}</p> : null}
+                              {dragonTiger?.buySeats?.length ? <p className="text-xs leading-5 text-secondary-text">买入席位：{dragonTiger.buySeats.slice(0, 3).join(' / ')}</p> : null}
+                              {dragonTiger?.sellSeats?.length ? <p className="text-xs leading-5 text-secondary-text">卖出席位：{dragonTiger.sellSeats.slice(0, 3).join(' / ')}</p> : null}
+                              {dragonTigerBlock?.errors?.length ? <p className="text-xs leading-5 text-secondary-text">错误: {dragonTigerBlock.errors.slice(0, 2).join(' | ')}</p> : null}
+                            </>
+                          )}
                         >
                           <div className="grid gap-3 sm:grid-cols-2">
                             <MiniMetric
@@ -1509,28 +2394,22 @@ const SingleStockQueryPage: React.FC = () => {
                             <MiniMetric label="净买额" value={formatMoney(dragonTiger?.netBuyAmount)} tone="neutral" />
                             <MiniMetric label="机构净买" value={formatMoney(dragonTiger?.institutionNetBuy)} tone="neutral" />
                           </div>
-                          {dragonTiger?.reason ? (
-                            <p className="text-xs leading-5 text-slate-300">上榜原因：{dragonTiger.reason}</p>
-                          ) : null}
-                          {dragonTiger?.buySeats?.length ? (
-                            <p className="text-xs leading-5 text-slate-400">买入席位：{dragonTiger.buySeats.slice(0, 3).join(' / ')}</p>
-                          ) : null}
-                          {dragonTiger?.sellSeats?.length ? (
-                            <p className="text-xs leading-5 text-slate-400">卖出席位：{dragonTiger.sellSeats.slice(0, 3).join(' / ')}</p>
-                          ) : null}
-                        </FundamentalBlockCard>
+                        </PaperDataBlockCard>
 
-                        <FundamentalBlockCard
+                        <PaperDataBlockCard
                           title="所属板块"
-                          status={boardsBlock?.status}
-                          sourceChain={boardsBlock?.sourceChain}
-                          errors={boardsBlock?.errors}
+                          subtitle={`板块来源 ${boardSourceLabel(boardSource, boardProvider)}`}
+                          status={(
+                            <Badge variant={boardsBlock?.status === 'ok' || boardsBlock?.status === 'full' ? 'success' : boardsBlock?.status === 'partial' ? 'warning' : 'default'} className="border-0 px-2 py-1">
+                              {coverageStatusLabel(boardsBlock?.status || 'failed')}
+                            </Badge>
+                          )}
+                          footer={boardsBlock?.errors?.length ? <p className="text-xs leading-5 text-secondary-text">错误: {boardsBlock.errors.slice(0, 2).join(' | ')}</p> : null}
                         >
-                          <p className="text-xs text-slate-400">板块来源 {boardSourceLabel(boardSource, boardProvider)}</p>
                           {boardItems.length > 0 ? (
-                            <div className="mt-3 flex flex-wrap gap-2">
+                            <div className="flex flex-wrap gap-2">
                               {boardItems.slice(0, 10).map((board) => (
-                                <div key={`${board.name}-${board.code ?? ''}`} className="rounded-full border border-border/60 bg-background/70 px-3 py-2">
+                                <div key={`${board.name}-${board.code ?? ''}`} className="paper-chip px-3 py-2">
                                   <p className="text-sm font-medium text-foreground">{board.name}</p>
                                   {boardCaption(board) ? (
                                     <p className="mt-1 text-[11px] text-secondary-text">{boardCaption(board)}</p>
@@ -1539,26 +2418,34 @@ const SingleStockQueryPage: React.FC = () => {
                               ))}
                             </div>
                           ) : null}
-                        </FundamentalBlockCard>
+                        </PaperDataBlockCard>
                       </div>
-                    </div>
+                    </PaperSectionCard>
                   ) : null}
                 </>
               ) : null}
             </div>
           </div>
 
-          <aside className="bg-[linear-gradient(180deg,hsl(var(--card)/0.96),hsl(var(--background)/0.94))] px-5 py-6 lg:px-6">
+          <aside className="paper-panel px-5 py-6 lg:px-6">
             <div className="space-y-5 xl:sticky xl:top-24">
               <div>
-                <h3 className="text-lg font-semibold text-foreground">股票详情</h3>
+                <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-secondary-text">Result Overview</p>
+                <h3 className="mt-1 text-lg font-semibold text-foreground">股票详情</h3>
                 <div className="mt-3 h-px bg-border/70" />
               </div>
 
-              <div>
-                <div className="flex flex-wrap items-end gap-3">
-                  <h4 className="text-3xl font-semibold text-foreground">{result?.stockName ?? '等待查询结果'}</h4>
-                  <span className="text-sm text-secondary-text">{result?.stockCode ?? '--'}</span>
+              <div className="paper-panel-subtle px-4 py-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-end gap-3">
+                      <h4 className="text-[2rem] font-semibold tracking-[-0.03em] text-foreground">{result?.stockName ?? '等待查询结果'}</h4>
+                      <span className="text-sm text-secondary-text">{result?.stockCode ?? '--'}</span>
+                    </div>
+                    <p className="mt-2 text-xs leading-6 text-secondary-text">
+                      {resultTimestamp ? `数据更新 ${formatHistoryTime(resultTimestamp)}` : '查询完成后会展示最新结果时间'}
+                    </p>
+                  </div>
                   {instrumentBadgeLabel(result?.instrumentLabel, result?.instrumentType) ? (
                     <Badge variant="info" className="border-0 px-3 py-1">
                       {instrumentBadgeLabel(result?.instrumentLabel, result?.instrumentType)}
@@ -1566,82 +2453,65 @@ const SingleStockQueryPage: React.FC = () => {
                   ) : null}
                 </div>
                 <div className="mt-5 flex flex-wrap items-end gap-3">
-                  <p className="text-4xl font-semibold text-foreground">{formatNumber(result?.currentPrice)}</p>
-                  <p className={`text-2xl font-semibold ${signedValueClass(result?.pctChg)}`}>
+                  <p className="text-[2.15rem] font-semibold tracking-[-0.03em] text-foreground">{formatNumber(result?.currentPrice)}</p>
+                  <p className={`text-[1.55rem] font-semibold ${signedValueClass(result?.pctChg)}`}>
                     {formatPercent(result?.pctChg, 2)}
                   </p>
                 </div>
-                <p className="mt-3 text-sm leading-7 text-secondary-text">
+                <p className="mt-3 text-sm leading-6 text-secondary-text">
                   {result && entryPlan
-                    ? '右侧延续全站的详情栏语言，但内容集中服务于单股交易视图。'
+                    ? '右侧只保留高频复核信息，尽量让你在一列里完成二次确认。'
                     : '查询成功后，这里会汇总股票详情、关键信号、关键位和最近几次判断。'}
                 </p>
               </div>
 
-              <div className="rounded-[24px] border border-border/60 bg-card/92 px-5 py-5">
-                <p className="text-xs uppercase tracking-[0.18em] text-secondary-text">主信号相关度</p>
-                <div className="mt-4 flex items-center justify-between gap-4">
-                  <div className="space-y-2">
-                    <p className="text-2xl font-semibold text-foreground">{signalOverview?.label ?? '等待信号'}</p>
-                    <p className="max-w-[190px] text-sm leading-6 text-secondary-text">
-                      {signalOverview?.description ?? '先完成一次查询，这里会告诉你更适合等回踩、等突破，还是保持观察。'}
-                    </p>
-                  </div>
-                  <div
-                    className="relative flex h-28 w-28 items-center justify-center rounded-full p-2"
-                    style={{
-                      background: signalOverview
-                        ? `conic-gradient(from 210deg, rgba(39,31,23,0.92) 0deg, rgba(39,31,23,0.92) ${signalOverview.score * 3.6}deg, rgba(188,177,164,0.55) ${signalOverview.score * 3.6}deg 360deg)`
-                        : 'conic-gradient(from 210deg, rgba(188,177,164,0.65) 0deg, rgba(188,177,164,0.65) 360deg)',
-                    }}
-                  >
-                    <div className="flex h-full w-full flex-col items-center justify-center rounded-full bg-card/95">
-                      <span className="text-2xl font-semibold text-foreground">{signalOverview?.score ?? '--'}</span>
-                      <span className="mt-1 text-[11px] text-secondary-text">{signalOverview ? '可等待买点' : '等待结果'}</span>
-                    </div>
-                  </div>
+              <PaperSectionCard eyebrow="交易总览" title={signalOverview?.label ?? '等待信号'} className="px-5 py-5">
+                <p className="text-sm leading-6 text-secondary-text">
+                  {signalOverview?.description ?? '先完成一次查询，这里会告诉你更适合等回踩、等突破，还是保持观察。'}
+                </p>
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  <PaperMetricCard label="信号分" value={signalOverview?.score ?? '--'} valueClassName="text-[1.4rem]" tone="default" />
+                  <PaperMetricCard label="主信号" value={result?.signal ?? '--'} tone="muted" />
+                  <PaperMetricCard label="策略视角" value={result?.strategyLabel || '自动决策'} tone="muted" />
+                  <PaperMetricCard label="试仓区" value={formatRange(entryPlan?.entryLower, entryPlan?.entryUpper)} tone="muted" />
+                  <PaperMetricCard label="突破位" value={formatNumber(entryPlan?.breakoutPrice)} tone="muted" />
+                  <PaperMetricCard label="止损线" value={formatNumber(entryPlan?.stopLossPrice)} tone="alert" />
                 </div>
-              </div>
+              </PaperSectionCard>
 
-              <div className="rounded-[24px] border border-border/60 bg-card/92 px-5 py-5">
-                <p className="text-xs uppercase tracking-[0.18em] text-secondary-text">技术结构</p>
+              <PaperSectionCard eyebrow="技术结构" className="px-5 py-5" bodyClassName="space-y-0">
                 <div className="mt-5 space-y-4">
                   <DetailMetricRow label="趋势方向" value={result?.trendStatus ?? '--'} accent="success" />
                   <DetailMetricRow label="形态结构" value={result?.pattern ?? '--'} accent="success" />
                   <DetailMetricRow label="动量状态" value={result?.buySignal ?? result?.signal ?? '--'} accent="success" />
                 </div>
-              </div>
+              </PaperSectionCard>
 
               <div className="grid gap-4 sm:grid-cols-2">
-                <div className="rounded-[24px] border border-border/60 bg-card/92 px-5 py-5">
-                  <p className="text-xs uppercase tracking-[0.18em] text-secondary-text">关键位</p>
+                <PaperSectionCard eyebrow="关键位" className="px-5 py-5" bodyClassName="space-y-0">
                   <div className="mt-5 space-y-3">
                     <DetailMetricRow label="支撑位" value={formatNumber(entryPlan?.supportPrice)} accent="success" />
                     <DetailMetricRow label="强支撑" value={formatNumber(entryPlan?.stopLossPrice)} accent="neutral" />
                     <DetailMetricRow label="突破位" value={formatNumber(entryPlan?.breakoutPrice)} accent="warning" />
                   </div>
-                </div>
+                </PaperSectionCard>
 
-                <div className="rounded-[24px] border border-border/60 bg-card/92 px-5 py-5">
-                  <p className="text-xs uppercase tracking-[0.18em] text-secondary-text">均线位置</p>
+                <PaperSectionCard eyebrow="均线位置" className="px-5 py-5" bodyClassName="space-y-0">
                   <div className="mt-5 space-y-3">
                     <DetailMetricRow label="MA10" value={formatNumber(result?.ma10)} accent="neutral" />
                     <DetailMetricRow label="MA20" value={formatNumber(result?.ma20)} accent="neutral" />
                     <DetailMetricRow label="PE / PB" value={`PE ${formatNumber(result?.peRatio)} / PB ${formatNumber(result?.pbRatio)}`} accent="neutral" />
                   </div>
-                </div>
+                </PaperSectionCard>
               </div>
 
-              <div className="rounded-[24px] border border-border/60 bg-card/92 px-5 py-5">
-                <p className="text-xs uppercase tracking-[0.18em] text-secondary-text">查询历史</p>
-                <h4 className="mt-3 text-lg font-semibold text-foreground">这只票之前怎么看过</h4>
-
+              <PaperSectionCard eyebrow="查询历史" title="这只票最近怎么看" className="px-5 py-5">
                 <div className="mt-4 space-y-3">
                   {historyComparison ? (
-                    <div className="rounded-[20px] border border-border/60 bg-background/72 px-4 py-4">
+                    <PaperListBlock>
                       <p className="text-sm font-semibold text-foreground">{historyComparison.headline}</p>
                       <p className="mt-2 text-sm leading-6 text-secondary-text">{historyComparison.description}</p>
-                    </div>
+                    </PaperListBlock>
                   ) : null}
 
                   {rightRailHistory.length > 0 ? (
@@ -1650,81 +2520,81 @@ const SingleStockQueryPage: React.FC = () => {
                         key={item.queryId}
                         type="button"
                         onClick={() => void handleHistoryRestore(item)}
-                        className="block w-full rounded-[20px] border border-border/60 bg-background/72 px-4 py-3 text-left transition-colors hover:border-foreground/15 hover:bg-card"
+                        className="block w-full text-left"
                       >
-                        <p className="text-xs text-secondary-text">{formatHistoryTime(item.completedAt || item.createdAt)}</p>
-                        <p className="mt-1 text-sm text-foreground">{getHistoryLabel(item)}</p>
+                        <PaperListBlock className="py-3 transition-colors hover:border-foreground/15 hover:bg-card">
+                          <p className="text-xs text-secondary-text">{formatHistoryTime(item.completedAt || item.createdAt)}</p>
+                          <p className="mt-1 text-sm text-foreground">{getHistoryLabel(item)}</p>
+                        </PaperListBlock>
                       </button>
                     ))
                   ) : (
                     <p className="text-sm leading-6 text-secondary-text">查过几次之后，这里会直接显示最近几次对这只票的判断。</p>
                   )}
                 </div>
-              </div>
+              </PaperSectionCard>
 
-              <div className="grid gap-3 sm:grid-cols-3">
-                <Link
-                  to={
-                    result?.queryId
-                      ? `/deep-analysis?queryId=${encodeURIComponent(result.queryId)}&stock=${encodeURIComponent(result.stockCode)}&name=${encodeURIComponent(result.stockName)}`
-                      : '/deep-analysis'
-                  }
-                  className="inline-flex items-center justify-center rounded-2xl border border-foreground/15 bg-foreground px-4 py-3 text-sm font-medium text-background shadow-soft-card transition hover:opacity-92"
-                >
-                  发起深度分析
-                </Link>
-                <Button
-                  type="button"
-                  isLoading={watchlistLoading}
-                  loadingText="加入中..."
-                  disabled={!result || isInWatchlist}
-                  onClick={() => void handleAddToWatchlist()}
-                  className="rounded-2xl border border-border/60 bg-card px-4 py-3 text-sm font-medium text-foreground transition hover:bg-background"
-                >
-                  {isInWatchlist ? '已在观察池' : '加入观察池'}
-                </Button>
-                <button
-                  type="button"
-                  disabled={!result || hasStockAlertRules || alertRuleLoading}
-                  onClick={() => void handleCreateDefaultAlerts()}
-                  className="inline-flex items-center justify-center rounded-2xl border border-border/60 bg-background/80 px-4 py-3 text-sm font-medium text-foreground enabled:cursor-pointer enabled:hover:bg-card disabled:opacity-60"
-                >
-                  {alertRuleLoading ? '创建中...' : hasStockAlertRules ? '告警已设置' : '设置告警'}
-                </button>
-              </div>
-
-              <div className="flex flex-co gap-3 rounded-[24px] border border-border/60 bg-card/92 px-4 py-4 md:grid-cols-[minmax(0,220px)_1fr]">
-                <Input
-                  label="告警扫描间隔(分钟)"
-                  value={alertScanInterval}
-                  onChange={(event) => setAlertScanInterval(event.target.value)}
-                  placeholder={`默认 ${MIN_ALERT_SCAN_INTERVAL_MINUTES}`}
-                  className="h-11 rounded-2xl"
-                />
-                <div className="flex items-center justify-between gap-3 rounded-[20px] border border-border/60 bg-background/72 px-4 py-3">
-                  <div>
-                    <p className="text-sm font-medium text-foreground">扫描频率由输入决定</p>
-                    <p className="mt-1 text-xs leading-6 text-secondary-text">单位分钟，最小 {MIN_ALERT_SCAN_INTERVAL_MINUTES} 分钟。创建默认规则时会同步写入每条规则。</p>
-                  </div>
-                  <Badge variant="info" className="border-0 px-3 py-1">
-                    默认 {MIN_ALERT_SCAN_INTERVAL_MINUTES} 分钟
-                  </Badge>
+              <PaperSectionCard
+                eyebrow="联动操作"
+                title="把这次判断接到后续动作"
+                description="如果这只票值得继续跟，就在这里直接接深度分析、观察池和默认告警。"
+                className="px-5 py-5"
+              >
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <Link
+                    to={
+                      result?.queryId
+                        ? `/deep-analysis?queryId=${encodeURIComponent(result.queryId)}&stock=${encodeURIComponent(result.stockCode)}&name=${encodeURIComponent(result.stockName)}`
+                        : '/deep-analysis'
+                    }
+                    className="inline-flex min-h-12 items-center justify-center rounded-2xl border border-foreground/15 bg-foreground px-4 py-3 text-sm font-medium text-background shadow-soft-card transition hover:opacity-92"
+                  >
+                    发起深度分析
+                  </Link>
+                  <Button
+                    type="button"
+                    isLoading={watchlistLoading}
+                    loadingText="加入中..."
+                    disabled={!result || isInWatchlist}
+                    onClick={() => void handleAddToWatchlist()}
+                    className="min-h-12 rounded-2xl border border-border/60 bg-card px-4 py-3 text-sm font-medium text-foreground transition hover:bg-background"
+                  >
+                    {isInWatchlist ? '已在观察池' : '加入观察池'}
+                  </Button>
+                  <button
+                    type="button"
+                    disabled={!result || hasStockAlertRules || alertRuleLoading}
+                    onClick={() => void handleCreateDefaultAlerts()}
+                    className="paper-panel-subtle inline-flex min-h-12 items-center justify-center rounded-2xl px-4 py-3 text-sm font-medium text-foreground enabled:cursor-pointer enabled:hover:border-foreground/12 enabled:hover:bg-card disabled:opacity-60"
+                  >
+                    {alertRuleLoading ? '创建中...' : hasStockAlertRules ? '告警已设置' : '设置告警'}
+                  </button>
                 </div>
-              </div>
+
+                <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,220px)_1fr]">
+                  <Input
+                    label="告警扫描间隔(分钟)"
+                    value={alertScanInterval}
+                    onChange={(event) => setAlertScanInterval(event.target.value)}
+                    placeholder={`默认 ${MIN_ALERT_SCAN_INTERVAL_MINUTES}`}
+                    className="h-11 rounded-2xl"
+                  />
+                  <div className="paper-panel-muted flex items-center justify-between gap-3 px-4 py-3">
+                    <div>
+                      <p className="text-sm font-medium text-foreground">扫描频率由输入决定</p>
+                      <p className="mt-1 text-xs leading-6 text-secondary-text">单位分钟，最小 {MIN_ALERT_SCAN_INTERVAL_MINUTES} 分钟。创建默认规则时会同步写入每条规则。</p>
+                    </div>
+                    <Badge variant="info" className="border-0 px-3 py-1">
+                      默认 {MIN_ALERT_SCAN_INTERVAL_MINUTES} 分钟
+                    </Badge>
+                  </div>
+                </div>
+              </PaperSectionCard>
 
               {(topTheme || conceptAttribution || stockContextSupplement || fundamentalCoverageEntries.length > 0) ? (
                 <div className="space-y-4">
                   {topTheme ? (
-                    <div className="rounded-[24px] border border-border/60 bg-card/92 px-5 py-5">
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <p className="text-xs uppercase tracking-[0.18em] text-secondary-text">辅助题材</p>
-                          <h4 className="mt-2 text-lg font-semibold text-foreground">{topTheme.themeName}</h4>
-                        </div>
-                        <Badge variant="info" className="border-0 px-3 py-1">
-                          {themeAttributions.length} 个主题
-                        </Badge>
-                      </div>
+                    <PaperSectionCard eyebrow="辅助题材" title={topTheme.themeName} className="px-5 py-5" actions={<Badge variant="info" className="border-0 px-3 py-1">{themeAttributions.length} 个主题</Badge>}>
                       <p className="mt-3 text-sm leading-6 text-secondary-text">
                         {confidenceLabel(topTheme.confidence)} · {relationTypeLabel(topTheme.relationType)}
                       </p>
@@ -1732,7 +2602,7 @@ const SingleStockQueryPage: React.FC = () => {
                       {topTheme.matchedBoards?.length ? (
                         <div className="mt-3 flex flex-wrap gap-2">
                           {topTheme.matchedBoards.slice(0, 4).map((item) => (
-                            <span key={item} className="rounded-full border border-border/60 bg-background/70 px-3 py-2 text-xs font-medium text-foreground">
+                            <span key={item} className="paper-chip px-3 py-2 text-xs font-medium text-foreground">
                               {item}
                             </span>
                           ))}
@@ -1741,29 +2611,25 @@ const SingleStockQueryPage: React.FC = () => {
                       {conceptAttribution?.summary ? (
                         <p className="mt-3 text-xs leading-6 text-secondary-text">{conceptAttribution.summary}</p>
                       ) : null}
-                    </div>
+                    </PaperSectionCard>
                   ) : null}
 
                   {(conceptAttribution || stockContextSupplement?.profile || stockContextSupplement?.announcements || stockContextSupplement?.lockup) ? (
-                    <div className="rounded-[24px] border border-border/60 bg-card/92 px-5 py-5">
-                      <div className="flex flex-wrap items-center justify-between gap-3">
-                        <div>
-                          <p className="text-xs uppercase tracking-[0.18em] text-secondary-text">Context Supplement</p>
-                          <h4 className="mt-2 text-lg font-semibold text-foreground">公司画像 / 公告 / 解禁</h4>
-                        </div>
-                        <Badge variant="default" className="border-0 px-3 py-1">
-                          {stockContextSupplement?.profile?.provider || stockContextSupplement?.announcements?.provider || 'search'}
-                        </Badge>
-                      </div>
+                    <PaperSectionCard
+                      eyebrow="补充信息"
+                      title="公司画像 / 公告 / 解禁"
+                      className="px-5 py-5"
+                      actions={<Badge variant="default" className="border-0 px-3 py-1">{stockContextSupplement?.profile?.provider || stockContextSupplement?.announcements?.provider || 'search'}</Badge>}
+                    >
 
                       {conceptAttribution?.summary ? (
-                        <div className="mt-4 rounded-[20px] border border-border/60 bg-background/72 px-4 py-4">
+                        <div className="paper-list-card mt-4 px-4 py-4">
                           <p className="text-sm font-semibold text-foreground">概念归因</p>
                           <p className="mt-2 text-sm leading-6 text-secondary-text">{conceptAttribution.summary}</p>
                           {conceptAttribution.conceptNames?.length ? (
                             <div className="mt-3 flex flex-wrap gap-2">
                               {conceptAttribution.conceptNames.slice(0, 5).map((item) => (
-                                <span key={item} className="rounded-full border border-border/60 bg-background/70 px-3 py-2 text-xs font-medium text-foreground">
+                                <span key={item} className="paper-chip px-3 py-2 text-xs font-medium text-foreground">
                                   {item}
                                 </span>
                               ))}
@@ -1773,33 +2639,32 @@ const SingleStockQueryPage: React.FC = () => {
                       ) : null}
 
                       <div className="mt-4 space-y-3">
-                        <SupplementPanel
+                        <PaperSummaryBlock
                           title="公司画像"
                           summary={stockContextSupplement?.profile?.summary}
                           items={profileHighlights}
                         />
-                        <SupplementPanel
+                        <PaperSummaryBlock
                           title="近期公告"
                           summary={stockContextSupplement?.announcements?.summary}
                           items={announcementHighlights}
                         />
-                        <SupplementPanel
+                        <PaperSummaryBlock
                           title="解禁提示"
                           summary={stockContextSupplement?.lockup?.summary}
                           items={lockupHighlights}
                           danger
                         />
                       </div>
-                    </div>
+                    </PaperSectionCard>
                   ) : null}
 
                   {stockNewsSummary ? (
-                    <div className="rounded-[24px] border border-border/60 bg-card/92 px-5 py-5">
-                      <div className="flex flex-wrap items-center justify-between gap-3">
-                        <div>
-                          <p className="text-xs uppercase tracking-[0.18em] text-secondary-text">Recent Catalyst</p>
-                          <h4 className="mt-2 text-lg font-semibold text-foreground">近期催化 / 新闻摘要</h4>
-                        </div>
+                    <PaperSectionCard
+                      eyebrow="近期催化"
+                      title="近期催化 / 新闻摘要"
+                      className="px-5 py-5"
+                      actions={(
                         <div className="flex flex-wrap items-center gap-2">
                           <Badge variant={newsSentimentVariant(stockNewsSummary.sentiment)} className="border-0 px-3 py-1">
                             {newsSentimentLabel(stockNewsSummary.sentiment)}
@@ -1808,68 +2673,64 @@ const SingleStockQueryPage: React.FC = () => {
                             {stockNewsSummary.provider || 'search'}
                           </Badge>
                         </div>
-                      </div>
+                      )}
+                    >
 
-                      <p className="mt-4 text-sm leading-7 text-secondary-text">
+                      <p className="mt-4 text-sm leading-6 text-secondary-text">
                         {stockNewsSummary.summary || '当前没有拿到足够清晰的新闻摘要。'}
                       </p>
 
                       <div className="mt-4 space-y-3">
-                        <div className="rounded-[20px] border border-border/60 bg-background/72 px-4 py-4">
+                        <div className="paper-list-card px-4 py-4">
                           <p className="text-sm font-semibold text-foreground">正向催化</p>
                           <div className="mt-3 flex flex-wrap gap-2">
                             {(stockNewsSummary.catalysts?.length ? stockNewsSummary.catalysts : ['暂无明确催化']).map((item) => (
-                              <span key={item} className="rounded-full border border-border/60 bg-background/70 px-3 py-2 text-xs font-medium text-foreground">
+                              <span key={item} className="paper-chip px-3 py-2 text-xs font-medium text-foreground">
                                 {item}
                               </span>
                             ))}
                           </div>
                         </div>
 
-                        <div className="rounded-[20px] border border-border/60 bg-background/72 px-4 py-4">
+                        <div className="paper-alert-card px-4 py-4">
                           <p className="text-sm font-semibold text-foreground">明确风险</p>
                           <div className="mt-3 flex flex-wrap gap-2">
                             {(stockNewsSummary.riskEvents?.length ? stockNewsSummary.riskEvents : ['暂未识别明显利空']).map((item) => (
-                              <span key={item} className="rounded-full border border-border/60 bg-background/70 px-3 py-2 text-xs font-medium text-foreground">
+                              <span key={item} className="paper-chip px-3 py-2 text-xs font-medium text-foreground">
                                 {item}
                               </span>
                             ))}
                           </div>
                         </div>
 
-                        <div className="rounded-[20px] border border-border/60 bg-background/72 px-4 py-4">
+                        <div className="paper-list-card px-4 py-4">
                           <p className="text-sm font-semibold text-foreground">最近三条标题</p>
                           <div className="mt-3 space-y-2">
                             {(stockNewsSummary.headlines?.length ? stockNewsSummary.headlines : ['当前没有拿到明确的相关新闻标题。']).map((headline) => (
-                              <div key={headline} className="rounded-[18px] border border-border/60 bg-card px-4 py-3">
+                              <div key={headline} className="paper-panel-subtle px-4 py-3">
                                 <p className="text-sm leading-6 text-foreground">{headline}</p>
                               </div>
                             ))}
                           </div>
                         </div>
                       </div>
-                    </div>
+                    </PaperSectionCard>
                   ) : null}
 
                   {fundamentalCoverageEntries.length > 0 ? (
-                    <div className="rounded-[24px] border border-border/60 bg-card/92 px-5 py-5">
-                      <div className="flex flex-wrap items-center justify-between gap-3">
-                        <div>
-                          <p className="text-xs uppercase tracking-[0.18em] text-secondary-text">数据覆盖</p>
-                          <h4 className="mt-2 text-lg font-semibold text-foreground">基本面与数据源</h4>
-                        </div>
-                        <Badge variant={incompleteFundamentalEntries.length > 0 ? 'warning' : 'success'} className="border-0 px-3 py-1">
-                          {incompleteFundamentalEntries.length > 0 ? `仍缺 ${incompleteFundamentalEntries.length} 项` : '已完整返回'}
-                        </Badge>
-                      </div>
-
+                    <PaperSectionCard
+                      eyebrow="数据覆盖"
+                      title="基本面与数据源"
+                      className="px-5 py-5"
+                      actions={<Badge variant={incompleteFundamentalEntries.length > 0 ? 'warning' : 'success'} className="border-0 px-3 py-1">{incompleteFundamentalEntries.length > 0 ? `仍缺 ${incompleteFundamentalEntries.length} 项` : '已完整返回'}</Badge>}
+                    >
                       <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                        <MiniMetric label="日线" value={sourceLabel(result?.dataSources.daily)} tone="neutral" />
-                        <MiniMetric label="实时" value={sourceLabel(result?.dataSources.realtime)} tone="neutral" />
-                        <MiniMetric label="筹码" value={sourceLabel(result?.dataSources.chip)} tone="neutral" />
-                        <MiniMetric label="基本面" value={sourceLabel(result?.dataSources.fundamental ?? fundamentalContext?.status)} tone="neutral" />
-                        <MiniMetric label="总状态" value={coverageStatusLabel(fundamentalContext?.status || '--')} tone="neutral" />
-                        <MiniMetric label="耗时" value={fundamentalContext?.elapsedMs ? `${fundamentalContext.elapsedMs}ms` : '--'} tone="neutral" />
+                        <PaperMetricCard label="日线" value={sourceLabel(result?.dataSources.daily)} valueClassName="text-sm font-medium" />
+                        <PaperMetricCard label="实时" value={sourceLabel(result?.dataSources.realtime)} valueClassName="text-sm font-medium" />
+                        <PaperMetricCard label="筹码" value={sourceLabel(result?.dataSources.chip)} valueClassName="text-sm font-medium" />
+                        <PaperMetricCard label="基本面" value={sourceLabel(result?.dataSources.fundamental ?? fundamentalContext?.status)} valueClassName="text-sm font-medium" />
+                        <PaperMetricCard label="总状态" value={coverageStatusLabel(fundamentalContext?.status || '--')} valueClassName="text-sm font-medium" />
+                        <PaperMetricCard label="耗时" value={fundamentalContext?.elapsedMs ? `${fundamentalContext.elapsedMs}ms` : '--'} valueClassName="text-sm font-medium" />
                       </div>
 
                       <div className="mt-4 grid gap-3 sm:grid-cols-2">
@@ -1884,7 +2745,7 @@ const SingleStockQueryPage: React.FC = () => {
                       {fundamentalErrorPreview.length > 0 ? (
                         <p className="mt-4 text-xs leading-6 text-secondary-text">最近错误: {fundamentalErrorPreview.join(' | ')}</p>
                       ) : null}
-                    </div>
+                    </PaperSectionCard>
                   ) : null}
                 </div>
               ) : null}
@@ -1925,10 +2786,10 @@ const SingleStockQueryPage: React.FC = () => {
               const restoring = historyRestoreId === item.queryId;
               const historyPlan = getHistoryEntryPlan(item);
               return (
-                <div
+                <PaperListBlock
                   key={item.queryId}
                   className={[
-                    'rounded-2xl border px-4 py-4 transition-colors',
+                    'transition-colors',
                     active ? 'border-foreground/18 bg-foreground/[0.045]' : 'border-border/60 bg-background/70',
                   ].join(' ')}
                 >
@@ -1974,7 +2835,7 @@ const SingleStockQueryPage: React.FC = () => {
                       恢复查看
                     </Button>
                   </div>
-                </div>
+                </PaperListBlock>
               );
             })}
           </div>
@@ -1990,77 +2851,17 @@ type MiniMetricProps = {
   tone: StrategyTone | 'neutral';
 };
 
-type FundamentalBlockCardProps = {
-  title: string;
-  status?: string;
-  sourceChain?: Array<Record<string, unknown>>;
-  errors?: string[];
-  children?: React.ReactNode;
-};
-
-type SupplementPanelProps = {
-  title: string;
-  summary?: string | null;
-  items?: string[];
-  danger?: boolean;
-};
-
-const FundamentalBlockCard: React.FC<FundamentalBlockCardProps> = ({ title, status, sourceChain, errors, children }) => (
-  <div className="rounded-[20px] border border-border/60 bg-background/72 px-4 py-4">
-    <div className="flex items-start justify-between gap-3">
-      <div>
-        <p className="text-sm font-semibold text-foreground">{title}</p>
-        <p className="mt-1 text-xs text-secondary-text">来源 {sourceChainSummary(sourceChain)}</p>
-      </div>
-      <Badge variant={status === 'ok' || status === 'full' ? 'success' : status === 'partial' ? 'warning' : 'default'} className="border-0 px-2 py-1">
-        {coverageStatusLabel(status || 'failed')}
-      </Badge>
-    </div>
-
-    <div className="mt-3 space-y-3">
-      {children}
-      {errors && errors.length > 0 ? (
-        <p className="text-xs leading-5 text-secondary-text">错误: {errors.slice(0, 2).join(' | ')}</p>
-      ) : null}
-    </div>
-  </div>
-);
-
-const SupplementPanel: React.FC<SupplementPanelProps> = ({ title, summary, items = [], danger = false }) => {
-  if (!summary && items.length === 0) return null;
-  return (
-    <div className={`rounded-[20px] border px-4 py-4 ${danger ? 'border-border/60 bg-background/72' : 'border-border/60 bg-background/72'}`}>
-      <p className="text-sm font-semibold text-foreground">{title}</p>
-      {summary ? (
-        <p className="mt-2 text-sm leading-6 text-secondary-text">{summary}</p>
-      ) : null}
-      {items.length > 0 ? (
-        <div className="mt-3 flex flex-wrap gap-2">
-          {items.map((item) => (
-            <span
-              key={item}
-              className="rounded-full border border-border/60 bg-card px-3 py-2 text-xs font-medium text-foreground"
-            >
-              {item}
-            </span>
-          ))}
-        </div>
-      ) : null}
-    </div>
-  );
-};
-
 const MiniMetric: React.FC<MiniMetricProps> = ({ label, value, tone }) => {
   const toneClass = tone === 'buy'
-    ? 'border-border/60 bg-background/72'
+    ? 'paper-list-card'
     : tone === 'breakout'
-      ? 'border-border/60 bg-background/76'
+      ? 'paper-panel-muted'
       : tone === 'warn'
-        ? 'border-border/60 bg-background/80'
-        : 'border-border/60 bg-card/92';
+        ? 'paper-alert-card'
+        : 'paper-panel';
 
   return (
-    <div className={`rounded-[22px] border px-4 py-4 ${toneClass}`}>
+    <div className={`${toneClass} px-4 py-4`}>
       <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">{label}</p>
       <p className="mt-3 text-sm font-semibold text-foreground">{value}</p>
     </div>

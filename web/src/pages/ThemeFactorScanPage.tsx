@@ -11,7 +11,7 @@ import {
   type ThemeFactorScanItem,
   type ThemeFactorScanRunOnceResponse,
 } from '../api/informationWatch';
-import { ApiErrorAlert, AppPage, Badge, Button, Card, EmptyState, InlineAlert, Select } from '../components/common';
+import { ApiErrorAlert, AppPage, Badge, Button, Card, EmptyState, InlineAlert, PaperHero, PaperHeroHeader, PaperListBlock, PaperSectionCard, PaperSectionHeader, PaperStatCard, Select } from '../components/common';
 
 function formatDateTime(value?: string | null): string {
   if (!value) return '暂无时间';
@@ -179,29 +179,21 @@ const ThemeFactorScanPage: React.FC = () => {
 
   return (
     <AppPage className="space-y-6 !max-w-[1680px] px-3 md:px-5 lg:px-6">
-      <section className="overflow-hidden rounded-[32px] border border-border/60 bg-[radial-gradient(circle_at_top_left,_rgba(34,24,16,0.08),_transparent_32%),radial-gradient(circle_at_bottom_right,_rgba(34,24,16,0.05),_transparent_26%),linear-gradient(180deg,rgba(248,244,236,0.98),rgba(241,235,226,0.96))] shadow-soft-card">
-        <div className="grid gap-6 px-5 py-6 lg:grid-cols-12 lg:px-7 lg:py-7">
+      <PaperHero contentClassName="grid gap-6 lg:grid-cols-12">
           <div className="space-y-5 lg:col-span-7">
-            <div className="flex items-center gap-4">
-              <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-border/60 bg-card/90 text-foreground shadow-soft-card">
-                <Workflow className="h-7 w-7" />
-              </div>
-              <div>
-                <p className="text-xs uppercase tracking-[0.18em] text-secondary-text">Theme Factor Scan</p>
-                <h2 className="mt-1 text-3xl font-semibold tracking-tight text-foreground">只让高质量事件继续推动主题筛选</h2>
-                <p className="mt-2 max-w-3xl text-sm leading-7 text-secondary-text">
-                  这层消费信息观察池里已经过线的事件，再加 ETF 确认、龙头状态和候选股技术面，产出今天最值得继续看的方向。
-                </p>
-              </div>
-            </div>
-
+            <PaperHeroHeader
+              eyebrow="Theme Factor Scan"
+              title="只让高质量事件继续推动主题筛选"
+              description="这层消费信息观察池里已经过线的事件，再加 ETF 确认、龙头状态和候选股技术面，产出今天最值得继续看的方向。"
+              icon={<Workflow className="h-7 w-7" />}
+            />
           </div>
 
-          <Card variant="bordered" padding="lg" className="rounded-[28px] border-border/60 bg-card/90 lg:col-span-5 lg:min-h-[248px]">
+          <Card variant="bordered" padding="lg" className="paper-panel rounded-[24px] lg:col-span-5 lg:min-h-[248px]">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <p className="text-xs uppercase tracking-[0.18em] text-secondary-text">Run Once</p>
-                <h3 className="mt-1 text-2xl font-semibold text-foreground">先选事件，再跑主题因子</h3>
+                <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-secondary-text">Run Once</p>
+                <h3 className="mt-1 text-[1.55rem] font-semibold tracking-[-0.02em] text-foreground">先选事件，再跑主题因子</h3>
               </div>
               <Badge variant="info" className="border-0 px-3 py-1">MVP</Badge>
             </div>
@@ -212,7 +204,7 @@ const ThemeFactorScanPage: React.FC = () => {
                 onChange={setSelectedEventId}
                 options={eventOptions}
               />
-              <Card variant="bordered" padding="md" className="rounded-[22px] border-border/60 bg-background/75">
+              <Card variant="bordered" padding="md" className="paper-panel-muted">
                 <p className="text-sm font-semibold text-foreground">{selectedEvent?.title ?? '默认使用最新高质量事件'}</p>
                 <p className="mt-2 text-sm leading-6 text-secondary-text">
                   {selectedEvent
@@ -233,30 +225,23 @@ const ThemeFactorScanPage: React.FC = () => {
           </Card>
 
           <div className="grid gap-3 sm:grid-cols-3 lg:col-span-12">
-              <Card variant="bordered" padding="lg" className="rounded-[24px] border-border/60 bg-card/85">
-                <p className="text-xs uppercase tracking-[0.16em] text-secondary-text">已完成扫描</p>
-                <p className="mt-3 text-3xl font-semibold text-foreground">{stats.completed}</p>
-                <p className="mt-2 text-sm text-secondary-text">
-                  {reviewSummary ? `近 ${reviewSummary.days} 天事件转扫描 ${reviewSummary.scanConversionRate.toFixed(0)}%。` : '至少跑通过一次主题确认链路，不再只看原始新闻。'}
-                </p>
-              </Card>
-              <Card variant="bordered" padding="lg" className="rounded-[24px] border-border/60 bg-card/85">
-                <p className="text-xs uppercase tracking-[0.16em] text-secondary-text">高分主题</p>
-                <p className="mt-3 text-3xl font-semibold text-foreground">{stats.highScore}</p>
-                <p className="mt-2 text-sm text-secondary-text">
-                  {reviewSummary ? `高分占比 ${reviewSummary.highScoreRate.toFixed(0)}%，更适合继续下钻个股和入场点。` : '主题因子分超过 75，适合继续下钻个股和入场点。'}
-                </p>
-              </Card>
-              <Card variant="bordered" padding="lg" className="rounded-[24px] border-border/60 bg-card/85">
-                <p className="text-xs uppercase tracking-[0.16em] text-secondary-text">ETF 已确认</p>
-                <p className="mt-3 text-3xl font-semibold text-foreground">{stats.confirmedEtf}</p>
-                <p className="mt-2 text-sm text-secondary-text">
-                  {reviewSummary ? `确认率 ${reviewSummary.confirmedEtfRate.toFixed(0)}%，说明资金承认度在抬升。` : '说明市场资金已经开始认可这条主线，不只是信息面单独躁动。'}
-                </p>
-              </Card>
+              <PaperStatCard
+                label="已完成扫描"
+                value={stats.completed}
+                detail={reviewSummary ? `近 ${reviewSummary.days} 天事件转扫描 ${reviewSummary.scanConversionRate.toFixed(0)}%。` : '至少跑通过一次主题确认链路，不再只看原始新闻。'}
+              />
+              <PaperStatCard
+                label="高分主题"
+                value={stats.highScore}
+                detail={reviewSummary ? `高分占比 ${reviewSummary.highScoreRate.toFixed(0)}%，更适合继续下钻个股和入场点。` : '主题因子分超过 75，适合继续下钻个股和入场点。'}
+              />
+              <PaperStatCard
+                label="ETF 已确认"
+                value={stats.confirmedEtf}
+                detail={reviewSummary ? `确认率 ${reviewSummary.confirmedEtfRate.toFixed(0)}%，说明资金承认度在抬升。` : '说明市场资金已经开始认可这条主线，不只是信息面单独躁动。'}
+              />
           </div>
-        </div>
-      </section>
+      </PaperHero>
 
       {error ? <ApiErrorAlert error={error} /> : null}
       {actionError ? <ApiErrorAlert error={actionError} /> : null}
@@ -269,7 +254,7 @@ const ThemeFactorScanPage: React.FC = () => {
       ) : null}
 
       <section className="grid gap-5 xl:grid-cols-12">
-        <Card variant="bordered" padding="lg" className="rounded-[28px] xl:col-span-7 xl:min-h-[1040px]">
+        <Card variant="bordered" padding="lg" className="paper-panel rounded-[24px] xl:col-span-7 xl:min-h-[1040px]">
           <div className="flex items-center justify-between gap-3">
             <div>
               <span className="label-uppercase">Recent Scans</span>
@@ -302,7 +287,7 @@ const ThemeFactorScanPage: React.FC = () => {
               const etf = scan.result?.etfConfirmation;
               const stocks = scan.result?.themeScan?.stocks ?? [];
               return (
-                <div key={scan.scanId} className="rounded-[22px] border border-border/60 bg-background/72 px-4 py-4">
+                <div key={scan.scanId} className="paper-list-card px-4 py-4">
                   <div className="flex items-start justify-between gap-4">
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
@@ -330,11 +315,11 @@ const ThemeFactorScanPage: React.FC = () => {
                   </div>
 
                   <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                    <div className="rounded-[18px] border border-border/60 bg-card/70 px-4 py-3">
+                    <div className="paper-panel-subtle px-4 py-3">
                       <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">事件分</p>
                       <p className={`mt-2 text-lg font-semibold ${scoreTone(scan.eventScore)}`}>{Number(scan.eventScore ?? 0).toFixed(0)}</p>
                     </div>
-                    <div className="rounded-[18px] border border-border/60 bg-card/70 px-4 py-3">
+                    <div className="paper-panel-subtle px-4 py-3">
                       <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">ETF 确认</p>
                       <p className={`mt-2 text-lg font-semibold ${scoreTone(scan.etfConfirmationScore)}`}>{Number(scan.etfConfirmationScore ?? 0).toFixed(0)}</p>
                       <p className="mt-1 text-xs text-secondary-text">
@@ -342,7 +327,7 @@ const ThemeFactorScanPage: React.FC = () => {
                         {etf?.confirmedCount ? ` · ${etf.confirmedCount} 只确认` : ''}
                       </p>
                     </div>
-                    <div className="rounded-[18px] border border-border/60 bg-card/70 px-4 py-3">
+                    <div className="paper-panel-subtle px-4 py-3">
                       <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">龙头确认</p>
                       <p className={`mt-2 text-lg font-semibold ${scoreTone(scan.leaderConfirmationScore)}`}>{Number(scan.leaderConfirmationScore ?? 0).toFixed(0)}</p>
                     </div>
@@ -350,7 +335,7 @@ const ThemeFactorScanPage: React.FC = () => {
 
                   <div className="mt-4 grid gap-3 lg:grid-cols-[0.95fr_1.05fr]">
                     {scan.result?.leaderConfirmation?.stockName ? (
-                      <div className="rounded-[18px] border border-border/60 bg-card/70 px-4 py-3">
+                      <div className="paper-panel-subtle px-4 py-3">
                         <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">龙头确认</p>
                         <p className="mt-2 text-sm font-semibold text-foreground">
                           {scan.result.leaderConfirmation.stockName}
@@ -361,13 +346,13 @@ const ThemeFactorScanPage: React.FC = () => {
                         </p>
                       </div>
                     ) : (
-                      <div className="rounded-[18px] border border-dashed border-border/60 bg-card/60 px-4 py-3 text-sm text-secondary-text">
+                      <div className="paper-panel-muted rounded-[18px] border-dashed px-4 py-3 text-sm text-secondary-text">
                         当前还没有明确龙头确认，说明这条主题更多处在信息先行阶段。
                       </div>
                     )}
 
                     {scan.result?.roleBreakdown ? (
-                      <div className="rounded-[18px] border border-dashed border-border/60 bg-card/60 px-4 py-3">
+                      <div className="paper-panel-muted rounded-[18px] border-dashed px-4 py-3">
                         <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">角色分层</p>
                         <div className="mt-2 flex flex-wrap gap-2 text-xs text-secondary-text">
                           <Badge variant="success" className="border-0 px-3 py-1">
@@ -385,7 +370,7 @@ const ThemeFactorScanPage: React.FC = () => {
                         </div>
                       </div>
                     ) : (
-                      <div className="rounded-[18px] border border-dashed border-border/60 bg-card/60 px-4 py-3 text-sm text-secondary-text">
+                      <div className="paper-panel-muted rounded-[18px] border-dashed px-4 py-3 text-sm text-secondary-text">
                         当前还没有角色分层结果，说明候选股还不足以区分一阶和二阶受益。
                       </div>
                     )}
@@ -396,7 +381,7 @@ const ThemeFactorScanPage: React.FC = () => {
                       {stocks.slice(0, 3).map((stock, index) => (
                         <div
                           key={`${scan.scanId}-${stock.stockCode ?? index}`}
-                          className="grid gap-3 rounded-[18px] border border-border/60 bg-card/70 px-4 py-3 md:grid-cols-[1fr_120px_100px] md:items-center"
+                          className="paper-panel-subtle grid gap-3 px-4 py-3 md:grid-cols-[1fr_120px_100px] md:items-center"
                         >
                           <div>
                             <p className="text-sm font-semibold text-foreground">
@@ -414,7 +399,7 @@ const ThemeFactorScanPage: React.FC = () => {
                       ))}
                     </div>
                   ) : (
-                    <div className="mt-4 rounded-[18px] border border-dashed border-border/60 bg-card/60 px-4 py-3 text-sm text-secondary-text">
+                    <div className="paper-panel-muted mt-4 rounded-[18px] border-dashed px-4 py-3 text-sm text-secondary-text">
                       本次主题扫描还没有给出明确候选股，可能主题本身未触发或仍在等待更多市场确认。
                     </div>
                   )}
@@ -438,23 +423,15 @@ const ThemeFactorScanPage: React.FC = () => {
 
         <div className="grid gap-5 xl:col-span-5 xl:auto-rows-auto">
           {reviewSummary ? (
-            <Card variant="bordered" padding="lg" className="rounded-[28px] xl:min-h-[360px]">
-              <div className="flex items-center gap-3">
-                <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-border/60 bg-background/80 text-foreground">
-                  <Sparkles className="h-5 w-5" />
-                </div>
-                <div>
-                  <p className="text-xs uppercase tracking-[0.18em] text-secondary-text">Review</p>
-                  <h3 className="mt-1 text-2xl font-semibold text-foreground">近 {reviewSummary.days} 天复盘统计</h3>
-                </div>
-              </div>
+            <Card variant="bordered" padding="lg" className="paper-panel rounded-[24px] xl:min-h-[360px]">
+              <PaperSectionHeader eyebrow="Review" title={`近 ${reviewSummary.days} 天复盘统计`} icon={<Sparkles className="h-5 w-5" />} />
               <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                <div className="rounded-[18px] border border-border/60 bg-card/70 px-4 py-3">
+                <div className="paper-panel-subtle px-4 py-3">
                   <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">事件总数</p>
                   <p className="mt-2 text-lg font-semibold text-foreground">{reviewSummary.totalEvents}</p>
                   <p className="mt-1 text-xs text-secondary-text">高质量 {reviewSummary.promotedEvents} · promoted {reviewSummary.promotedRate.toFixed(0)}%</p>
                 </div>
-                <div className="rounded-[18px] border border-border/60 bg-card/70 px-4 py-3">
+                <div className="paper-panel-subtle px-4 py-3">
                   <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">开放发现</p>
                   <p className="mt-2 text-lg font-semibold text-foreground">{reviewSummary.discoveryEvents}</p>
                   <p className="mt-1 text-xs text-secondary-text">说明新主线探索已开始沉淀成结构化事件。</p>
@@ -462,7 +439,7 @@ const ThemeFactorScanPage: React.FC = () => {
               </div>
               <div className={`mt-4 space-y-2 ${REVIEW_SCROLL_CLASS}`}>
                 {reviewSummary.eventTypeBreakdown.slice(0, 4).map((item) => (
-                  <div key={item.key} className="rounded-[18px] border border-border/60 bg-card/70 px-4 py-3">
+                  <div key={item.key} className="paper-panel-subtle px-4 py-3">
                     <div className="flex items-center justify-between gap-3">
                       <p className="text-sm font-semibold text-foreground">{item.label}</p>
                       <p className="text-xs text-secondary-text">
@@ -490,17 +467,8 @@ const ThemeFactorScanPage: React.FC = () => {
             </Card>
           ) : null}
 
-          <Card variant="bordered" padding="lg" className="rounded-[28px] xl:min-h-[460px]">
-            <div className="flex items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-border/60 bg-background/80 text-foreground">
-                <Radar className="h-5 w-5" />
-              </div>
-              <div>
-                <span className="label-uppercase">Promoted Events</span>
-                <h3 className="mt-1 text-2xl font-semibold text-foreground">高质量事件输入</h3>
-              </div>
-            </div>
-            <div className={`mt-5 space-y-3 ${PROMOTED_EVENT_SCROLL_CLASS}`}>
+          <PaperSectionCard eyebrow="Promoted Events" title="高质量事件输入" icon={<Radar className="h-5 w-5" />} className="xl:min-h-[460px]">
+            <div className={`space-y-3 ${PROMOTED_EVENT_SCROLL_CLASS}`}>
               {events.length === 0 ? (
                 <EmptyState
                   title="还没有 promoted 事件"
@@ -513,7 +481,7 @@ const ThemeFactorScanPage: React.FC = () => {
                 />
               ) : (
                 events.slice(0, 6).map((event) => (
-                  <div key={event.eventId} className="rounded-[22px] border border-border/60 bg-background/72 px-4 py-4">
+                  <PaperListBlock key={event.eventId}>
                     <div className="flex items-center justify-between gap-3">
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-semibold text-foreground">{event.title}</p>
@@ -532,29 +500,20 @@ const ThemeFactorScanPage: React.FC = () => {
                         </Button>
                       </div>
                     </div>
-                  </div>
+                  </PaperListBlock>
                 ))
               )}
             </div>
-          </Card>
+          </PaperSectionCard>
 
-          <Card variant="bordered" padding="lg" className="rounded-[28px] xl:min-h-[200px]">
-            <div className="flex items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-border/60 bg-background/80 text-foreground">
-                <Sparkles className="h-5 w-5" />
-              </div>
-              <div>
-                <span className="label-uppercase">Next Step</span>
-                <h3 className="mt-1 text-2xl font-semibold text-foreground">继续下钻主题与个股</h3>
-              </div>
-            </div>
-            <div className="mt-5 space-y-3 text-sm leading-7 text-secondary-text">
-              <div className="rounded-[22px] border border-border/60 bg-background/72 px-4 py-4">
+          <PaperSectionCard eyebrow="Next Step" title="继续下钻主题与个股" icon={<Sparkles className="h-5 w-5" />} className="xl:min-h-[200px]">
+            <div className="space-y-3 text-sm leading-6 text-secondary-text">
+              <PaperListBlock>
                 主题因子分高，不代表立刻买入；下一步应该回到主题页和单股页，确认二阶标的位置、节奏和风险。
-              </div>
-              <div className="rounded-[22px] border border-border/60 bg-background/72 px-4 py-4">
+              </PaperListBlock>
+              <PaperListBlock>
                 ETF 已确认时，更适合去看龙头和二阶票有没有“回踩不破”“趋势跟随”这类舒服入场点。
-              </div>
+              </PaperListBlock>
               <Link to="/theme-picker" className="block">
                 <Button variant="secondary" className="w-full rounded-2xl justify-between">
                   去主题选股继续看候选
@@ -562,7 +521,7 @@ const ThemeFactorScanPage: React.FC = () => {
                 </Button>
               </Link>
             </div>
-          </Card>
+          </PaperSectionCard>
         </div>
       </section>
     </AppPage>

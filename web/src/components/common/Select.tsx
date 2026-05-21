@@ -20,9 +20,6 @@ interface SelectProps {
   emptyText?: string;
 }
 
-/**
- * Select component with terminal-inspired styling.
- */
 export const Select: React.FC<SelectProps> = ({
   id,
   value,
@@ -57,7 +54,7 @@ export const Select: React.FC<SelectProps> = ({
             </option>
           )}
           {options.map((option) => (
-            <option key={option.value} value={option.value} className="bg-elevated text-foreground">
+            <option key={option.value} value={option.value} className="bg-card text-foreground">
               {option.label}
             </option>
           ))}

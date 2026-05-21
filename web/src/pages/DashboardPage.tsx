@@ -1,7 +1,7 @@
 import type React from 'react';
 import { ArrowRight, Layers3, Newspaper, Orbit, Radar, Sparkles, Star } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { AppPage, Badge, Button, Card } from '../components/common';
+import { AppPage, Badge, Button, Card, PaperHero, PaperHeroHeader, PaperStatCard } from '../components/common';
 
 const summaryCards = [
   { label: '主题任务', value: '12', detail: '+3 新增' },
@@ -97,39 +97,32 @@ const DashboardPage: React.FC = () => {
   return (
     <AppPage className="space-y-6">
       <section className="grid gap-5 xl:grid-cols-[1.4fr_0.8fr]">
-        <Card className="rounded-[2rem] p-0">
-          <div className="grid gap-6 px-6 py-6 lg:grid-cols-[1.15fr_0.85fr] lg:px-7">
+        <PaperHero className="rounded-[2rem]" contentClassName="grid gap-6 px-6 py-6 lg:grid-cols-[1.15fr_0.85fr] lg:px-7">
             <div className="space-y-5">
-              <div className="space-y-2">
-                <p className="label-uppercase">Theme Picker · 工作台</p>
-                <h2 className="font-display text-4xl font-semibold tracking-tight text-foreground">
-                  今天先看哪些主题变化
-                </h2>
-                <p className="max-w-3xl text-sm leading-7 text-secondary-text">
-                  保持信息密度，但把第一屏只留给真正要用的信息: 今日简报、主题状态、候选池和下一步入口。
-                </p>
-              </div>
+              <PaperHeroHeader
+                eyebrow="Theme Picker · 工作台"
+                title="今天先看哪些主题变化"
+                description="保持信息密度，但把第一屏只留给真正要用的信息: 今日简报、主题状态、候选池和下一步入口。"
+                titleClassName="font-display"
+                className="space-y-2"
+              />
 
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                 {summaryCards.map((item) => (
-                  <Card key={item.label} padding="md" className="rounded-[1.5rem] bg-card/88">
-                    <p className="label-uppercase">{item.label}</p>
-                    <p className="mt-3 text-3xl font-semibold text-foreground">{item.value}</p>
-                    <p className="mt-2 text-sm text-secondary-text">{item.detail}</p>
-                  </Card>
+                  <PaperStatCard key={item.label} label={item.label} value={item.value} detail={item.detail} className="rounded-[1.5rem] p-4" />
                 ))}
               </div>
             </div>
 
-            <Card padding="lg" className="rounded-[1.75rem] bg-[linear-gradient(180deg,hsl(var(--elevated)/0.96),hsl(var(--card)/0.92))]">
+            <Card padding="lg" className="paper-panel rounded-[1.75rem]">
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <p className="label-uppercase">Today's Brief · 今日要看</p>
-                  <h3 className="mt-2 font-display text-2xl font-semibold text-foreground">12 个主题里有 3 个值得现在跟进</h3>
+                  <h3 className="mt-2 font-display text-[1.55rem] font-semibold tracking-[-0.02em] text-foreground">12 个主题里有 3 个值得现在跟进</h3>
                 </div>
                 <Badge variant="info" className="border-0 px-3 py-1">Tue · 5/19</Badge>
               </div>
-              <p className="mt-4 text-sm leading-7 text-secondary-text">
+              <p className="mt-4 text-sm leading-6 text-secondary-text">
                 DeepSeek 关联主题在午盘后重新触发并伴随放量；AI 算力与机器人板块延续强势；低空经济进入冷却期，已自动剔除 1 只候选股。
               </p>
               <div className="mt-5 flex flex-wrap gap-3">
@@ -141,14 +134,13 @@ const DashboardPage: React.FC = () => {
                 </Link>
               </div>
             </Card>
-          </div>
-        </Card>
+        </PaperHero>
 
         <Card className="rounded-[2rem]">
           <div className="flex items-center justify-between gap-3">
             <div>
               <p className="label-uppercase">Quick Access</p>
-              <h3 className="mt-2 font-display text-2xl font-semibold text-foreground">直接进入今天的工作链路</h3>
+              <h3 className="mt-2 font-display text-[1.55rem] font-semibold tracking-[-0.02em] text-foreground">直接进入今天的工作链路</h3>
             </div>
             <Badge variant="default" className="border-0 px-3 py-1">6 个入口</Badge>
           </div>
@@ -157,9 +149,9 @@ const DashboardPage: React.FC = () => {
               const Icon = item.icon;
               return (
                 <Link key={item.title} to={item.to} className="block">
-                  <div className="rounded-[1.4rem] border border-border/70 bg-background/64 px-4 py-4 transition hover:bg-foreground/4">
+                  <div className="paper-list-card px-4 py-4 transition hover:bg-foreground/4">
                     <div className="flex items-start gap-3">
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-foreground/8 bg-foreground/5 text-foreground">
+                      <div className="paper-section-icon h-10 w-10 shrink-0">
                         <Icon className="h-4 w-4" />
                       </div>
                       <div className="min-w-0 flex-1">
@@ -183,7 +175,7 @@ const DashboardPage: React.FC = () => {
           <div className="flex items-center justify-between gap-3">
             <div>
               <p className="label-uppercase">Active Themes</p>
-              <h3 className="mt-2 font-display text-2xl font-semibold text-foreground">主题状态</h3>
+              <h3 className="mt-2 font-display text-[1.55rem] font-semibold tracking-[-0.02em] text-foreground">主题状态</h3>
             </div>
             <Link to="/theme-picker">
               <Button variant="secondary">+ 新建扫描</Button>
@@ -192,7 +184,7 @@ const DashboardPage: React.FC = () => {
 
           <div className="mt-5 space-y-3">
             {themeStates.map((theme) => (
-              <div key={theme.title} className="rounded-[1.5rem] border border-border/70 bg-background/66 px-5 py-4">
+              <div key={theme.title} className="paper-list-card px-5 py-4">
                 <div className="flex flex-wrap items-center gap-3">
                   <Badge variant={theme.variant} className="border-0 px-3 py-1">{theme.tone}</Badge>
                   <span className="text-xs tracking-[0.2em] text-secondary-text">{theme.index}</span>
@@ -201,7 +193,7 @@ const DashboardPage: React.FC = () => {
                 <p className="mt-2 text-sm leading-6 text-secondary-text">{theme.note}</p>
                 <div className="mt-4 flex flex-wrap gap-2">
                   {theme.metrics.map((metric) => (
-                    <span key={metric} className="rounded-full border border-border/70 bg-card/86 px-3 py-1.5 text-xs text-secondary-text">
+                    <span key={metric} className="paper-chip px-3 py-1.5 text-xs">
                       {metric}
                     </span>
                   ))}
@@ -215,33 +207,33 @@ const DashboardPage: React.FC = () => {
           <div className="flex items-center justify-between gap-3">
             <div>
               <p className="label-uppercase">Candidate Pool</p>
-              <h3 className="mt-2 font-display text-2xl font-semibold text-foreground">候选股票</h3>
+              <h3 className="mt-2 font-display text-[1.55rem] font-semibold tracking-[-0.02em] text-foreground">候选股票</h3>
             </div>
             <Badge variant="default" className="border-0 px-3 py-1">8 / 28 · 按 RS 排序</Badge>
           </div>
 
           <div className="mt-5 overflow-x-auto">
-            <table className="min-w-full border-separate border-spacing-0 text-left">
+            <table className="paper-table min-w-full">
               <thead>
-                <tr className="text-xs uppercase tracking-[0.18em] text-secondary-text">
-                  <th className="border-b border-border/70 px-3 py-3 font-medium">名称</th>
-                  <th className="border-b border-border/70 px-3 py-3 font-medium">主题</th>
-                  <th className="border-b border-border/70 px-3 py-3 font-medium">信号</th>
-                  <th className="border-b border-border/70 px-3 py-3 font-medium">涨幅</th>
-                  <th className="border-b border-border/70 px-3 py-3 font-medium">量比</th>
+                <tr>
+                  <th>名称</th>
+                  <th>主题</th>
+                  <th>信号</th>
+                  <th>涨幅</th>
+                  <th>量比</th>
                 </tr>
               </thead>
               <tbody>
                 {candidatePool.map((row) => (
                   <tr key={`${row[0]}-${row[1]}`} className="align-top">
-                    <td className="border-b border-border/50 px-3 py-4">
+                    <td>
                       <div className="font-medium text-foreground">{row[0]}</div>
-                      <div className="mt-1 text-xs tracking-[0.16em] text-secondary-text">{row[1]}</div>
+                      <div className="mt-1 text-[11px] tracking-[0.14em] text-secondary-text">{row[1]}</div>
                     </td>
-                    <td className="border-b border-border/50 px-3 py-4 text-sm text-secondary-text">{row[2]}</td>
-                    <td className="border-b border-border/50 px-3 py-4 text-sm text-foreground">{row[3]}</td>
-                    <td className="border-b border-border/50 px-3 py-4 text-sm font-medium text-danger">{row[4]}</td>
-                    <td className="border-b border-border/50 px-3 py-4 text-sm text-foreground">{row[5]}</td>
+                    <td className="text-sm text-secondary-text">{row[2]}</td>
+                    <td className="text-sm text-foreground">{row[3]}</td>
+                    <td className="text-sm font-medium text-danger">{row[4]}</td>
+                    <td className="text-sm text-foreground">{row[5]}</td>
                   </tr>
                 ))}
               </tbody>

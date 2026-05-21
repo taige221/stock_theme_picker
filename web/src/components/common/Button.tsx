@@ -13,33 +13,30 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
 const BUTTON_SIZE_STYLES = {
   xsm: 'h-6 rounded-xl px-2.5 text-xs',
   sm: 'h-8 rounded-xl px-3 text-sm',
-  md: 'h-10 rounded-2xl px-4 text-sm',
-  lg: 'h-10 rounded-2xl px-4.5 text-sm',
-  xl: 'h-11 rounded-2xl px-5 text-sm',
+  md: 'h-11 rounded-[1.35rem] px-4 text-sm',
+  lg: 'h-11 rounded-[1.35rem] px-4.5 text-sm',
+  xl: 'h-11 rounded-[1.35rem] px-5 text-sm',
 } as const;
 
-const ACTION_AI_STYLES = 'border border-border/80 bg-card/90 text-foreground hover:bg-foreground/4';
-const ACTION_REPORT_STYLES = 'border border-border/80 bg-card/90 text-secondary-text hover:bg-foreground/4 hover:text-foreground';
+const ACTION_AI_STYLES = 'border border-border/85 bg-card/96 text-foreground shadow-none hover:-translate-y-px hover:border-foreground/16 hover:bg-card';
+const ACTION_REPORT_STYLES = 'border border-border/80 bg-background/55 text-secondary-text shadow-none hover:-translate-y-px hover:border-foreground/16 hover:bg-card hover:text-foreground';
 
 const BUTTON_VARIANT_STYLES = {
-  primary: 'border border-foreground/85 bg-foreground text-background shadow-none hover:bg-foreground/92',
-  secondary: 'border border-border/80 bg-card/90 text-foreground shadow-none hover:bg-foreground/4',
-  'settings-primary': 'border border-foreground/85 bg-foreground text-background hover:bg-foreground/92',
-  'settings-secondary': 'border border-border/80 bg-card/90 text-foreground hover:bg-foreground/4',
-  outline: 'border border-border bg-transparent text-foreground hover:bg-foreground/4',
-  ghost: 'border border-transparent bg-transparent text-secondary-text hover:bg-foreground/4 hover:text-foreground',
-  gradient: 'border border-foreground/85 bg-primary-gradient text-primary-foreground shadow-none hover:opacity-95',
-  danger: 'border border-danger/50 bg-danger text-destructive-foreground shadow-none hover:brightness-105',
-  'danger-subtle': 'border border-danger/40 bg-danger/10 text-danger hover:bg-danger/14',
+  primary: 'border border-foreground/92 bg-foreground text-background shadow-[0_14px_32px_hsl(var(--foreground)/0.12)] hover:-translate-y-px hover:bg-foreground/96 hover:shadow-[0_18px_36px_hsl(var(--foreground)/0.16)]',
+  secondary: 'border border-border/90 bg-card/98 text-foreground shadow-none hover:-translate-y-px hover:border-foreground/14 hover:bg-card',
+  'settings-primary': 'border border-foreground/92 bg-foreground text-background shadow-[0_14px_32px_hsl(var(--foreground)/0.12)] hover:-translate-y-px hover:bg-foreground/96',
+  'settings-secondary': 'border border-border/90 bg-card/98 text-foreground shadow-none hover:-translate-y-px hover:border-foreground/14 hover:bg-card',
+  outline: 'border border-border/90 bg-background/55 text-foreground shadow-none hover:-translate-y-px hover:border-foreground/14 hover:bg-card/72',
+  ghost: 'border border-transparent bg-transparent text-secondary-text shadow-none hover:bg-foreground/5 hover:text-foreground',
+  gradient: 'border border-foreground/85 bg-[linear-gradient(180deg,hsl(var(--foreground)),hsl(var(--foreground)/0.88))] text-background shadow-[0_12px_28px_hsl(var(--foreground)/0.12)] hover:-translate-y-px hover:opacity-95',
+  danger: 'border border-danger/50 bg-danger/92 text-destructive-foreground shadow-none hover:-translate-y-px hover:bg-danger',
+  'danger-subtle': 'border border-danger/24 bg-danger/8 text-danger hover:border-danger/36 hover:bg-danger/12',
   'action-primary': ACTION_AI_STYLES,
   'action-secondary': ACTION_REPORT_STYLES,
   'home-action-ai': ACTION_AI_STYLES,
   'home-action-report': ACTION_REPORT_STYLES,
 } as const;
 
-/**
- * Button component with multiple variants and terminal-inspired styling.
- */
 export const Button: React.FC<ButtonProps> = ({
   children,
   variant = 'primary',
@@ -52,7 +49,7 @@ export const Button: React.FC<ButtonProps> = ({
   type = 'button',
   ...props
 }) => {
-  const glowStyles = glow ? 'shadow-glow-cyan settings-glow-cyan-hover' : '';
+  const glowStyles = glow ? 'shadow-[0_14px_28px_hsl(var(--foreground)/0.14)] hover:shadow-[0_18px_34px_hsl(var(--foreground)/0.18)]' : '';
 
   return (
     <button

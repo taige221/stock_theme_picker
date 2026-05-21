@@ -12,9 +12,6 @@ interface CardProps {
   padding?: 'none' | 'sm' | 'md' | 'lg';
 }
 
-/**
- * Card component with terminal-inspired variants and optional hover styling.
- */
 export const Card: React.FC<CardProps> = ({
   title,
   subtitle,
@@ -34,7 +31,7 @@ export const Card: React.FC<CardProps> = ({
 
   const variantStyles = {
     default: 'terminal-card',
-    bordered: 'terminal-card',
+    bordered: 'terminal-card terminal-card-bordered',
     gradient: 'gradient-border-card',
   };
 

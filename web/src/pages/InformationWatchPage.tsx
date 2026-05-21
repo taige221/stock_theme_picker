@@ -12,7 +12,7 @@ import {
   type OpenDiscoveryProfile,
   type OpenDiscoveryRunOnceResponse,
 } from '../api/informationWatch';
-import { ApiErrorAlert, AppPage, Badge, Button, Card, EmptyState, InlineAlert, Select } from '../components/common';
+import { ApiErrorAlert, AppPage, Badge, Button, Card, EmptyState, InlineAlert, PaperHero, PaperHeroHeader, PaperListBlock, PaperSectionCard, PaperSectionHeader, PaperStatCard, Select } from '../components/common';
 
 const EVENT_TYPE_OPTIONS = [
   { value: 'order', label: '订单/采购' },
@@ -347,37 +347,30 @@ const InformationWatchPage: React.FC = () => {
 
   return (
     <AppPage className="space-y-6 !max-w-[1680px] px-3 md:px-5 lg:px-6">
-      <section className="overflow-hidden rounded-[32px] border border-border/60 bg-[radial-gradient(circle_at_top_left,_rgba(6,182,212,0.18),_transparent_30%),radial-gradient(circle_at_bottom_right,_rgba(59,130,246,0.16),_transparent_28%),linear-gradient(180deg,rgba(255,255,255,0.98),rgba(246,249,252,0.96))] shadow-soft-card dark:bg-[radial-gradient(circle_at_top_left,_rgba(34,211,238,0.18),_transparent_30%),radial-gradient(circle_at_bottom_right,_rgba(59,130,246,0.14),_transparent_28%),linear-gradient(180deg,rgba(10,15,26,0.98),rgba(14,20,32,0.96))]">
-        <div className="grid gap-6 px-5 py-6 lg:grid-cols-12 lg:px-7 lg:py-7">
+      <PaperHero contentClassName="grid gap-6 lg:grid-cols-12">
           <div className="space-y-5 lg:col-span-7">
-            <div className="flex items-center gap-4">
-              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-cyan/10 text-cyan shadow-soft-card">
-                <TowerControl className="h-7 w-7" />
-              </div>
-              <div>
-                <p className="text-xs uppercase tracking-[0.18em] text-secondary-text">Information Watch Pool</p>
-                <h2 className="mt-1 text-3xl font-semibold tracking-tight text-foreground">先盯产业信息，再决定扫什么主题</h2>
-                <p className="mt-2 max-w-3xl text-sm leading-7 text-secondary-text">
-                  这层负责每天扫描高价值产业触发点，把新闻、公告和解读归并成结构化事件，再交给主题因子扫描继续确认。
-                </p>
-              </div>
-            </div>
+            <PaperHeroHeader
+              eyebrow="Information Watch Pool"
+              title="先盯产业信息，再决定扫什么主题"
+              description="这层负责每天扫描高价值产业触发点，把新闻、公告和解读归并成结构化事件，再交给主题因子扫描继续确认。"
+              icon={<TowerControl className="h-7 w-7" />}
+            />
           </div>
 
-          <Card variant="bordered" padding="lg" className="rounded-[28px] border-border/60 bg-card/90 lg:col-span-5 lg:min-h-[248px]">
+          <Card variant="bordered" padding="lg" className="paper-panel rounded-[24px] lg:col-span-5 lg:min-h-[248px]">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <p className="text-xs uppercase tracking-[0.18em] text-secondary-text">Run Loop</p>
-                <h3 className="mt-1 text-2xl font-semibold text-foreground">先扫事件，再推主题</h3>
+                <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-secondary-text">Run Loop</p>
+                <h3 className="mt-1 text-[1.55rem] font-semibold tracking-[-0.02em] text-foreground">先扫事件，再推主题</h3>
               </div>
               <Badge variant="info" className="border-0 px-3 py-1">MVP</Badge>
             </div>
             <div className="mt-5 space-y-3">
-              <Card variant="bordered" padding="md" className="rounded-[22px] border-border/60 bg-background/75">
+              <Card variant="bordered" padding="md" className="paper-panel-muted rounded-[22px]">
                 <p className="text-sm font-semibold text-foreground">扫描顺序</p>
                 <p className="mt-2 text-sm leading-6 text-secondary-text">事件新闻确认 → 市场反应 → 风险排查。先拿到高质量事件，再让主题因子层接手。</p>
               </Card>
-              <Card variant="bordered" padding="md" className="rounded-[22px] border-border/60 bg-background/75">
+              <Card variant="bordered" padding="md" className="paper-panel-muted rounded-[22px]">
                 <p className="text-sm font-semibold text-foreground">当前结果</p>
                 <p className="mt-2 text-sm leading-6 text-secondary-text">
                   默认优先保留与观察项本身高度相关的结果，并过滤社媒/通用噪音源，避免把普通网页当成产业催化。
@@ -396,24 +389,11 @@ const InformationWatchPage: React.FC = () => {
           </Card>
 
           <div className="grid gap-3 sm:grid-cols-3 lg:col-span-12">
-            <Card variant="bordered" padding="lg" className="rounded-[24px] border-border/60 bg-card/85">
-              <p className="text-xs uppercase tracking-[0.16em] text-secondary-text">启用观察项</p>
-              <p className="mt-3 text-3xl font-semibold text-foreground">{stats.enabledItems}</p>
-              <p className="mt-2 text-sm text-secondary-text">当前以事件型主题为主，不直接扫大板块噪音。</p>
-            </Card>
-            <Card variant="bordered" padding="lg" className="rounded-[24px] border-border/60 bg-card/85">
-              <p className="text-xs uppercase tracking-[0.16em] text-secondary-text">高质量事件</p>
-              <p className="mt-3 text-3xl font-semibold text-foreground">{stats.promotedEvents}</p>
-              <p className="mt-2 text-sm text-secondary-text">满足新鲜度和可信度门槛，适合进入主题因子层继续确认。</p>
-            </Card>
-            <Card variant="bordered" padding="lg" className="rounded-[24px] border-border/60 bg-card/85">
-              <p className="text-xs uppercase tracking-[0.16em] text-secondary-text">一级线索</p>
-              <p className="mt-3 text-3xl font-semibold text-foreground">{stats.tier1Events}</p>
-              <p className="mt-2 text-sm text-secondary-text">优先保留公告/监管这类硬确认来源，降低旧闻与观点噪音。</p>
-            </Card>
+            <PaperStatCard label="启用观察项" value={stats.enabledItems} detail="当前以事件型主题为主，不直接扫大板块噪音。" />
+            <PaperStatCard label="高质量事件" value={stats.promotedEvents} detail="满足新鲜度和可信度门槛，适合进入主题因子层继续确认。" />
+            <PaperStatCard label="一级线索" value={stats.tier1Events} detail="优先保留公告/监管这类硬确认来源，降低旧闻与观点噪音。" />
           </div>
-        </div>
-      </section>
+      </PaperHero>
 
       {error ? <ApiErrorAlert error={error} /> : null}
       {actionError ? <ApiErrorAlert error={actionError} /> : null}
@@ -434,29 +414,29 @@ const InformationWatchPage: React.FC = () => {
 
       <section className="grid gap-5 xl:grid-cols-12">
         <div className="grid gap-5 xl:col-span-5 xl:auto-rows-auto">
-          <Card variant="bordered" padding="lg" className="rounded-[28px] xl:min-h-[640px]">
+          <Card variant="bordered" padding="lg" className="paper-panel rounded-[24px] xl:min-h-[640px]">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <span className="label-uppercase">Open Discovery Pool</span>
                 <h3 className="mt-1 text-2xl font-semibold text-foreground">开放发现池</h3>
-                <p className="mt-2 text-sm leading-7 text-secondary-text">
+                <p className="mt-2 text-sm leading-6 text-secondary-text">
                   不预设具体股票或单一主题，直接按高价值事件模板扫全局信息，用来发现新的产业链苗头。
                 </p>
               </div>
               <Badge variant="info" className="border-0 px-3 py-1">{discoveryProfiles.length} 个模板</Badge>
             </div>
             <div className="mt-5 grid gap-3 sm:grid-cols-3">
-              <Card variant="bordered" padding="md" className="rounded-[22px] border-border/60 bg-card/80">
+              <Card variant="bordered" padding="md" className="paper-kpi-card rounded-[22px]">
                 <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">发现模板</p>
                 <p className="mt-2 text-2xl font-semibold text-foreground">{discoveryProfiles.filter((item) => item.enabled).length}</p>
                 <p className="mt-1 text-xs text-secondary-text">订单、扩产、涨价、政策、量产等全局模板。</p>
               </Card>
-              <Card variant="bordered" padding="md" className="rounded-[22px] border-border/60 bg-card/80">
+              <Card variant="bordered" padding="md" className="paper-kpi-card rounded-[22px]">
                 <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">高质量发现</p>
                 <p className="mt-2 text-2xl font-semibold text-foreground">{stats.discoveryPromoted}</p>
                 <p className="mt-1 text-xs text-secondary-text">这些发现事件会直接进入主题因子层继续确认。</p>
               </Card>
-              <Card variant="bordered" padding="md" className="rounded-[22px] border-border/60 bg-card/80">
+              <Card variant="bordered" padding="md" className="paper-kpi-card rounded-[22px]">
                 <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">发现模式</p>
                 <p className="mt-2 text-2xl font-semibold text-foreground">全局探索</p>
                 <p className="mt-1 text-xs text-secondary-text">先找事件语义，再反推主题、产业链和候选股。</p>
@@ -473,7 +453,7 @@ const InformationWatchPage: React.FC = () => {
             </div>
             <div className={`mt-5 space-y-3 ${DISCOVERY_TEMPLATE_SCROLL_CLASS}`}>
               {discoveryProfiles.map((profile) => (
-                <div key={profile.profileId} className="rounded-[22px] border border-border/60 bg-background/72 px-4 py-4">
+                <div key={profile.profileId} className="paper-list-card px-4 py-4">
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <h4 className="text-base font-semibold text-foreground">{profile.name}</h4>
@@ -498,19 +478,10 @@ const InformationWatchPage: React.FC = () => {
             </div>
           </Card>
 
-          <Card variant="bordered" padding="lg" className="rounded-[28px] xl:min-h-[420px]">
-            <div className="flex items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-cyan/10 text-cyan">
-                <Sparkles className="h-5 w-5" />
-              </div>
-              <div>
-                <span className="label-uppercase">Watch Items</span>
-                <h3 className="mt-1 text-2xl font-semibold text-foreground">当前观察主题</h3>
-              </div>
-            </div>
-            <div className={`mt-5 space-y-3 ${WATCH_ITEM_SCROLL_CLASS}`}>
+          <PaperSectionCard eyebrow="Watch Items" title="当前观察主题" icon={<Sparkles className="h-5 w-5" />} className="xl:min-h-[420px]">
+            <div className={`space-y-3 ${WATCH_ITEM_SCROLL_CLASS}`}>
               {items.map((item) => (
-                <div key={item.itemId} className="rounded-[22px] border border-border/60 bg-background/72 px-4 py-4">
+                <PaperListBlock key={item.itemId}>
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <h4 className="text-base font-semibold text-foreground">{item.name}</h4>
@@ -548,19 +519,19 @@ const InformationWatchPage: React.FC = () => {
                   <p className="mt-3 text-xs leading-6 text-secondary-text">
                     主题：{item.themes.join(' / ') || '未设置'} · 产业链标签：{item.chainTags.join(' / ') || '未设置'}
                   </p>
-                </div>
+                </PaperListBlock>
               ))}
             </div>
-          </Card>
+          </PaperSectionCard>
         </div>
 
         <div className="grid gap-5 xl:col-span-7 xl:auto-rows-auto">
-          <Card variant="bordered" padding="lg" className="rounded-[28px] xl:min-h-[520px]">
+          <Card variant="bordered" padding="lg" className="paper-panel rounded-[24px] xl:min-h-[520px]">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <span className="label-uppercase">Discovery Candidates</span>
                 <h3 className="mt-1 text-2xl font-semibold text-foreground">开放发现候选主题</h3>
-                <p className="mt-2 text-sm leading-7 text-secondary-text">
+                <p className="mt-2 text-sm leading-6 text-secondary-text">
                   系统会把重复出现、主题标签稳定、且高质量的 discovery 事件聚成候选主题，适合作为长期观察项沉淀。
                 </p>
               </div>
@@ -575,7 +546,7 @@ const InformationWatchPage: React.FC = () => {
                 />
               ) : null}
               {discoveryCandidates.map((candidate) => (
-                <div key={candidate.clusterKey} className="rounded-[24px] border border-border/60 bg-background/72 px-5 py-4">
+                <div key={candidate.clusterKey} className="paper-list-card px-5 py-4">
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge variant="info" className="border-0 px-3 py-1">{eventTypeLabel(candidate.eventType)}</Badge>
                     <Badge variant={candidate.hardSourceConfirmed ? 'success' : 'default'} className="border-0 px-3 py-1">
@@ -598,19 +569,19 @@ const InformationWatchPage: React.FC = () => {
                     </div>
                   </div>
                   <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                    <div className="rounded-[18px] border border-border/60 bg-card/70 px-4 py-3">
+                    <div className="paper-panel-subtle px-4 py-3">
                       <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">聚类事件数</p>
                       <p className="mt-2 text-lg font-semibold text-foreground">{candidate.eventCount}</p>
                       <p className="mt-1 text-xs text-secondary-text">其中 promoted {candidate.promotedCount} 条</p>
                     </div>
-                    <div className="rounded-[18px] border border-border/60 bg-card/70 px-4 py-3">
+                    <div className="paper-panel-subtle px-4 py-3">
                       <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">主题/链条</p>
                       <p className="mt-2 text-sm font-semibold text-foreground">
                         {[...candidate.themes.slice(0, 2), ...candidate.chainTags.slice(0, 2)].join(' / ') || '待归纳'}
                       </p>
                       <p className="mt-1 text-xs text-secondary-text">{candidate.sourceHosts.slice(0, 3).join(' · ') || '暂无来源'}</p>
                     </div>
-                    <div className="rounded-[18px] border border-border/60 bg-card/70 px-4 py-3">
+                    <div className="paper-panel-subtle px-4 py-3">
                       <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">来源层级</p>
                       <p className="mt-2 text-sm font-semibold text-foreground">{candidate.sourceTiers.join(' / ') || '待判定'}</p>
                       <p className="mt-1 text-xs text-secondary-text">{candidate.status === 'linked' ? '已关联观察池' : '可继续沉淀'}</p>
@@ -647,7 +618,7 @@ const InformationWatchPage: React.FC = () => {
             </div>
           </Card>
 
-          <Card variant="bordered" padding="lg" className="rounded-[28px] xl:min-h-[540px]">
+          <Card variant="bordered" padding="lg" className="paper-panel rounded-[24px] xl:min-h-[540px]">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <span className="label-uppercase">Discovery Events</span>
@@ -665,7 +636,7 @@ const InformationWatchPage: React.FC = () => {
                 />
               ) : null}
               {discoveryEvents.map((event) => (
-                <div key={event.eventId} className="rounded-[24px] border border-border/60 bg-background/72 px-5 py-4">
+                <div key={event.eventId} className="paper-list-card px-5 py-4">
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge variant="info" className="border-0 px-3 py-1">discovery</Badge>
                     <Badge variant={statusVariant(event.status)} className="border-0 px-3 py-1">{event.status}</Badge>
@@ -691,7 +662,7 @@ const InformationWatchPage: React.FC = () => {
                         href={event.url}
                         target="_blank"
                         rel="noreferrer"
-                        className="inline-flex shrink-0 items-center gap-1 rounded-xl border border-border/60 bg-card/75 px-3 py-2 text-xs text-secondary-text transition hover:border-cyan/20 hover:text-foreground"
+                        className="paper-chip-link shrink-0"
                       >
                         原文
                         <ExternalLink className="h-3.5 w-3.5" />
@@ -699,17 +670,17 @@ const InformationWatchPage: React.FC = () => {
                     ) : null}
                   </div>
                   <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                    <div className="rounded-[18px] border border-border/60 bg-card/70 px-4 py-3">
+                    <div className="paper-panel-subtle px-4 py-3">
                       <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">新鲜度</p>
                       <p className="mt-2 text-lg font-semibold text-foreground">{event.freshnessScore.toFixed(0)}</p>
                       <p className="mt-1 text-xs text-secondary-text">{formatDateTime(event.publishedAt)}</p>
                     </div>
-                    <div className="rounded-[18px] border border-border/60 bg-card/70 px-4 py-3">
+                    <div className="paper-panel-subtle px-4 py-3">
                       <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">可信度</p>
                       <p className="mt-2 text-lg font-semibold text-foreground">{event.credibilityScore.toFixed(0)}</p>
                       <p className="mt-1 text-xs text-secondary-text">{String(event.metadata.discoveryProfileName ?? '开放模板')}</p>
                     </div>
-                    <div className="rounded-[18px] border border-border/60 bg-card/70 px-4 py-3">
+                    <div className="paper-panel-subtle px-4 py-3">
                       <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">信号强度</p>
                       <p className="mt-2 text-lg font-semibold text-foreground">{event.signalStrength.toFixed(0)}</p>
                       <p className="mt-1 text-xs text-secondary-text">{String(event.metadata.queryGroup ?? 'event_news')}</p>
@@ -749,12 +720,11 @@ const InformationWatchPage: React.FC = () => {
       </section>
 
       <section className="grid gap-5 xl:grid-cols-12">
-        <Card variant="bordered" padding="lg" className="rounded-[28px] xl:col-span-7 xl:min-h-[1080px]">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <span className="label-uppercase">Recent Events</span>
-              <h3 className="mt-1 text-2xl font-semibold text-foreground">最近信息事件</h3>
-            </div>
+        <PaperSectionCard
+          eyebrow="Recent Events"
+          title="最近信息事件"
+          className="xl:col-span-7 xl:min-h-[1080px]"
+          actions={(
             <div className="flex items-center gap-3">
               <div className="w-[220px]">
                 <Select
@@ -766,9 +736,9 @@ const InformationWatchPage: React.FC = () => {
               </div>
               <Badge variant="default" className="border-border/60 px-3 py-1">{events.length} 条</Badge>
             </div>
-          </div>
-
-          <div className={`mt-5 space-y-3 ${WATCH_EVENT_SCROLL_CLASS}`}>
+          )}
+        >
+          <div className={`space-y-3 ${WATCH_EVENT_SCROLL_CLASS}`}>
             {!loading && events.length === 0 ? (
               <EmptyState
                 title="暂时还没有信息事件"
@@ -779,7 +749,7 @@ const InformationWatchPage: React.FC = () => {
             ) : null}
 
             {events.map((event) => (
-              <div key={event.eventId} className="rounded-[24px] border border-border/60 bg-background/72 px-5 py-4">
+              <PaperListBlock key={event.eventId} size="lg">
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge variant={event.sourceMode === 'discovery' ? 'info' : 'default'} className="border-0 px-3 py-1">
                     {event.sourceMode === 'discovery' ? 'discovery' : 'watch'}
@@ -811,7 +781,7 @@ const InformationWatchPage: React.FC = () => {
                       href={event.url}
                       target="_blank"
                       rel="noreferrer"
-                      className="inline-flex shrink-0 items-center gap-1 rounded-xl border border-border/60 bg-card/75 px-3 py-2 text-xs text-secondary-text transition hover:border-cyan/20 hover:text-foreground"
+                      className="paper-chip-link shrink-0"
                     >
                       原文
                       <ExternalLink className="h-3.5 w-3.5" />
@@ -820,17 +790,17 @@ const InformationWatchPage: React.FC = () => {
                 </div>
 
                 <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                  <div className="rounded-[18px] border border-border/60 bg-card/70 px-4 py-3">
+                  <div className="paper-panel-subtle px-4 py-3">
                     <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">新鲜度</p>
                     <p className="mt-2 text-lg font-semibold text-foreground">{event.freshnessScore.toFixed(0)}</p>
                     <p className="mt-1 text-xs text-secondary-text">{formatDateTime(event.publishedAt)}</p>
                   </div>
-                  <div className="rounded-[18px] border border-border/60 bg-card/70 px-4 py-3">
+                  <div className="paper-panel-subtle px-4 py-3">
                     <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">可信度</p>
                     <p className="mt-2 text-lg font-semibold text-foreground">{event.credibilityScore.toFixed(0)}</p>
                     <p className="mt-1 text-xs text-secondary-text">来源层级 {event.sourceTier} · {sourceTierHint(event.sourceTier)}</p>
                   </div>
-                  <div className="rounded-[18px] border border-border/60 bg-card/70 px-4 py-3">
+                  <div className="paper-panel-subtle px-4 py-3">
                     <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">信号强度</p>
                     <p className="mt-2 text-lg font-semibold text-foreground">{event.signalStrength.toFixed(0)}</p>
                     <p className="mt-1 text-xs text-secondary-text">{String(event.metadata.queryGroup ?? 'event_news')}</p>
@@ -849,23 +819,15 @@ const InformationWatchPage: React.FC = () => {
                     </Badge>
                   ))}
                 </div>
-              </div>
+              </PaperListBlock>
             ))}
           </div>
-        </Card>
+        </PaperSectionCard>
 
         <div className="grid gap-5 xl:col-span-5 xl:auto-rows-auto">
           <div ref={formAnchorRef} />
-          <Card variant="bordered" padding="lg" className="rounded-[28px] xl:min-h-[700px]">
-            <div className="flex items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald/10 text-emerald">
-                <Sparkles className="h-5 w-5" />
-              </div>
-              <div>
-                <span className="label-uppercase">Custom Watch Item</span>
-                <h3 className="mt-1 text-2xl font-semibold text-foreground">{editingItemId ? '编辑观察主题' : '自定义观察主题'}</h3>
-              </div>
-            </div>
+          <Card variant="bordered" padding="lg" className="paper-panel rounded-[24px] xl:min-h-[700px]">
+            <PaperSectionHeader eyebrow="Custom Watch Item" title={editingItemId ? '编辑观察主题' : '自定义观察主题'} icon={<Sparkles className="h-5 w-5" />} />
             <div className="mt-5 grid gap-3">
               <label className="grid gap-2">
                 <span className="text-sm font-medium text-foreground">观察主题名</span>
@@ -873,7 +835,7 @@ const InformationWatchPage: React.FC = () => {
                   value={draft.name}
                   onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))}
                   placeholder="例如：HBM 扩产、液冷订单、先进封装验证"
-                  className="h-11 rounded-2xl border border-border/60 bg-background/72 px-4 text-sm text-foreground outline-none transition focus:border-cyan/30"
+                  className="paper-form-control h-11 text-sm"
                 />
               </label>
               <label className="grid gap-2">
@@ -881,7 +843,7 @@ const InformationWatchPage: React.FC = () => {
                 <select
                   value={draft.eventType}
                   onChange={(event) => setDraft((current) => ({ ...current, eventType: event.target.value }))}
-                  className="h-11 rounded-2xl border border-border/60 bg-background/72 px-4 text-sm text-foreground outline-none transition focus:border-cyan/30"
+                  className="paper-form-control h-11 text-sm"
                 >
                   {EVENT_TYPE_OPTIONS.map((option) => (
                     <option key={option.value} value={option.value}>
@@ -897,7 +859,7 @@ const InformationWatchPage: React.FC = () => {
                   onChange={(event) => setDraft((current) => ({ ...current, seedTermsText: event.target.value }))}
                   placeholder="逗号分隔，例如：HBM，扩产，产能，封装"
                   rows={3}
-                  className="rounded-2xl border border-border/60 bg-background/72 px-4 py-3 text-sm text-foreground outline-none transition focus:border-cyan/30"
+                  className="paper-form-control text-sm"
                 />
               </label>
               <label className="grid gap-2">
@@ -907,19 +869,19 @@ const InformationWatchPage: React.FC = () => {
                     value={draft.aliasesText}
                     onChange={(event) => setDraft((current) => ({ ...current, aliasesText: event.target.value }))}
                     placeholder="别名，如 CXMT"
-                    className="h-11 rounded-2xl border border-border/60 bg-background/72 px-4 text-sm text-foreground outline-none transition focus:border-cyan/30"
+                    className="paper-form-control h-11 text-sm"
                   />
                   <input
                     value={draft.themesText}
                     onChange={(event) => setDraft((current) => ({ ...current, themesText: event.target.value }))}
                     placeholder="主题，如 存储,芯片"
-                    className="h-11 rounded-2xl border border-border/60 bg-background/72 px-4 text-sm text-foreground outline-none transition focus:border-cyan/30"
+                    className="paper-form-control h-11 text-sm"
                   />
                   <input
                     value={draft.chainTagsText}
                     onChange={(event) => setDraft((current) => ({ ...current, chainTagsText: event.target.value }))}
                     placeholder="产业链标签，如 材料,设备"
-                    className="h-11 rounded-2xl border border-border/60 bg-background/72 px-4 text-sm text-foreground outline-none transition focus:border-cyan/30"
+                    className="paper-form-control h-11 text-sm"
                   />
                 </div>
               </label>
@@ -930,9 +892,9 @@ const InformationWatchPage: React.FC = () => {
                     value={draft.freshnessDays}
                     onChange={(event) => setDraft((current) => ({ ...current, freshnessDays: event.target.value }))}
                     placeholder="3"
-                    className="h-11 rounded-2xl border border-border/60 bg-background/72 px-4 text-sm text-foreground outline-none transition focus:border-cyan/30"
+                    className="paper-form-control h-11 text-sm"
                   />
-                  <div className="flex flex-wrap gap-3 rounded-2xl border border-border/60 bg-background/72 px-4 py-3 text-sm text-secondary-text">
+                  <div className="paper-panel-muted flex flex-wrap gap-3 px-4 py-3 text-sm text-secondary-text">
                     <label className="inline-flex items-center gap-2">
                       <input type="checkbox" checked={draft.allowL1} onChange={(event) => setDraft((current) => ({ ...current, allowL1: event.target.checked }))} />
                       L1 公告/监管
@@ -955,7 +917,7 @@ const InformationWatchPage: React.FC = () => {
                   onChange={(event) => setDraft((current) => ({ ...current, notes: event.target.value }))}
                   placeholder="说明这条观察项为什么值得长期跟踪"
                   rows={2}
-                  className="rounded-2xl border border-border/60 bg-background/72 px-4 py-3 text-sm text-foreground outline-none transition focus:border-cyan/30"
+                  className="paper-form-control text-sm"
                 />
               </label>
               <div className="flex flex-wrap gap-3">
@@ -972,32 +934,24 @@ const InformationWatchPage: React.FC = () => {
                     取消编辑
                   </Button>
                 ) : null}
-                <p className="text-sm leading-7 text-secondary-text">右侧主题现在不再是只读展示，可以直接在这里补你自己的事件型主题。</p>
+                <p className="text-sm leading-6 text-secondary-text">右侧主题现在不再是只读展示，可以直接在这里补你自己的事件型主题。</p>
               </div>
             </div>
           </Card>
 
-          <Card variant="bordered" padding="lg" className="rounded-[28px] xl:min-h-[340px]">
-            <div className="flex items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-purple/10 text-purple">
-                <Activity className="h-5 w-5" />
-              </div>
-              <div>
-                <span className="label-uppercase">How It Drives Search</span>
-                <h3 className="mt-1 text-2xl font-semibold text-foreground">检索驱动规则</h3>
-              </div>
-            </div>
-            <div className="mt-5 space-y-3 text-sm leading-7 text-secondary-text">
-              <div className="rounded-[22px] border border-border/60 bg-background/72 px-4 py-4">
+          <Card variant="bordered" padding="lg" className="paper-panel rounded-[24px] xl:min-h-[340px]">
+            <PaperSectionHeader eyebrow="How It Drives Search" title="检索驱动规则" icon={<Activity className="h-5 w-5" />} />
+            <div className="mt-5 space-y-3 text-sm leading-6 text-secondary-text">
+              <div className="paper-list-card px-4 py-4">
                 观察项不是直接搜大主题，而是按“事件新闻 / 市场反应 / 风险排查”三种意图拆开检索。
               </div>
-              <div className="rounded-[22px] border border-border/60 bg-background/72 px-4 py-4">
+              <div className="paper-list-card px-4 py-4">
                 结果会优先保留与 seed terms、主题、产业链标签同时相关的内容，减少社媒和泛搜索噪音。
               </div>
-              <div className="rounded-[22px] border border-border/60 bg-background/72 px-4 py-4">
+              <div className="paper-list-card px-4 py-4">
                 只有新鲜度与可信度都过线的事件，才会继续喂给“主题因子扫描”。
               </div>
-              <div className="rounded-[22px] border border-border/60 bg-background/72 px-4 py-4">
+              <div className="paper-list-card px-4 py-4">
                 `L1` 是公告/监管/官方口径，`L2` 是主流媒体或快讯确认，`L3` 是市场反应、研报解读或弱源；现在不再单靠查询组硬分。
               </div>
             </div>

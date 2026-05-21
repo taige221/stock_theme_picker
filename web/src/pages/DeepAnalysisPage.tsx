@@ -22,7 +22,7 @@ import {
   type StockDeepAnalysisItem,
   type StockDeepAnalysisMessage,
 } from '../api/stockQuery';
-import { ApiErrorAlert, AppPage, Badge, Button, Card, Drawer, EmptyState, InlineAlert, Input } from '../components/common';
+import { ApiErrorAlert, AppPage, Badge, Button, Card, Drawer, EmptyState, InlineAlert, Input, PaperHeroHeader } from '../components/common';
 
 const MIN_ALERT_SCAN_INTERVAL_MINUTES = 5;
 
@@ -374,7 +374,7 @@ const DeepAnalysisPage: React.FC = () => {
     <AppPage className="max-w-[1680px] py-6">
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
         <div className="space-y-6">
-          <section className="rounded-[32px] border border-border/70 bg-[radial-gradient(circle_at_top_right,hsl(var(--foreground)/0.05),transparent_28%),linear-gradient(180deg,hsl(var(--card)/0.98),hsl(var(--background)/0.95))] p-6 shadow-soft-card">
+          <section className="paper-hero p-6">
             <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
               <div className="max-w-3xl">
                 <div className="flex flex-wrap items-center gap-3">
@@ -398,16 +398,16 @@ const DeepAnalysisPage: React.FC = () => {
                 </div>
 
                 <div className="mt-4">
-                  <p className="text-sm uppercase tracking-[0.18em] text-secondary-text">Single Stock Cockpit</p>
-                  <h1 className="font-display mt-3 text-3xl font-semibold tracking-tight text-foreground md:text-4xl">
-                    {analysis?.stockName || stockNameHint || '单股深度分析'}
+                  <PaperHeroHeader
+                    eyebrow="Deep Analysis"
+                    title={analysis?.stockName || stockNameHint || '单股深度分析'}
+                    description={analysis?.summary || '深度分析会围绕一次已完成的单股查询结果，生成结构化交易计划，并支持受控追问与告警规则生成。'}
+                    titleClassName="font-display"
+                  >
                     {analysis?.stockCode ? (
-                      <span className="ml-3 text-lg font-medium text-secondary-text">{analysis.stockCode}</span>
+                      <p className="mt-3 text-base font-medium text-secondary-text">{analysis.stockCode}</p>
                     ) : null}
-                  </h1>
-                  <p className="mt-4 max-w-3xl text-sm leading-7 text-secondary-text">
-                    {analysis?.summary || '深度分析会围绕一次已完成的单股查询结果，生成结构化交易计划，并支持受控追问与告警规则生成。'}
-                  </p>
+                  </PaperHeroHeader>
                 </div>
               </div>
 
@@ -458,7 +458,7 @@ const DeepAnalysisPage: React.FC = () => {
           ) : null}
 
           {loading && !analysis ? (
-            <Card variant="bordered" padding="lg" className="rounded-[28px] border-border/60 bg-card/90">
+            <Card variant="bordered" padding="lg" className="paper-panel rounded-[24px]">
               <div className="flex items-center gap-3 text-secondary-text">
                 <RefreshCw className="h-4 w-4 animate-spin text-foreground" />
                 <span>正在生成深度分析...</span>
@@ -467,7 +467,7 @@ const DeepAnalysisPage: React.FC = () => {
           ) : null}
 
           {analysis && analysis.status !== 'completed' ? (
-            <Card variant="bordered" padding="lg" className="rounded-[28px] border-border/60 bg-card/95">
+            <Card variant="bordered" padding="lg" className="paper-panel rounded-[24px]">
               <div className="flex items-center gap-3">
                 {analysis.status === 'failed' ? (
                   <AlertTriangle className="h-5 w-5 text-danger" />
@@ -489,11 +489,11 @@ const DeepAnalysisPage: React.FC = () => {
           {analysis?.status === 'completed' ? (
             <>
               <section className="grid gap-6 lg:grid-cols-[minmax(0,1.35fr)_360px]">
-                <Card variant="bordered" padding="lg" className="rounded-[28px] border-border/60 bg-card/95">
+                <Card variant="bordered" padding="lg" className="rounded-[24px] border-border/60 bg-card/95">
                   <div className="flex items-center justify-between gap-4">
                     <div>
-                      <p className="text-xs uppercase tracking-[0.18em] text-secondary-text">交易计划</p>
-                      <h2 className="mt-2 text-2xl font-semibold text-foreground">{tradePlan?.actionLabel || actionLabel(analysis.action)}</h2>
+                      <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-secondary-text">交易计划</p>
+                      <h2 className="mt-2 text-[1.55rem] font-semibold tracking-[-0.02em] text-foreground">{tradePlan?.actionLabel || actionLabel(analysis.action)}</h2>
                     </div>
                     <Badge variant="info" className="border-0 px-3 py-1">
                       置信度 {tradePlan?.confidence ?? '--'} / 100
@@ -501,54 +501,54 @@ const DeepAnalysisPage: React.FC = () => {
                   </div>
 
                   <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                    <div className="rounded-2xl border border-border/60 bg-background/72 p-4">
+                    <div className="paper-kpi-card p-4">
                       <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">试仓位</p>
                       <p className="mt-3 text-2xl font-semibold text-foreground">{formatNumber(levels?.trialPrice)}</p>
                     </div>
-                    <div className="rounded-2xl border border-border/60 bg-background/72 p-4">
+                    <div className="paper-kpi-card p-4">
                       <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">确认位</p>
                       <p className="mt-3 text-2xl font-semibold text-foreground">{formatNumber(levels?.confirmPrice)}</p>
                     </div>
-                    <div className="rounded-2xl border border-border/60 bg-background/72 p-4">
+                    <div className="paper-kpi-card p-4">
                       <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">止损位</p>
                       <p className="mt-3 text-2xl font-semibold text-foreground">{formatNumber(levels?.stopLoss)}</p>
                     </div>
-                    <div className="rounded-2xl border border-border/60 bg-background/72 p-4">
+                    <div className="paper-kpi-card p-4">
                       <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">目标位</p>
                       <p className="mt-3 text-2xl font-semibold text-foreground">{formatNumber(levels?.targetPrice)}</p>
                     </div>
                   </div>
 
                   <div className="mt-6 grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
-                    <div className="rounded-3xl border border-border/60 bg-background/60 p-5">
+                    <div className="paper-panel-muted rounded-[24px] p-5">
                       <div className="flex items-center gap-2">
                         <Target className="h-4 w-4 text-foreground" />
                         <h3 className="text-lg font-semibold text-foreground">执行步骤</h3>
                       </div>
                       <div className="mt-4 space-y-3">
                         {(tradePlan?.triggers ?? []).map((item, index) => (
-                          <div key={`${item}-${index}`} className="rounded-2xl border border-border/50 bg-card/80 px-4 py-3">
+                          <div key={`${item}-${index}`} className="paper-list-card px-4 py-3">
                             <p className="text-sm leading-6 text-foreground">{item}</p>
                           </div>
                         ))}
                       </div>
                     </div>
 
-                    <div className="rounded-3xl border border-border/60 bg-background/60 p-5">
+                    <div className="paper-panel-muted rounded-[24px] p-5">
                       <div className="flex items-center gap-2">
                         <ShieldAlert className="h-4 w-4 text-foreground" />
                         <h3 className="text-lg font-semibold text-foreground">仓位建议</h3>
                       </div>
                       <div className="mt-4 space-y-3 text-sm text-secondary-text">
-                        <div className="flex items-center justify-between rounded-2xl border border-border/50 bg-card/80 px-4 py-3">
+                        <div className="paper-list-card flex items-center justify-between px-4 py-3">
                           <span>初始仓位</span>
                           <strong className="text-foreground">{tradePlan?.positionPlan?.initial ?? '--'}</strong>
                         </div>
-                        <div className="flex items-center justify-between rounded-2xl border border-border/50 bg-card/80 px-4 py-3">
+                        <div className="paper-list-card flex items-center justify-between px-4 py-3">
                           <span>加仓条件</span>
                           <strong className="text-right text-foreground">{tradePlan?.positionPlan?.add ?? '--'}</strong>
                         </div>
-                        <div className="flex items-center justify-between rounded-2xl border border-border/50 bg-card/80 px-4 py-3">
+                        <div className="paper-list-card flex items-center justify-between px-4 py-3">
                           <span>最大仓位</span>
                           <strong className="text-foreground">{tradePlan?.positionPlan?.max ?? '--'}</strong>
                         </div>
@@ -557,28 +557,28 @@ const DeepAnalysisPage: React.FC = () => {
                   </div>
                 </Card>
 
-                <Card variant="bordered" padding="lg" className="rounded-[28px] border-border/60 bg-card/95">
-                  <p className="text-xs uppercase tracking-[0.18em] text-secondary-text">上下文快照</p>
+                <Card variant="bordered" padding="lg" className="rounded-[24px] border-border/60 bg-card/95">
+                  <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-secondary-text">上下文快照</p>
                   <div className="mt-4 space-y-4">
-                    <div className="rounded-2xl border border-border/60 bg-background/60 px-4 py-4">
-                      <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">当前价格</p>
-                      <p className="mt-3 text-3xl font-semibold text-foreground">{formatNumber(stockResult?.currentPrice)}</p>
+                    <div className="paper-panel-muted px-4 py-4">
+                      <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-secondary-text">当前价格</p>
+                      <p className="mt-3 text-[2rem] font-semibold tracking-[-0.03em] text-foreground">{formatNumber(stockResult?.currentPrice)}</p>
                       <p className="mt-2 text-sm text-secondary-text">涨跌幅 {formatNumber(stockResult?.pctChg, 2)}%</p>
                     </div>
 
                     <div className="grid gap-3 sm:grid-cols-2">
-                      <div className="rounded-2xl border border-border/60 bg-background/60 p-4">
+                      <div className="paper-panel-muted p-4">
                         <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">趋势状态</p>
                         <p className="mt-2 text-base font-medium text-foreground">{stockResult?.trendStatus || '--'}</p>
                       </div>
-                      <div className="rounded-2xl border border-border/60 bg-background/60 p-4">
+                      <div className="paper-panel-muted p-4">
                         <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">买点信号</p>
                         <p className="mt-2 text-base font-medium text-foreground">{stockResult?.buySignal || stockResult?.signal || '--'}</p>
                       </div>
                     </div>
 
                     {conceptAttribution?.conceptNames?.length ? (
-                      <div className="rounded-2xl border border-border/60 bg-background/60 p-4">
+                      <div className="paper-panel-muted p-4">
                         <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">概念 / 题材归因</p>
                         <div className="mt-3 flex flex-wrap gap-2">
                           {conceptAttribution.conceptNames.slice(0, 5).map((item) => (
@@ -601,25 +601,25 @@ const DeepAnalysisPage: React.FC = () => {
 
               <section className="grid gap-6 xl:grid-cols-[minmax(0,1.3fr)_420px]">
                 <div className="space-y-6">
-                  <Card variant="bordered" padding="lg" className="rounded-[28px] border-border/60 bg-card/95">
+                  <Card variant="bordered" padding="lg" className="rounded-[24px] border-border/60 bg-card/95">
                     <div className="flex items-center gap-2">
                       <Sparkles className="h-4 w-4 text-foreground" />
                       <h2 className="text-xl font-semibold text-foreground">分析拆解</h2>
                     </div>
                     <div className="mt-5 grid gap-4">
-                      <div className="rounded-2xl border border-border/60 bg-background/60 p-4">
+                      <div className="paper-panel-muted p-4">
                         <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">技术确认</p>
-                        <p className="mt-3 text-sm leading-7 text-foreground">{analysis.technical?.assessment || '--'}</p>
+                        <p className="mt-3 text-sm leading-6 text-foreground">{analysis.technical?.assessment || '--'}</p>
                       </div>
-                      <div className="rounded-2xl border border-border/60 bg-background/60 p-4">
+                      <div className="paper-panel-muted p-4">
                         <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">基本面质量</p>
-                        <p className="mt-3 text-sm leading-7 text-foreground">{analysis.fundamental?.assessment || '--'}</p>
+                        <p className="mt-3 text-sm leading-6 text-foreground">{analysis.fundamental?.assessment || '--'}</p>
                       </div>
-                      <div className="rounded-2xl border border-border/60 bg-background/60 p-4">
+                      <div className="paper-panel-muted p-4">
                         <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">风险清单</p>
                         <div className="mt-3 space-y-2">
                           {(analysis.risk?.items ?? []).map((item, index) => (
-                            <div key={`${item}-${index}`} className="flex gap-3 rounded-2xl border border-border/60 bg-background/70 px-4 py-3">
+                            <div key={`${item}-${index}`} className="paper-list-card flex gap-3 px-4 py-3">
                               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-foreground" />
                               <p className="text-sm leading-6 text-foreground">{item}</p>
                             </div>
@@ -627,10 +627,10 @@ const DeepAnalysisPage: React.FC = () => {
                         </div>
                       </div>
                       {(conceptAttribution || contextSupplement?.profile || contextSupplement?.announcements || contextSupplement?.lockup) ? (
-                        <div className="rounded-2xl border border-border/60 bg-background/60 p-4">
+                        <div className="paper-panel-muted p-4">
                           <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">补充上下文</p>
                           {conceptAttribution?.summary ? (
-                            <p className="mt-3 text-sm leading-7 text-foreground">{conceptAttribution.summary}</p>
+                            <p className="mt-3 text-sm leading-6 text-foreground">{conceptAttribution.summary}</p>
                           ) : null}
                           <div className="mt-3 space-y-3">
                             <DeepSupplementBlock
@@ -655,7 +655,7 @@ const DeepAnalysisPage: React.FC = () => {
                     </div>
                   </Card>
 
-                  <Card variant="bordered" padding="lg" className="rounded-[28px] border-border/60 bg-card/95">
+                  <Card variant="bordered" padding="lg" className="rounded-[24px] border-border/60 bg-card/95">
                     <div className="flex items-center gap-2">
                       <Database className="h-4 w-4 text-foreground" />
                       <h2 className="text-xl font-semibold text-foreground">数据覆盖与来源</h2>
@@ -671,7 +671,7 @@ const DeepAnalysisPage: React.FC = () => {
                       )}
                     </div>
                     {dataSourceEntries.length > 0 ? (
-                      <div className="mt-5 rounded-2xl border border-border/60 bg-background/60 p-4">
+                      <div className="paper-panel-muted mt-5 p-4">
                         <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">数据源</p>
                         <div className="mt-3 flex flex-wrap gap-2">
                           {dataSourceEntries.map(([key, value]) => (
@@ -686,7 +686,7 @@ const DeepAnalysisPage: React.FC = () => {
                 </div>
 
                 <div className="space-y-6">
-                  <Card variant="bordered" padding="lg" className="rounded-[28px] border-border/60 bg-card/95">
+                  <Card variant="bordered" padding="lg" className="rounded-[24px] border-border/60 bg-card/95">
                     <div className="flex items-center justify-between gap-3">
                       <div className="flex items-center gap-2">
                         <BrainCircuit className="h-4 w-4 text-foreground" />
@@ -704,7 +704,7 @@ const DeepAnalysisPage: React.FC = () => {
                             </p>
                             <span className="text-xs text-secondary-text">{formatTime(message.createdAt)}</span>
                           </div>
-                          <p className="mt-2 text-sm leading-7 text-foreground">{message.content}</p>
+                          <p className="mt-2 text-sm leading-6 text-foreground">{message.content}</p>
                         </div>
                       )) : (
                         <p className="text-sm text-secondary-text">这次深度分析还没有追问记录。</p>
@@ -734,7 +734,7 @@ const DeepAnalysisPage: React.FC = () => {
                         <button
                           type="button"
                           onClick={() => setFollowUp('跌破哪里需要放弃？')}
-                          className="inline-flex items-center rounded-2xl border border-border/60 bg-background/60 px-4 py-2 text-sm text-secondary-text transition hover:border-foreground/15 hover:text-foreground"
+                          className="paper-chip"
                         >
                           跌破哪里需要放弃？
                         </button>
@@ -742,7 +742,7 @@ const DeepAnalysisPage: React.FC = () => {
                     </form>
                   </Card>
 
-                  <Card variant="bordered" padding="lg" className="rounded-[28px] border-border/60 bg-card/95">
+                  <Card variant="bordered" padding="lg" className="rounded-[24px] border-border/60 bg-card/95">
                     <div className="flex items-center gap-2">
                       <Radar className="h-4 w-4 text-foreground" />
                       <h2 className="text-xl font-semibold text-foreground">生成告警规则</h2>
@@ -789,7 +789,7 @@ const DeepAnalysisPage: React.FC = () => {
           ) : null}
 
           {!analysis && !loading && historyItems.length > 0 ? (
-            <Card variant="bordered" padding="lg" className="rounded-[28px] border-border/60 bg-card/95">
+            <Card variant="bordered" padding="lg" className="rounded-[24px] border-border/60 bg-card/95">
               <div className="flex items-center gap-2">
                 <History className="h-4 w-4 text-foreground" />
                 <h2 className="text-xl font-semibold text-foreground">最近的深度分析</h2>
@@ -799,7 +799,7 @@ const DeepAnalysisPage: React.FC = () => {
                   查看全部历史
                 </Button>
               </div>
-              <p className="mt-3 text-sm leading-7 text-secondary-text">
+              <p className="mt-3 text-sm leading-6 text-secondary-text">
                 点击任意一条历史记录，可以恢复查看当时的交易计划、追问记录和告警生成上下文。
               </p>
               <div className="mt-5 grid gap-3">
@@ -832,7 +832,7 @@ const DeepAnalysisPage: React.FC = () => {
         </div>
 
         <aside className="space-y-6">
-          <Card variant="bordered" padding="lg" className="rounded-[28px] border-border/60 bg-card/95">
+          <Card variant="bordered" padding="lg" className="rounded-[24px] border-border/60 bg-card/95">
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2">
                 <History className="h-4 w-4 text-foreground" />
@@ -868,7 +868,7 @@ const DeepAnalysisPage: React.FC = () => {
             </div>
           </Card>
 
-          <Card variant="bordered" padding="lg" className="rounded-[28px] border-border/60 bg-card/95">
+          <Card variant="bordered" padding="lg" className="rounded-[24px] border-border/60 bg-card/95">
             <div className="flex items-center gap-2">
               <Clock3 className="h-4 w-4 text-foreground" />
               <h2 className="text-xl font-semibold text-foreground">最近更新</h2>

@@ -5,7 +5,7 @@ import { Link } from 'react-router-dom';
 import { createParsedApiError, getParsedApiError, type ParsedApiError } from '../api/error';
 import { watchlistApi, type StockAlertEventItem, type StockAlertLoopStatus, type StockAlertRuleItem, type StockWatchlistItem } from '../api/watchlist';
 import { CandlestickChart } from '../components/CandlestickChart';
-import { ApiErrorAlert, AppPage, Badge, Button, Card, Drawer, EmptyState, InlineAlert, Input } from '../components/common';
+import { ApiErrorAlert, AppPage, Badge, Button, Card, Drawer, EmptyState, InlineAlert, Input, PaperHero, PaperHeroHeader, PaperListBlock, PaperSectionCard, PaperSectionHeader, PaperStatCard } from '../components/common';
 
 const DEFAULT_GROUP = '核心跟踪';
 
@@ -375,31 +375,24 @@ const WatchlistPage: React.FC = () => {
 
   return (
     <AppPage className="space-y-6 !max-w-[1680px] px-3 md:px-5 lg:px-6">
-      <section className="overflow-hidden rounded-[32px] border border-border/60 bg-[radial-gradient(circle_at_top_left,_rgba(34,24,16,0.08),_transparent_34%),linear-gradient(180deg,rgba(248,244,236,0.98),rgba(241,235,226,0.96))] shadow-soft-card">
-        <div className="grid gap-6 px-5 py-6 lg:grid-cols-[1fr_0.9fr] lg:px-7 lg:py-7">
+      <PaperHero contentClassName="grid gap-6 lg:grid-cols-[1fr_0.9fr]">
           <div className="space-y-5">
-            <div className="flex items-center gap-4">
-              <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-border/60 bg-card/90 text-foreground shadow-soft-card">
-                <Star className="h-7 w-7" />
-              </div>
-              <div>
-                <p className="text-xs uppercase tracking-[0.18em] text-secondary-text">Persistent Workflow</p>
-                <h2 className="mt-1 text-3xl font-semibold tracking-tight text-foreground">把高价值股票沉淀成观察池</h2>
-                <p className="mt-2 max-w-3xl text-sm leading-7 text-secondary-text">
-                  这一版先把单股查询接成真实持久化观察池。股票会保存到后端 SQLite，支持回看和移除。
-                </p>
-              </div>
-            </div>
+            <PaperHeroHeader
+              eyebrow="Persistent Workflow"
+              title="把高价值股票沉淀成观察池"
+              description="这一版先把单股查询接成真实持久化观察池。股票会保存到后端 SQLite，支持回看和移除。"
+              icon={<Star className="h-7 w-7" />}
+            />
 
             <div className="flex flex-wrap gap-2">
               {groups.map((group, index) => (
                 <span
                   key={group}
                   className={[
-                    'inline-flex items-center rounded-full border px-4 py-2 text-sm transition-all',
+                    'paper-chip',
                     index === 0
-                      ? 'border-foreground/15 bg-foreground text-background shadow-soft-card'
-                      : 'border-border/60 bg-background/80 text-secondary-text',
+                      ? 'paper-chip-active'
+                      : '',
                   ].join(' ')}
                 >
                   {group}
@@ -408,48 +401,23 @@ const WatchlistPage: React.FC = () => {
             </div>
           </div>
 
-          <Card variant="bordered" padding="lg" className="rounded-[28px] border-border/60 bg-card/90">
+          <Card variant="bordered" padding="lg" className="paper-panel rounded-[24px]">
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              <div className="rounded-[22px] border border-border/60 bg-background/72 px-4 py-4">
-                <p className="text-xs uppercase tracking-[0.16em] text-secondary-text">观察股票</p>
-                <p className="mt-3 text-3xl font-semibold text-foreground">{items.length}</p>
-                <p className="mt-2 text-sm text-secondary-text">已持久化到后端 SQLite</p>
-              </div>
-              <div className="rounded-[22px] border border-border/60 bg-background/72 px-4 py-4">
-                <p className="text-xs uppercase tracking-[0.16em] text-secondary-text">分组数量</p>
-                <p className="mt-3 text-3xl font-semibold text-foreground">{groups.length}</p>
-                <p className="mt-2 text-sm text-secondary-text">当前默认使用核心跟踪</p>
-              </div>
-              <div className="rounded-[22px] border border-border/60 bg-background/72 px-4 py-4">
-                <p className="text-xs uppercase tracking-[0.16em] text-secondary-text">提醒规则</p>
-                <p className="mt-3 text-3xl font-semibold text-foreground">{alertRules.length}</p>
-                <p className="mt-2 text-sm text-secondary-text">{alertEnabledCount} 只股票已开启提醒</p>
-              </div>
-              <div className="rounded-[22px] border border-border/60 bg-background/72 px-4 py-4">
-                <p className="text-xs uppercase tracking-[0.16em] text-secondary-text">告警事件</p>
-                <p className="mt-3 text-3xl font-semibold text-foreground">{alertEvents.length}</p>
-                <p className="mt-2 text-sm text-secondary-text">{unreadEventCount} 条未读</p>
-              </div>
+              <PaperStatCard label="观察股票" value={items.length} detail="已持久化到后端 SQLite" className="p-4" />
+              <PaperStatCard label="分组数量" value={groups.length} detail="当前默认使用核心跟踪" className="p-4" />
+              <PaperStatCard label="提醒规则" value={alertRules.length} detail={`${alertEnabledCount} 只股票已开启提醒`} className="p-4" />
+              <PaperStatCard label="告警事件" value={alertEvents.length} detail={`${unreadEventCount} 条未读`} className="p-4" />
             </div>
           </Card>
-        </div>
-      </section>
+      </PaperHero>
 
       {error ? <ApiErrorAlert error={error} /> : null}
       {actionError ? <ApiErrorAlert error={actionError} /> : null}
       {message ? <InlineAlert variant="success" title="观察池已更新" message={message} /> : null}
 
-      <Card variant="bordered" padding="lg" className="rounded-[28px]">
+      <Card variant="bordered" padding="lg" className="rounded-[24px]">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-border/60 bg-background/80 text-foreground">
-              <Activity className="h-5 w-5" />
-            </div>
-            <div>
-              <span className="label-uppercase">Alert Loop</span>
-              <h3 className="mt-1 text-xl font-semibold text-foreground">后台扫描状态</h3>
-            </div>
-          </div>
+          <PaperSectionHeader eyebrow="Alert Loop" title="后台扫描状态" icon={<Activity className="h-5 w-5" />} />
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant={alertLoopStatus?.enabled ? 'success' : 'default'} className="border-0 px-3 py-1">
               {alertLoopStatus?.enabled ? '已开启' : '未开启'}
@@ -471,19 +439,19 @@ const WatchlistPage: React.FC = () => {
           </div>
         </div>
         <div className="mt-4 grid gap-3 md:grid-cols-4">
-          <div className="rounded-[18px] border border-border/60 bg-background/72 px-4 py-3">
+          <div className="paper-panel-muted px-4 py-3">
             <p className="text-xs text-secondary-text">基础 tick</p>
             <p className="mt-2 text-lg font-semibold text-foreground">{alertLoopStatus?.baseTickSeconds ?? 60}s</p>
           </div>
-          <div className="rounded-[18px] border border-border/60 bg-background/72 px-4 py-3">
+          <div className="paper-panel-muted px-4 py-3">
             <p className="text-xs text-secondary-text">最近完成</p>
             <p className="mt-2 text-sm font-medium text-foreground">{formatDateTime(alertLoopStatus?.lastFinishedAt)}</p>
           </div>
-          <div className="rounded-[18px] border border-border/60 bg-background/72 px-4 py-3">
+          <div className="paper-panel-muted px-4 py-3">
             <p className="text-xs text-secondary-text">最近到期</p>
             <p className="mt-2 text-lg font-semibold text-foreground">{alertLoopStatus?.lastSummary?.dueRules ?? 0}</p>
           </div>
-          <div className="rounded-[18px] border border-border/60 bg-background/72 px-4 py-3">
+          <div className="paper-panel-muted px-4 py-3">
             <p className="text-xs text-secondary-text">最近触发</p>
             <p className="mt-2 text-lg font-semibold text-foreground">{alertLoopStatus?.lastSummary?.triggeredEvents ?? 0}</p>
           </div>
@@ -494,23 +462,17 @@ const WatchlistPage: React.FC = () => {
       </Card>
 
       <section className="grid gap-5 xl:grid-cols-[1.05fr_0.95fr]">
-        <Card variant="bordered" padding="lg" className="rounded-[28px]">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-border/60 bg-background/80 text-foreground">
-                <TrendingUp className="h-5 w-5" />
-              </div>
-              <div>
-                <span className="label-uppercase">Watched Stocks</span>
-                <h3 className="mt-1 text-2xl font-semibold text-foreground">股票观察项</h3>
-              </div>
-            </div>
+        <PaperSectionCard
+          eyebrow="Watched Stocks"
+          title="股票观察项"
+          icon={<TrendingUp className="h-5 w-5" />}
+          actions={(
             <Button variant="secondary" className="rounded-2xl" onClick={() => void loadWatchlist()} isLoading={loading} loadingText="刷新中...">
               刷新列表
             </Button>
-          </div>
-
-          <div className="mt-5 space-y-3">
+          )}
+        >
+          <div className="space-y-3">
             {!loading && items.length === 0 ? (
               <EmptyState
                 title="观察池还是空的"
@@ -519,7 +481,7 @@ const WatchlistPage: React.FC = () => {
             ) : null}
 
             {items.map((item) => (
-              <div key={item.stockCode} className="rounded-[24px] border border-border/60 bg-background/72 px-5 py-4">
+              <PaperListBlock key={item.stockCode} size="lg">
                 <div className="grid gap-4 xl:grid-cols-[1fr_130px_160px_170px] xl:items-center">
                   <div>
                     <div className="flex items-center gap-3">
@@ -561,23 +523,17 @@ const WatchlistPage: React.FC = () => {
                     </Button>
                   </div>
                 </div>
-              </div>
+              </PaperListBlock>
             ))}
           </div>
-        </Card>
+        </PaperSectionCard>
 
         <div className="space-y-5">
-          <Card variant="bordered" padding="lg" className="rounded-[28px]">
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-border/60 bg-background/80 text-foreground">
-                  <Bell className="h-5 w-5" />
-                </div>
-                <div>
-                  <span className="label-uppercase">Notification Center</span>
-                  <h3 className="mt-1 text-2xl font-semibold text-foreground">告警事件</h3>
-                </div>
-              </div>
+          <PaperSectionCard
+            eyebrow="Notification Center"
+            title="告警事件"
+            icon={<Bell className="h-5 w-5" />}
+            actions={(
               <Button
                 variant="secondary"
                 size="sm"
@@ -590,8 +546,9 @@ const WatchlistPage: React.FC = () => {
                 <CheckCheck className="h-4 w-4" />
                 全部已读
               </Button>
-            </div>
-            <div className="mt-5 space-y-3">
+            )}
+          >
+            <div className="space-y-3">
               {alertEvents.length === 0 ? (
                 <EmptyState
                   title="还没有告警事件"
@@ -601,7 +558,7 @@ const WatchlistPage: React.FC = () => {
                 alertEvents.map((event) => {
                   const insight = buildEventInsight(event);
                   return (
-                    <div key={event.id} className="rounded-[22px] border border-border/60 bg-background/72 px-4 py-4">
+                    <PaperListBlock key={event.id}>
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <div className="flex flex-wrap items-center gap-2">
@@ -616,7 +573,7 @@ const WatchlistPage: React.FC = () => {
                           <p className="mt-2 text-sm leading-6 text-foreground">{insight.summary}</p>
                           <p className="mt-2 text-sm leading-6 text-secondary-text">{event.message}</p>
                           {insight.details.length > 0 ? (
-                            <div className="mt-3 rounded-2xl border border-border/50 bg-background/80 px-3 py-3">
+                            <div className="paper-panel-muted mt-3 px-3 py-3">
                               {insight.details.map((detail) => (
                                 <p key={detail} className="text-xs leading-6 text-secondary-text">
                                   {detail}
@@ -647,41 +604,23 @@ const WatchlistPage: React.FC = () => {
                           </Button>
                         </div>
                       </div>
-                    </div>
+                    </PaperListBlock>
                   );
                 })
               )}
             </div>
-          </Card>
+          </PaperSectionCard>
 
-          <Card variant="bordered" padding="lg" className="rounded-[28px]">
-            <div className="flex items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-border/60 bg-background/80 text-foreground">
-                <Layers3 className="h-5 w-5" />
-              </div>
-              <div>
-                <span className="label-uppercase">Watched Themes</span>
-                <h3 className="mt-1 text-2xl font-semibold text-foreground">主题观察项</h3>
-              </div>
-            </div>
+          <PaperSectionCard eyebrow="Watched Themes" title="主题观察项" icon={<Layers3 className="h-5 w-5" />}>
             <EmptyState
               className="mt-5"
               title="主题观察池还没接真实持久化"
               description="这一轮先把股票观察项打通；主题观察项会在下一步和主题扫描结果页一起接上。"
             />
-          </Card>
+          </PaperSectionCard>
 
-          <Card variant="bordered" padding="lg" className="rounded-[28px]">
-            <div className="flex items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-border/60 bg-background/80 text-foreground">
-                <Bell className="h-5 w-5" />
-              </div>
-              <div>
-                <span className="label-uppercase">Rules</span>
-                <h3 className="mt-1 text-2xl font-semibold text-foreground">提醒规则</h3>
-              </div>
-            </div>
-            <div className="mt-5 space-y-3 text-sm leading-6 text-secondary-text">
+          <PaperSectionCard eyebrow="Rules" title="提醒规则" icon={<Bell className="h-5 w-5" />}>
+            <div className="space-y-3 text-sm leading-6 text-secondary-text">
               {alertRules.length === 0 ? (
                 <EmptyState
                   title="还没有单股告警规则"
@@ -691,7 +630,7 @@ const WatchlistPage: React.FC = () => {
                 alertRules.map((rule) => {
                   const missingThreshold = isPriceRule(rule.ruleType) && !hasUsableThreshold(rule);
                   return (
-                    <div key={rule.id} className="rounded-[22px] border border-border/60 bg-background/72 px-4 py-4">
+                    <PaperListBlock key={rule.id}>
                       <div className="flex items-start justify-between gap-3">
                         <div>
                           <div className="flex flex-wrap items-center gap-2">
@@ -772,7 +711,7 @@ const WatchlistPage: React.FC = () => {
                       </div>
 
                       {editingRuleId === rule.id ? (
-                        <div className="mt-4 grid gap-3 rounded-[18px] border border-border/60 bg-card/70 p-4 md:grid-cols-[1fr_1fr_1fr_auto]">
+                        <div className="paper-panel mt-4 grid gap-3 p-4 md:grid-cols-[1fr_1fr_1fr_auto]">
                           {rule.ruleType !== 'risk_event' ? (
                             <Input
                               label="阈值"
@@ -815,12 +754,12 @@ const WatchlistPage: React.FC = () => {
                           </div>
                         </div>
                       ) : null}
-                    </div>
+                    </PaperListBlock>
                   );
                 })
               )}
             </div>
-          </Card>
+          </PaperSectionCard>
         </div>
       </section>
       <Drawer

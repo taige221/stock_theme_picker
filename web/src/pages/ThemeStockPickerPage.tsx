@@ -27,7 +27,7 @@ import {
 } from '../api/themePicker';
 import type { ParsedApiError } from '../api/error';
 import { createParsedApiError, getParsedApiError } from '../api/error';
-import { ApiErrorAlert, AppPage, Badge, Button, Card, Drawer, EmptyState, InlineAlert, Input, Select } from '../components/common';
+import { ApiErrorAlert, AppPage, Badge, Button, Card, Drawer, EmptyState, InlineAlert, Input, PaperHeroHeader, PaperListBlock, PaperMetricCard, PaperSectionCard, Select } from '../components/common';
 
 const STRATEGY_OPTIONS: Array<{ value: ThemePickerStrategyMode; label: string }> = [
   { value: 'holding', label: '趋势持有' },
@@ -732,59 +732,59 @@ const ThemeStockPickerPage: React.FC = () => {
 
   return (
     <AppPage className="space-y-6 !max-w-[1640px] px-3 md:px-5 lg:px-6">
-      <section className="overflow-hidden rounded-[32px] border border-border/60 bg-[radial-gradient(circle_at_top_left,_rgba(34,24,16,0.08),_transparent_32%),linear-gradient(180deg,rgba(248,244,236,0.98),rgba(241,235,226,0.95))] shadow-soft-card">
+      <section className="paper-hero">
         <div className="grid gap-6 px-5 py-5 lg:grid-cols-[1.15fr_0.85fr] lg:px-7 lg:py-7">
           <div className="space-y-5">
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex items-center gap-4">
-                <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-border/60 bg-card/90 text-foreground shadow-soft-card">
-                  <Target className="h-7 w-7" />
-                </div>
-                <div>
-                  <h1 className="text-3xl font-semibold tracking-tight text-foreground">主题选股</h1>
-                  <p className="mt-1 text-sm text-secondary-text">围绕主题、板块与新闻热度，收敛出更值得继续看的优质股票。</p>
-                </div>
-              </div>
-            </div>
+            <PaperHeroHeader
+              eyebrow="Theme Stock Picker"
+              title="主题选股"
+              description="围绕主题、板块与新闻热度，收敛出更值得继续看的优质股票。"
+              icon={<Target className="h-7 w-7" />}
+            />
 
             <div className="grid gap-3 sm:grid-cols-3">
-              <div className="rounded-2xl border border-border/50 bg-card/80 px-4 py-4">
-                <p className="text-xs uppercase tracking-[0.16em] text-secondary-text">最近主题</p>
-                <p className="mt-3 text-lg font-semibold text-foreground">{scanResult?.themeInsight.themeName || themeName || '等待输入'}</p>
-                <p className="mt-1 text-sm text-secondary-text">{scanResult?.themeInsight.matchedKeywords.slice(0, 2).join(' / ') || '自动识别主题主线与催化词'}</p>
-              </div>
-              <div className="rounded-2xl border border-border/50 bg-card/80 px-4 py-4">
-                <p className="text-xs uppercase tracking-[0.16em] text-secondary-text">板块路径</p>
-                <p className="mt-3 text-lg font-semibold text-foreground">{scanResult?.themeInsight.boardMappingPath || boardCode || boardName || '--'}</p>
-                <p className="mt-1 text-sm text-secondary-text">优先结构化板块，异常时自动回退备用源</p>
-              </div>
-              <div className="rounded-2xl border border-border/50 bg-card/80 px-4 py-4">
-                <p className="text-xs uppercase tracking-[0.16em] text-secondary-text">结果状态</p>
-                <p className="mt-3 text-lg font-semibold text-foreground">
-                  {scanTask ? taskStatusLabel(scanTask.status) : scanResult ? `${scanResult.stocks.length} 只股票` : '等待筛选'}
-                </p>
-                <p className="mt-1 text-sm text-secondary-text">
-                  {scanTask?.message || '进入页面后会自动恢复最近一次已完成结果'}
-                </p>
-              </div>
+              <PaperMetricCard
+                label="最近主题"
+                value={scanResult?.themeInsight.themeName || themeName || '等待输入'}
+                detail={scanResult?.themeInsight.matchedKeywords.slice(0, 2).join(' / ') || '自动识别主题主线与催化词'}
+                tone="default"
+                valueClassName="text-lg font-semibold"
+                detailClassName="text-sm"
+              />
+              <PaperMetricCard
+                label="板块路径"
+                value={scanResult?.themeInsight.boardMappingPath || boardCode || boardName || '--'}
+                detail="优先结构化板块，异常时自动回退备用源"
+                tone="default"
+                valueClassName="text-lg font-semibold"
+                detailClassName="text-sm"
+              />
+              <PaperMetricCard
+                label="结果状态"
+                value={scanTask ? taskStatusLabel(scanTask.status) : scanResult ? `${scanResult.stocks.length} 只股票` : '等待筛选'}
+                detail={scanTask?.message || '进入页面后会自动恢复最近一次已完成结果'}
+                tone="default"
+                valueClassName="text-lg font-semibold"
+                detailClassName="text-sm"
+              />
             </div>
 
             <div className="flex flex-wrap items-center gap-3">
               <button
                 type="button"
                 onClick={() => setHistoryOpen(true)}
-                className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-background/80 px-4 py-2 text-sm text-foreground transition-colors hover:bg-hover/40 dark:bg-background/60"
+                className="paper-chip text-foreground"
               >
                 <Clock3 className="h-4 w-4 text-foreground" />
                 <span>历史记录</span>
               </button>
-              <div className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-background/80 px-4 py-2 text-sm text-secondary-text dark:bg-background/60">
+              <div className="paper-chip">
                 <Newspaper className="h-4 w-4" />
                 <span>交易日 04-29</span>
               </div>
               <button
                 type="button"
-                className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-background/80 px-4 py-2 text-sm text-secondary-text transition-colors hover:text-foreground dark:bg-background/60"
+                className="paper-chip"
                 aria-label="收藏主题选股"
               >
                 <Bookmark className="h-4 w-4" />
@@ -793,7 +793,7 @@ const ThemeStockPickerPage: React.FC = () => {
             </div>
           </div>
 
-          <Card variant="bordered" padding="lg" className="rounded-[28px] border-border/60 bg-card/90 shadow-soft-card">
+          <Card variant="bordered" padding="lg" className="paper-panel rounded-[24px] border-border/60 bg-card/90 shadow-soft-card">
             <div className="grid gap-4 md:grid-cols-2">
               <Input
                 label="主题名称"
@@ -868,10 +868,10 @@ const ThemeStockPickerPage: React.FC = () => {
                       type="button"
                       onClick={() => handleQuickTheme(item)}
                       className={[
-                        'inline-flex items-center rounded-full border px-4 py-2 text-sm transition-all',
+                        'paper-chip',
                         active
-                          ? 'border-foreground/15 bg-foreground text-background shadow-soft-card'
-                          : 'border-border/60 bg-background/80 text-secondary-text hover:text-foreground',
+                          ? 'paper-chip-active'
+                          : '',
                       ].join(' ')}
                     >
                       {item.name}
@@ -882,7 +882,7 @@ const ThemeStockPickerPage: React.FC = () => {
               </div>
             </div>
 
-            <div className="mt-5 rounded-2xl border border-border/60 bg-background/70 px-4 py-4">
+            <div className="paper-panel-muted mt-5 px-4 py-4">
               <div className="flex flex-wrap items-center gap-2">
                 <Badge variant="default" className="border-border/60 bg-card px-3 py-1.5 text-xs text-foreground">
                   当前检索方式
@@ -938,8 +938,8 @@ const ThemeStockPickerPage: React.FC = () => {
                   <BrainCircuit className="h-7 w-7" />
                 </div>
                 <div>
-                  <p className="text-xs uppercase tracking-[0.16em] text-secondary-text">主题识别</p>
-                  <p className="mt-3 text-2xl font-semibold text-foreground">{scanResult.themeInsight.themeName}</p>
+                  <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-secondary-text">主题识别</p>
+                  <p className="mt-3 text-[1.7rem] font-semibold tracking-[-0.02em] text-foreground">{scanResult.themeInsight.themeName}</p>
                   <p className="mt-2 text-sm leading-6 text-secondary-text">{scanResult.themeInsight.matchedKeywords.join(' / ') || '--'}</p>
                 </div>
               </div>
@@ -951,8 +951,8 @@ const ThemeStockPickerPage: React.FC = () => {
                   <Layers3 className="h-7 w-7" />
                 </div>
                 <div>
-                  <p className="text-xs uppercase tracking-[0.16em] text-secondary-text">板块映射</p>
-                  <p className="mt-3 text-lg font-semibold text-foreground">{scanResult.themeInsight.boardMappingPath || '--'}</p>
+                  <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-secondary-text">板块映射</p>
+                  <p className="mt-3 text-[1.1rem] font-semibold tracking-[-0.02em] text-foreground">{scanResult.themeInsight.boardMappingPath || '--'}</p>
                   <p className="mt-2 text-sm text-secondary-text">成分股 {scanResult.themeInsight.boardCandidateCount ?? '--'} 只</p>
                 </div>
               </div>
@@ -964,8 +964,8 @@ const ThemeStockPickerPage: React.FC = () => {
                   <Flame className="h-7 w-7" />
                 </div>
                 <div>
-                  <p className="text-xs uppercase tracking-[0.16em] text-secondary-text">新闻热度</p>
-                  <p className="mt-3 text-2xl font-semibold text-foreground">{scanResult.themeInsight.newsCount} 条</p>
+                  <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-secondary-text">新闻热度</p>
+                  <p className="mt-3 text-[1.7rem] font-semibold tracking-[-0.02em] text-foreground">{scanResult.themeInsight.newsCount} 条</p>
                   <p className="mt-2 text-sm text-secondary-text">热度 {heatLevelLabel(scanResult.themeInsight.heatLevel)} · {scanResult.themeInsight.primaryCatalyst || '等待催化摘要'}</p>
                 </div>
               </div>
@@ -977,8 +977,8 @@ const ThemeStockPickerPage: React.FC = () => {
                   <Sparkles className="h-7 w-7" />
                 </div>
                 <div>
-                  <p className="text-xs uppercase tracking-[0.16em] text-secondary-text">当前输出</p>
-                  <p className="mt-3 text-2xl font-semibold text-foreground">{scanResult.stocks.length} 只优先股票</p>
+                  <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-secondary-text">当前输出</p>
+                  <p className="mt-3 text-[1.7rem] font-semibold tracking-[-0.02em] text-foreground">{scanResult.stocks.length} 只优先股票</p>
                   <p className="mt-2 text-sm text-secondary-text">{scanResult.sourceInfo.note || '已按主题、板块和新闻热度完成筛选'}</p>
                   <div className="mt-3 flex flex-wrap gap-2">
                     <Badge variant="default" className="border-border/60 bg-background/70 px-3 py-1 text-xs text-secondary-text">
@@ -1012,7 +1012,7 @@ const ThemeStockPickerPage: React.FC = () => {
             <div className="space-y-4">
               <div className="flex items-center justify-between px-1">
                 <div>
-                  <h2 className="text-3xl font-semibold tracking-tight text-foreground">优质股票</h2>
+                  <h2 className="text-[2rem] font-semibold tracking-[-0.03em] text-foreground">优质股票</h2>
                   <p className="mt-1 text-sm text-secondary-text">优先保留主题关联清晰、结构未破坏、并且仍有后续空间的股票。</p>
                 </div>
                 <Badge variant="default" className="border-border/60 bg-card/70 px-4 py-2 text-sm text-foreground">
@@ -1021,7 +1021,7 @@ const ThemeStockPickerPage: React.FC = () => {
               </div>
 
               {scanResult.stocks.length === 0 ? (
-                <Card variant="bordered" padding="lg" className="rounded-[26px]">
+                <Card variant="bordered" padding="lg" className="rounded-[24px]">
                   <EmptyState
                     title="暂无可展示股票"
                     description="当前主题已完成筛选，但没有股票通过现有评分口径。"
@@ -1042,8 +1042,8 @@ const ThemeStockPickerPage: React.FC = () => {
                         variant="bordered"
                         padding="lg"
                         className={[
-                          'rounded-[26px] border-border/60 transition-all',
-                          active ? 'border-foreground/18 bg-foreground/[0.045] shadow-soft-card' : 'bg-card/90 hover:border-foreground/15 hover:bg-card',
+                          'rounded-[24px] border-border/60 transition-all',
+                          active ? 'border-foreground/18 bg-foreground/[0.045] shadow-soft-card' : 'paper-panel hover:border-foreground/15 hover:bg-card',
                         ].join(' ')}
                       >
                         <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
@@ -1057,7 +1057,7 @@ const ThemeStockPickerPage: React.FC = () => {
                             </div>
                             <div className="min-w-0 flex-1">
                               <div className="flex flex-wrap items-center gap-3">
-                                <h3 className="truncate text-2xl font-semibold text-foreground">{stock.stockName}</h3>
+                                <h3 className="truncate text-[1.55rem] font-semibold tracking-[-0.02em] text-foreground">{stock.stockName}</h3>
                                 <span className="text-sm text-secondary-text">{stock.stockCode}</span>
                                 <Badge
                                   variant={signalBadgeVariant(stock.signalLevel)}
@@ -1067,10 +1067,10 @@ const ThemeStockPickerPage: React.FC = () => {
                                   {stock.signalLevel}
                                 </Badge>
                               </div>
-                              <p className="mt-3 text-sm leading-7 text-foreground">{stock.selectionReason}</p>
+                              <p className="mt-3 text-sm leading-6 text-foreground">{stock.selectionReason}</p>
                               <div className="mt-4 flex flex-wrap gap-2">
                                 {(stock.miniReasons.length > 0 ? stock.miniReasons : [stock.currentPattern || '等待补充形态']).slice(0, 3).map((reason) => (
-                                  <span key={reason} className="rounded-full bg-background px-3 py-1.5 text-xs text-secondary-text">
+                                  <span key={reason} className="paper-chip px-3 py-1.5 text-xs">
                                     {reason}
                                   </span>
                                 ))}
@@ -1079,38 +1079,17 @@ const ThemeStockPickerPage: React.FC = () => {
                           </div>
 
                           <div className="grid grid-cols-2 gap-3 lg:w-[320px]">
-                            <div className="rounded-2xl bg-background px-4 py-3">
-                              <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">趋势分</p>
-                              <p className="mt-2 text-2xl font-semibold text-foreground">{formatNumber(stock.trendScore, 0)}</p>
-                            </div>
-                            <div className="rounded-2xl bg-background px-4 py-3">
-                              <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">涨跌幅</p>
-                              <p className="mt-2 text-2xl font-semibold text-foreground">{formatPercent(stock.pctChg, 1)}</p>
-                            </div>
-                            <div className="rounded-2xl bg-background px-4 py-3">
-                              <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">量比</p>
-                              <p className="mt-2 text-2xl font-semibold text-foreground">{formatNumber(stock.volumeRatio, 2)}</p>
-                            </div>
-                            <div className="rounded-2xl bg-background px-4 py-3">
-                              <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">风险提示</p>
-                              <p className="mt-2 text-sm leading-6 text-secondary-text">{stock.riskNote || '风险可控'}</p>
-                            </div>
+                            <PaperMetricCard label="趋势分" value={formatNumber(stock.trendScore, 0)} valueClassName="text-2xl" />
+                            <PaperMetricCard label="涨跌幅" value={formatPercent(stock.pctChg, 1)} valueClassName="text-2xl" />
+                            <PaperMetricCard label="量比" value={formatNumber(stock.volumeRatio, 2)} valueClassName="text-2xl" />
+                            <PaperMetricCard label="风险提示" value={stock.riskNote || '风险可控'} valueClassName="text-sm leading-6 font-medium" />
                           </div>
                         </div>
 
                         <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                          <div className="rounded-2xl border border-border/60 bg-background/70 px-4 py-3">
-                            <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">{priceLabel(stock.dataCompleteness)}</p>
-                            <p className="mt-2 font-mono text-lg font-semibold text-foreground">{formatNumber(stock.currentPrice)}</p>
-                          </div>
-                          <div className="rounded-2xl border border-border/60 bg-background/70 px-4 py-3">
-                            <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">支撑位</p>
-                            <p className="mt-2 font-mono text-lg font-semibold text-foreground">{formatNumber(stock.supportLevel)}</p>
-                          </div>
-                          <div className="rounded-2xl border border-border/60 bg-background/70 px-4 py-3">
-                            <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">压力位</p>
-                            <p className="mt-2 font-mono text-lg font-semibold text-foreground">{formatNumber(stock.pressureLevel)}</p>
-                          </div>
+                          <PaperMetricCard label={priceLabel(stock.dataCompleteness)} value={formatNumber(stock.currentPrice)} valueClassName="font-mono" />
+                          <PaperMetricCard label="支撑位" value={formatNumber(stock.supportLevel)} valueClassName="font-mono" />
+                          <PaperMetricCard label="压力位" value={formatNumber(stock.pressureLevel)} valueClassName="font-mono" />
                         </div>
                       </Card>
                     </button>
@@ -1119,13 +1098,13 @@ const ThemeStockPickerPage: React.FC = () => {
               )}
             </div>
 
-            <Card variant="bordered" padding="lg" className="sticky top-4 h-fit rounded-[28px] border-border/60 bg-card/90">
+            <Card variant="bordered" padding="lg" className="sticky top-4 h-fit rounded-[24px] border-border/60 bg-card/90">
               {selectedStock ? (
                 <div className="space-y-4">
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <div className="flex flex-wrap items-end gap-3">
-                        <h2 className="text-[36px] font-semibold leading-none text-foreground">{selectedStock.stockName}</h2>
+                        <h2 className="text-[2rem] font-semibold leading-none tracking-[-0.03em] text-foreground">{selectedStock.stockName}</h2>
                         <span className="pb-1 text-lg text-secondary-text">{selectedStock.stockCode}</span>
                       </div>
                       <p className="mt-3 text-sm text-secondary-text">{activeStockItem?.selectionReason || '查看这只股票为什么被保留在当前结果里。'}</p>
@@ -1139,34 +1118,51 @@ const ThemeStockPickerPage: React.FC = () => {
                     </button>
                   </div>
 
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="rounded-2xl border border-border/60 bg-background/80 px-4 py-4 text-center">
-                        <p className="text-sm text-secondary-text">题材关联度</p>
-                      <p className="mt-2 text-4xl font-semibold text-foreground">{themeRelevanceScore(selectedStock.themeRelevance)}<span className="text-lg">分</span></p>
-                      <p className="mt-1 text-sm font-medium text-secondary-text">{themeRelevanceLabel(selectedStock.themeRelevance)}</p>
-                      </div>
-                      <div className="rounded-2xl border border-border/60 bg-background/80 px-4 py-4 text-center">
-                        <p className="text-sm text-secondary-text">趋势分</p>
-                      <p className="mt-2 text-4xl font-semibold text-foreground">{formatNumber(selectedStock.trendScore, 0)}<span className="text-lg">分</span></p>
-                      <p className="mt-1 text-sm font-medium text-secondary-text">{trendBandLabel(selectedStock.trendScore)}</p>
-                      </div>
-                      <div className="rounded-2xl border border-border/60 bg-background/80 px-4 py-4 text-center">
-                        <p className="text-sm text-secondary-text">技术信号</p>
-                      <p className="mt-2 text-3xl font-semibold text-foreground">{selectedStock.buySignal || '--'}</p>
-                      <p className="mt-1 text-sm font-medium text-secondary-text">{selectedStock.currentPattern || activeStockItem?.currentPattern || '关注均线与支撑结构'}</p>
-                      </div>
-                      <div className="rounded-2xl border border-border/60 bg-background/80 px-4 py-4 text-center">
-                        <p className="text-sm text-secondary-text">偏离 MA10</p>
-                      <p className="mt-2 text-4xl font-semibold text-foreground">{formatPercent(selectedStock.biasMa10, 1)}</p>
-                      <p className="mt-1 text-sm font-medium text-secondary-text">{selectedStock.trendStatus || '运行健康'}</p>
-                      </div>
-                    </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <PaperMetricCard
+                      label="题材关联度"
+                      value={<><span className="text-[2rem]">{themeRelevanceScore(selectedStock.themeRelevance)}</span><span className="ml-1 text-base">分</span></>}
+                      detail={themeRelevanceLabel(selectedStock.themeRelevance)}
+                      align="center"
+                      tone="default"
+                      valueClassName="font-semibold"
+                      detailClassName="text-sm font-medium"
+                    />
+                    <PaperMetricCard
+                      label="趋势分"
+                      value={<><span className="text-[2rem]">{formatNumber(selectedStock.trendScore, 0)}</span><span className="ml-1 text-base">分</span></>}
+                      detail={trendBandLabel(selectedStock.trendScore)}
+                      align="center"
+                      tone="default"
+                      valueClassName="font-semibold"
+                      detailClassName="text-sm font-medium"
+                    />
+                    <PaperMetricCard
+                      label="技术信号"
+                      value={selectedStock.buySignal || '--'}
+                      detail={selectedStock.currentPattern || activeStockItem?.currentPattern || '关注均线与支撑结构'}
+                      align="center"
+                      tone="default"
+                      valueClassName="text-[1.7rem] font-semibold"
+                      detailClassName="text-sm font-medium"
+                    />
+                    <PaperMetricCard
+                      label="偏离 MA10"
+                      value={formatPercent(selectedStock.biasMa10, 1)}
+                      detail={selectedStock.trendStatus || '运行健康'}
+                      align="center"
+                      tone="default"
+                      valueClassName="text-[2rem] font-semibold"
+                      detailClassName="text-sm font-medium"
+                    />
+                  </div>
 
-                  <Card variant="bordered" padding="md" className="rounded-2xl">
-                    <div className="flex items-start justify-between gap-3">
-                      <h3 className="text-xl font-semibold text-foreground">新闻摘要</h3>
-                      <button type="button" className="text-sm font-medium text-foreground">更多新闻</button>
-                    </div>
+                  <PaperSectionCard
+                    title="新闻摘要"
+                    className="rounded-2xl"
+                    bodyClassName="space-y-0"
+                    actions={<button type="button" className="text-sm font-medium text-foreground">更多新闻</button>}
+                  >
                     <ul className="mt-3 space-y-3">
                       {(selectedStock.newsSummary.length > 0 ? selectedStock.newsSummary : ['当前没有返回新闻摘要。']).map((item) => (
                         <li key={item} className="flex items-start gap-2 text-sm text-foreground">
@@ -1175,11 +1171,10 @@ const ThemeStockPickerPage: React.FC = () => {
                         </li>
                       ))}
                     </ul>
-                  </Card>
+                  </PaperSectionCard>
 
                   <div className="grid gap-3 md:grid-cols-[1.1fr_0.95fr]">
-                    <Card variant="bordered" padding="md" className="rounded-2xl">
-                      <h3 className="text-xl font-semibold text-foreground">技术结构</h3>
+                    <PaperSectionCard title="技术结构" className="rounded-2xl" bodyClassName="space-y-0">
                       <ul className="mt-3 space-y-3 text-sm text-foreground">
                         {(selectedStock.selectedReasons.length > 0 ? selectedStock.selectedReasons : ['当前未返回更细的结构说明。']).slice(0, 4).map((reason) => (
                           <li key={reason} className="flex items-start gap-2">
@@ -1188,10 +1183,9 @@ const ThemeStockPickerPage: React.FC = () => {
                           </li>
                         ))}
                       </ul>
-                    </Card>
+                    </PaperSectionCard>
 
-                    <Card variant="bordered" padding="md" className="rounded-2xl">
-                      <h3 className="text-xl font-semibold text-foreground">关键位置</h3>
+                    <PaperSectionCard title="关键位置" className="rounded-2xl" bodyClassName="space-y-0">
                       <div className="mt-3 space-y-3 text-sm">
                         <div className="flex items-center justify-between gap-3">
                           <Badge variant="default" className="border-0 px-3 py-1.5 text-sm">{priceLabel(selectedStock.dataCompleteness)}</Badge>
@@ -1214,11 +1208,10 @@ const ThemeStockPickerPage: React.FC = () => {
                           <span className="font-mono text-lg text-foreground">{formatNumber(selectedStock.ma20)}</span>
                         </div>
                       </div>
-                    </Card>
+                    </PaperSectionCard>
                   </div>
 
-                  <Card variant="bordered" padding="md" className="rounded-2xl">
-                    <h3 className="text-xl font-semibold text-foreground">为什么入选</h3>
+                  <PaperSectionCard title="为什么入选" className="rounded-2xl" bodyClassName="space-y-0">
                     <ul className="mt-3 space-y-2 text-sm text-foreground">
                       {(selectedStock.selectedReasons.length > 0 ? selectedStock.selectedReasons : ['当前未返回更细的入选理由。']).map((reason) => (
                         <li key={reason} className="flex items-start gap-2">
@@ -1227,11 +1220,10 @@ const ThemeStockPickerPage: React.FC = () => {
                         </li>
                       ))}
                     </ul>
-                  </Card>
+                  </PaperSectionCard>
 
-                  <Card variant="bordered" padding="md" className="rounded-2xl border-border/60 bg-background/70">
-                    <h3 className="text-xl font-semibold text-foreground">风险提示</h3>
-                    <ul className="mt-3 space-y-2 text-sm leading-7 text-secondary-text">
+                  <PaperSectionCard title="风险提示" className="paper-panel-muted rounded-2xl" bodyClassName="space-y-0">
+                    <ul className="mt-3 space-y-2 text-sm leading-6 text-secondary-text">
                       {(selectedStock.riskReasons.length > 0
                         ? selectedStock.riskReasons
                         : ['短期涨幅较大时，优先观察回踩承接和量能延续。']).slice(0, 3).map((reason) => (
@@ -1239,37 +1231,24 @@ const ThemeStockPickerPage: React.FC = () => {
                           <span className="mt-2 h-1.5 w-1.5 rounded-full bg-foreground/65" />
                           <span>{reason}</span>
                         </li>
-                      ))}
+                        ))}
                     </ul>
-                  </Card>
+                  </PaperSectionCard>
 
-                  <Card variant="bordered" padding="md" className="rounded-2xl">
-                    <h3 className="text-xl font-semibold text-foreground">数据口径</h3>
+                  <PaperSectionCard title="数据口径" className="rounded-2xl">
                     <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                    <div className="rounded-2xl bg-background px-4 py-3">
-                      <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">实时完整度</p>
-                      <p className="mt-2 text-sm font-medium text-foreground">{dataCompletenessLabel(selectedStock.dataCompleteness)}</p>
-                    </div>
-                    <div className="rounded-2xl bg-background px-4 py-3">
-                        <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">板块来源</p>
-                        <p className="mt-2 text-sm font-medium text-foreground">{sourceLabel(selectedStock.dataSources.board ?? scanResult.sourceInfo.boardSource)}</p>
-                      </div>
-                      <div className="rounded-2xl bg-background px-4 py-3">
-                        <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">板块可信度</p>
-                        <p className="mt-2 text-sm font-medium text-foreground">{boardSourceConfidenceLabel(scanResult.sourceInfo.boardSourceConfidence)}</p>
-                      </div>
-                      <div className="rounded-2xl bg-background px-4 py-3">
-                        <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">价格口径</p>
-                        <p className="mt-2 text-sm font-medium text-foreground">{pricingSourceLabel(scanResult.sourceInfo.pricingSource)}</p>
-                      </div>
+                      <PaperMetricCard label="实时完整度" value={dataCompletenessLabel(selectedStock.dataCompleteness)} valueClassName="text-sm font-medium" />
+                      <PaperMetricCard label="板块来源" value={sourceLabel(selectedStock.dataSources.board ?? scanResult.sourceInfo.boardSource)} valueClassName="text-sm font-medium" />
+                      <PaperMetricCard label="板块可信度" value={boardSourceConfidenceLabel(scanResult.sourceInfo.boardSourceConfidence)} valueClassName="text-sm font-medium" />
+                      <PaperMetricCard label="价格口径" value={pricingSourceLabel(scanResult.sourceInfo.pricingSource)} valueClassName="text-sm font-medium" />
                     </div>
                     {scanResult.sourceInfo.historyRepaired || scanResult.sourceInfo.keyLevelsBackfilled ? (
-                      <div className="mt-3 rounded-2xl border border-border/60 bg-background px-4 py-3 text-sm text-secondary-text">
+                      <div className="paper-panel-muted mt-3 px-4 py-3 text-sm text-secondary-text">
                         {scanResult.sourceInfo.historyRepaired ? '当前结果来自历史恢复，并已按最新兼容逻辑修复。' : '当前结果来自最新扫描。'}
                         {scanResult.sourceInfo.keyLevelsBackfilled ? ' 现价、支撑位、压力位已基于本地日线补算。' : ''}
                       </div>
                     ) : null}
-                  </Card>
+                  </PaperSectionCard>
 
                   <div className="flex flex-wrap gap-3">
                     <Button
@@ -1298,13 +1277,13 @@ const ThemeStockPickerPage: React.FC = () => {
             </Card>
           </section>
 
-          <Card variant="bordered" padding="lg" className="rounded-[24px]">
-            <div className="flex items-center justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <h2 className="text-[32px] font-semibold tracking-tight text-foreground">数据来源与说明</h2>
-                <span className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-border/60 text-xs text-secondary-text">i</span>
-              </div>
-              <span className="text-sm text-secondary-text">{scanResult.sourceInfo.boardSource || 'mixed'}</span>
+          <PaperSectionCard
+            title="数据来源与说明"
+            className="rounded-[24px]"
+            actions={<span className="text-sm text-secondary-text">{scanResult.sourceInfo.boardSource || 'mixed'}</span>}
+          >
+            <div className="flex items-center gap-3">
+              <span className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-border/60 text-xs text-secondary-text">i</span>
             </div>
             <div className="mt-4 flex flex-wrap items-center gap-3">
               {scanResult.sourceInfo.sourcePills.map((item) => (
@@ -1320,36 +1299,30 @@ const ThemeStockPickerPage: React.FC = () => {
               </Badge>
               <span className="text-sm text-secondary-text">{scanResult.sourceInfo.note || '当前无需额外说明'}</span>
             </div>
-          </Card>
+          </PaperSectionCard>
         </>
       ) : (
         <section className="grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
-          <Card variant="bordered" padding="lg" className="rounded-[28px] border-border/60 bg-card/90">
+          <PaperSectionCard className="rounded-[24px] border-border/60 bg-card/90" title="">
             <EmptyState
               title="输入主题后开始筛选"
               description="页面会直接输出候选股票和右侧详情，不再停留在回放型工作流。"
               icon={<Sparkles className="h-10 w-10" />}
             />
-          </Card>
-          <Card variant="bordered" padding="lg" className="rounded-[28px] border-border/60 bg-card/90">
-            <div className="space-y-4">
-              <div>
-                <p className="text-xs uppercase tracking-[0.16em] text-secondary-text">使用建议</p>
-                <h2 className="mt-3 text-2xl font-semibold text-foreground">先定主题，再看结构和风险</h2>
-              </div>
-              <div className="grid gap-3">
-                {[
-                  '先输入主题名称，系统会优先走结构化板块映射而不是模糊文本匹配。',
-                  '趋势持有更适合找可继续观察的票，短线异动更适合找当天强催化。',
-                  '最大股票数量建议控制在 5-12 只，便于结果更聚焦。',
-                ].map((item) => (
-                  <div key={item} className="rounded-2xl border border-border/60 bg-background/70 px-4 py-4 text-sm leading-7 text-foreground">
-                    {item}
-                  </div>
-                ))}
-              </div>
+          </PaperSectionCard>
+          <PaperSectionCard eyebrow="使用建议" title="先定主题，再看结构和风险" className="rounded-[24px] border-border/60 bg-card/90">
+            <div className="grid gap-3">
+              {[
+                '先输入主题名称，系统会优先走结构化板块映射而不是模糊文本匹配。',
+                '趋势持有更适合找可继续观察的票，短线异动更适合找当天强催化。',
+                '最大股票数量建议控制在 5-12 只，便于结果更聚焦。',
+              ].map((item) => (
+                <PaperListBlock key={item} className="text-sm leading-6 text-foreground">
+                  {item}
+                </PaperListBlock>
+              ))}
             </div>
-          </Card>
+          </PaperSectionCard>
         </section>
       )}
 
@@ -1381,10 +1354,10 @@ const ThemeStockPickerPage: React.FC = () => {
               const active = scanTask?.taskId === item.taskId;
               const retrying = historyActionTaskId === item.taskId;
               return (
-                <div
+                <PaperListBlock
                   key={item.taskId}
                   className={[
-                    'w-full rounded-2xl border px-4 py-4 text-left transition-colors',
+                    'w-full text-left transition-colors',
                     active ? 'border-foreground/18 bg-foreground/[0.045]' : 'border-border/60 bg-background/70 hover:bg-hover/30',
                   ].join(' ')}
                 >
@@ -1429,7 +1402,7 @@ const ThemeStockPickerPage: React.FC = () => {
                       </Button>
                     ) : null}
                   </div>
-                </div>
+                </PaperListBlock>
               );
             })}
           </div>
