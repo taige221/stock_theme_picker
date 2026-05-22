@@ -88,6 +88,182 @@ class StockDaily(Base):
         }
 
 
+class StockDailyRaw(Base):
+    __tablename__ = "stock_daily_raw"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    ts_code = Column(String(16), nullable=False, index=True)
+    trade_date = Column(Date, nullable=False, index=True)
+    open = Column(Float, nullable=True)
+    high = Column(Float, nullable=True)
+    low = Column(Float, nullable=True)
+    close = Column(Float, nullable=True)
+    pre_close = Column(Float, nullable=True)
+    vol = Column(Float, nullable=True)
+    amount = Column(Float, nullable=True)
+    adj_factor = Column(Float, nullable=True)
+    open_qfq = Column(Float, nullable=True)
+    high_qfq = Column(Float, nullable=True)
+    low_qfq = Column(Float, nullable=True)
+    close_qfq = Column(Float, nullable=True)
+    sync_batch_id = Column(String(64), nullable=True, index=True)
+    data_source = Column(String(64), nullable=True)
+    ingested_at = Column(DateTime, default=datetime.now, index=True)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, index=True)
+
+    __table_args__ = (
+        UniqueConstraint("ts_code", "trade_date", name="uix_stock_daily_raw_code_date"),
+        Index("ix_stock_daily_raw_code_date", "ts_code", "trade_date"),
+    )
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "ts_code": self.ts_code,
+            "trade_date": self.trade_date,
+            "open": self.open,
+            "high": self.high,
+            "low": self.low,
+            "close": self.close,
+            "pre_close": self.pre_close,
+            "vol": self.vol,
+            "amount": self.amount,
+            "adj_factor": self.adj_factor,
+            "open_qfq": self.open_qfq,
+            "high_qfq": self.high_qfq,
+            "low_qfq": self.low_qfq,
+            "close_qfq": self.close_qfq,
+            "sync_batch_id": self.sync_batch_id,
+            "data_source": self.data_source,
+            "ingested_at": self.ingested_at,
+            "updated_at": self.updated_at,
+        }
+
+
+class StockDailyAux(Base):
+    __tablename__ = "stock_daily_aux"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    ts_code = Column(String(16), nullable=False, index=True)
+    trade_date = Column(Date, nullable=False, index=True)
+    turnover_rate = Column(Float, nullable=True)
+    turnover_rate_f = Column(Float, nullable=True)
+    volume_ratio = Column(Float, nullable=True)
+    float_share = Column(Float, nullable=True)
+    free_share = Column(Float, nullable=True)
+    total_share = Column(Float, nullable=True)
+    circ_mv = Column(Float, nullable=True)
+    total_mv = Column(Float, nullable=True)
+    up_limit = Column(Float, nullable=True)
+    down_limit = Column(Float, nullable=True)
+    is_suspended = Column(Integer, nullable=True, index=True)
+    suspend_type = Column(String(8), nullable=True)
+    sync_batch_id = Column(String(64), nullable=True, index=True)
+    data_source = Column(String(64), nullable=True)
+    ingested_at = Column(DateTime, default=datetime.now, index=True)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, index=True)
+
+    __table_args__ = (
+        UniqueConstraint("ts_code", "trade_date", name="uix_stock_daily_aux_code_date"),
+        Index("ix_stock_daily_aux_code_date", "ts_code", "trade_date"),
+    )
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "ts_code": self.ts_code,
+            "trade_date": self.trade_date,
+            "turnover_rate": self.turnover_rate,
+            "turnover_rate_f": self.turnover_rate_f,
+            "volume_ratio": self.volume_ratio,
+            "float_share": self.float_share,
+            "free_share": self.free_share,
+            "total_share": self.total_share,
+            "circ_mv": self.circ_mv,
+            "total_mv": self.total_mv,
+            "up_limit": self.up_limit,
+            "down_limit": self.down_limit,
+            "is_suspended": self.is_suspended,
+            "suspend_type": self.suspend_type,
+            "sync_batch_id": self.sync_batch_id,
+            "data_source": self.data_source,
+            "ingested_at": self.ingested_at,
+            "updated_at": self.updated_at,
+        }
+
+
+class StockCorporateAction(Base):
+    __tablename__ = "stock_corporate_action"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    action_key = Column(String(128), nullable=False, unique=True, index=True)
+    ts_code = Column(String(16), nullable=False, index=True)
+    ann_date = Column(Date, nullable=True, index=True)
+    record_date = Column(Date, nullable=True, index=True)
+    ex_date = Column(Date, nullable=True, index=True)
+    pay_date = Column(Date, nullable=True, index=True)
+    div_proc = Column(String(32), nullable=True, index=True)
+    stk_div = Column(Float, nullable=True)
+    cash_div = Column(Float, nullable=True)
+    cash_div_tax = Column(Float, nullable=True)
+    sync_batch_id = Column(String(64), nullable=True, index=True)
+    data_source = Column(String(64), nullable=True)
+    ingested_at = Column(DateTime, default=datetime.now, index=True)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, index=True)
+
+    __table_args__ = (
+        Index("ix_stock_corporate_action_code_ex_date", "ts_code", "ex_date"),
+        Index("ix_stock_corporate_action_code_record_date", "ts_code", "record_date"),
+    )
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "action_key": self.action_key,
+            "ts_code": self.ts_code,
+            "ann_date": self.ann_date,
+            "record_date": self.record_date,
+            "ex_date": self.ex_date,
+            "pay_date": self.pay_date,
+            "div_proc": self.div_proc,
+            "stk_div": self.stk_div,
+            "cash_div": self.cash_div,
+            "cash_div_tax": self.cash_div_tax,
+            "sync_batch_id": self.sync_batch_id,
+            "data_source": self.data_source,
+            "ingested_at": self.ingested_at,
+            "updated_at": self.updated_at,
+        }
+
+
+class TradeCalendar(Base):
+    __tablename__ = "trade_calendar"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    exchange = Column(String(16), nullable=False, index=True)
+    cal_date = Column(Date, nullable=False, index=True)
+    is_open = Column(Integer, nullable=False, index=True)
+    pretrade_date = Column(Date, nullable=True)
+    sync_batch_id = Column(String(64), nullable=True, index=True)
+    data_source = Column(String(64), nullable=True)
+    ingested_at = Column(DateTime, default=datetime.now, index=True)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, index=True)
+
+    __table_args__ = (
+        UniqueConstraint("exchange", "cal_date", name="uix_trade_calendar_exchange_date"),
+        Index("ix_trade_calendar_exchange_date", "exchange", "cal_date"),
+    )
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "exchange": self.exchange,
+            "cal_date": self.cal_date,
+            "is_open": self.is_open,
+            "pretrade_date": self.pretrade_date,
+            "sync_batch_id": self.sync_batch_id,
+            "data_source": self.data_source,
+            "ingested_at": self.ingested_at,
+            "updated_at": self.updated_at,
+        }
+
+
 class ThemePickerTaskHistory(Base):
     __tablename__ = "theme_picker_task_history"
 
@@ -495,6 +671,26 @@ class DatabaseManager:
             column_name="last_trigger_key",
             alter_sql="ALTER TABLE stock_alert_rule ADD COLUMN last_trigger_key VARCHAR(128) NULL",
         )
+        self._ensure_sqlite_column(
+            table_name="stock_daily_raw",
+            column_name="open_qfq",
+            alter_sql="ALTER TABLE stock_daily_raw ADD COLUMN open_qfq FLOAT NULL",
+        )
+        self._ensure_sqlite_column(
+            table_name="stock_daily_raw",
+            column_name="high_qfq",
+            alter_sql="ALTER TABLE stock_daily_raw ADD COLUMN high_qfq FLOAT NULL",
+        )
+        self._ensure_sqlite_column(
+            table_name="stock_daily_raw",
+            column_name="low_qfq",
+            alter_sql="ALTER TABLE stock_daily_raw ADD COLUMN low_qfq FLOAT NULL",
+        )
+        self._ensure_sqlite_column(
+            table_name="stock_daily_raw",
+            column_name="close_qfq",
+            alter_sql="ALTER TABLE stock_daily_raw ADD COLUMN close_qfq FLOAT NULL",
+        )
 
     def _ensure_sqlite_column(self, *, table_name: str, column_name: str, alter_sql: str) -> None:
         with self.engine.begin() as conn:
@@ -521,7 +717,13 @@ class DatabaseManager:
     @staticmethod
     def _normalize_daily_date(value: Any) -> Any:
         if isinstance(value, str):
-            return datetime.strptime(value, "%Y-%m-%d").date()
+            normalized = value.strip()
+            for pattern in ("%Y-%m-%d", "%Y%m%d"):
+                try:
+                    return datetime.strptime(normalized, pattern).date()
+                except ValueError:
+                    continue
+            raise ValueError(f"Unsupported daily date string: {value}")
         if isinstance(value, pd.Timestamp):
             return value.date()
         if isinstance(value, datetime):
@@ -625,6 +827,330 @@ class DatabaseManager:
                     )
                 )
         return len(records)
+
+    def save_stock_daily_raw_rows(self, rows: List[Dict[str, Any]]) -> int:
+        if not rows:
+            return 0
+        prepared: List[Dict[str, Any]] = []
+        for row in rows:
+            prepared.append(
+                {
+                    "ts_code": str(row.get("ts_code") or "").strip().upper(),
+                    "trade_date": self._normalize_daily_date(row.get("trade_date")),
+                    "open": self._normalize_sql_value(row.get("open")),
+                    "high": self._normalize_sql_value(row.get("high")),
+                    "low": self._normalize_sql_value(row.get("low")),
+                    "close": self._normalize_sql_value(row.get("close")),
+                    "pre_close": self._normalize_sql_value(row.get("pre_close")),
+                    "vol": self._normalize_sql_value(row.get("vol")),
+                    "amount": self._normalize_sql_value(row.get("amount")),
+                    "adj_factor": self._normalize_sql_value(row.get("adj_factor")),
+                    "open_qfq": self._normalize_sql_value(row.get("open_qfq")),
+                    "high_qfq": self._normalize_sql_value(row.get("high_qfq")),
+                    "low_qfq": self._normalize_sql_value(row.get("low_qfq")),
+                    "close_qfq": self._normalize_sql_value(row.get("close_qfq")),
+                    "sync_batch_id": str(row.get("sync_batch_id") or "").strip() or None,
+                    "data_source": str(row.get("data_source") or "").strip() or None,
+                    "ingested_at": row.get("ingested_at") or datetime.now(),
+                    "updated_at": datetime.now(),
+                }
+            )
+
+        with self.session_scope() as session:
+            for item in prepared:
+                stmt = sqlite_insert(StockDailyRaw).values(item)
+                excluded = stmt.excluded
+                session.execute(
+                    stmt.on_conflict_do_update(
+                        index_elements=["ts_code", "trade_date"],
+                        set_={
+                            "open": excluded.open,
+                            "high": excluded.high,
+                            "low": excluded.low,
+                            "close": excluded.close,
+                            "pre_close": excluded.pre_close,
+                            "vol": excluded.vol,
+                            "amount": excluded.amount,
+                            "adj_factor": excluded.adj_factor,
+                            "open_qfq": excluded.open_qfq,
+                            "high_qfq": excluded.high_qfq,
+                            "low_qfq": excluded.low_qfq,
+                            "close_qfq": excluded.close_qfq,
+                            "sync_batch_id": excluded.sync_batch_id,
+                            "data_source": excluded.data_source,
+                            "ingested_at": excluded.ingested_at,
+                            "updated_at": excluded.updated_at,
+                        },
+                    )
+                )
+        return len(prepared)
+
+    def get_stock_daily_raw_range(self, ts_code: str, start_date, end_date) -> List[StockDailyRaw]:
+        normalized_start = self._normalize_daily_date(start_date)
+        normalized_end = self._normalize_daily_date(end_date)
+        with self.session_scope() as session:
+            return list(
+                session.execute(
+                    select(StockDailyRaw)
+                    .where(
+                        and_(
+                            StockDailyRaw.ts_code == ts_code,
+                            StockDailyRaw.trade_date >= normalized_start,
+                            StockDailyRaw.trade_date <= normalized_end,
+                        )
+                    )
+                    .order_by(StockDailyRaw.trade_date.asc())
+                ).scalars().all()
+            )
+
+    def recompute_stock_daily_raw_qfq(self, ts_code: str) -> int:
+        normalized_code = str(ts_code or "").strip().upper()
+        if not normalized_code:
+            return 0
+
+        with self.session_scope() as session:
+            rows = list(
+                session.execute(
+                    select(StockDailyRaw)
+                    .where(StockDailyRaw.ts_code == normalized_code)
+                    .order_by(StockDailyRaw.trade_date.asc())
+                ).scalars().all()
+            )
+            if not rows:
+                return 0
+
+            latest_adj = None
+            for row in reversed(rows):
+                adj_factor = self._normalize_sql_value(row.adj_factor)
+                if adj_factor is not None and float(adj_factor) > 0:
+                    latest_adj = float(adj_factor)
+                    break
+            if latest_adj is None or latest_adj <= 0:
+                return 0
+
+            updated = 0
+            for row in rows:
+                adj_factor = self._normalize_sql_value(row.adj_factor)
+                if adj_factor is None or float(adj_factor) <= 0:
+                    continue
+                ratio = float(adj_factor) / latest_adj
+                row.open_qfq = round(float(row.open) * ratio, 4) if row.open is not None else None
+                row.high_qfq = round(float(row.high) * ratio, 4) if row.high is not None else None
+                row.low_qfq = round(float(row.low) * ratio, 4) if row.low is not None else None
+                row.close_qfq = round(float(row.close) * ratio, 4) if row.close is not None else None
+                row.updated_at = datetime.now()
+                updated += 1
+            return updated
+
+    def save_stock_daily_aux_rows(self, rows: List[Dict[str, Any]]) -> int:
+        if not rows:
+            return 0
+        prepared: List[Dict[str, Any]] = []
+        for row in rows:
+            prepared.append(
+                {
+                    "ts_code": str(row.get("ts_code") or "").strip().upper(),
+                    "trade_date": self._normalize_daily_date(row.get("trade_date")),
+                    "turnover_rate": self._normalize_sql_value(row.get("turnover_rate")),
+                    "turnover_rate_f": self._normalize_sql_value(row.get("turnover_rate_f")),
+                    "volume_ratio": self._normalize_sql_value(row.get("volume_ratio")),
+                    "float_share": self._normalize_sql_value(row.get("float_share")),
+                    "free_share": self._normalize_sql_value(row.get("free_share")),
+                    "total_share": self._normalize_sql_value(row.get("total_share")),
+                    "circ_mv": self._normalize_sql_value(row.get("circ_mv")),
+                    "total_mv": self._normalize_sql_value(row.get("total_mv")),
+                    "up_limit": self._normalize_sql_value(row.get("up_limit")),
+                    "down_limit": self._normalize_sql_value(row.get("down_limit")),
+                    "is_suspended": self._normalize_sql_value(row.get("is_suspended")),
+                    "suspend_type": str(row.get("suspend_type") or "").strip() or None,
+                    "sync_batch_id": str(row.get("sync_batch_id") or "").strip() or None,
+                    "data_source": str(row.get("data_source") or "").strip() or None,
+                    "ingested_at": row.get("ingested_at") or datetime.now(),
+                    "updated_at": datetime.now(),
+                }
+            )
+
+        with self.session_scope() as session:
+            for item in prepared:
+                stmt = sqlite_insert(StockDailyAux).values(item)
+                excluded = stmt.excluded
+                session.execute(
+                    stmt.on_conflict_do_update(
+                        index_elements=["ts_code", "trade_date"],
+                        set_={
+                            "turnover_rate": excluded.turnover_rate,
+                            "turnover_rate_f": excluded.turnover_rate_f,
+                            "volume_ratio": excluded.volume_ratio,
+                            "float_share": excluded.float_share,
+                            "free_share": excluded.free_share,
+                            "total_share": excluded.total_share,
+                            "circ_mv": excluded.circ_mv,
+                            "total_mv": excluded.total_mv,
+                            "up_limit": excluded.up_limit,
+                            "down_limit": excluded.down_limit,
+                            "is_suspended": excluded.is_suspended,
+                            "suspend_type": excluded.suspend_type,
+                            "sync_batch_id": excluded.sync_batch_id,
+                            "data_source": excluded.data_source,
+                            "ingested_at": excluded.ingested_at,
+                            "updated_at": excluded.updated_at,
+                        },
+                    )
+                )
+        return len(prepared)
+
+    def get_stock_daily_aux_range(self, ts_code: str, start_date, end_date) -> List[StockDailyAux]:
+        normalized_start = self._normalize_daily_date(start_date)
+        normalized_end = self._normalize_daily_date(end_date)
+        with self.session_scope() as session:
+            return list(
+                session.execute(
+                    select(StockDailyAux)
+                    .where(
+                        and_(
+                            StockDailyAux.ts_code == ts_code,
+                            StockDailyAux.trade_date >= normalized_start,
+                            StockDailyAux.trade_date <= normalized_end,
+                        )
+                    )
+                    .order_by(StockDailyAux.trade_date.asc())
+                ).scalars().all()
+            )
+
+    def save_stock_corporate_action_rows(self, rows: List[Dict[str, Any]]) -> int:
+        if not rows:
+            return 0
+        prepared: List[Dict[str, Any]] = []
+        for row in rows:
+            prepared.append(
+                {
+                    "action_key": str(row.get("action_key") or "").strip(),
+                    "ts_code": str(row.get("ts_code") or "").strip().upper(),
+                    "ann_date": self._normalize_daily_date(row.get("ann_date")),
+                    "record_date": self._normalize_daily_date(row.get("record_date")),
+                    "ex_date": self._normalize_daily_date(row.get("ex_date")),
+                    "pay_date": self._normalize_daily_date(row.get("pay_date")),
+                    "div_proc": str(row.get("div_proc") or "").strip() or None,
+                    "stk_div": self._normalize_sql_value(row.get("stk_div")),
+                    "cash_div": self._normalize_sql_value(row.get("cash_div")),
+                    "cash_div_tax": self._normalize_sql_value(row.get("cash_div_tax")),
+                    "sync_batch_id": str(row.get("sync_batch_id") or "").strip() or None,
+                    "data_source": str(row.get("data_source") or "").strip() or None,
+                    "ingested_at": row.get("ingested_at") or datetime.now(),
+                    "updated_at": datetime.now(),
+                }
+            )
+
+        with self.session_scope() as session:
+            for item in prepared:
+                stmt = sqlite_insert(StockCorporateAction).values(item)
+                excluded = stmt.excluded
+                session.execute(
+                    stmt.on_conflict_do_update(
+                        index_elements=["action_key"],
+                        set_={
+                            "ann_date": excluded.ann_date,
+                            "record_date": excluded.record_date,
+                            "ex_date": excluded.ex_date,
+                            "pay_date": excluded.pay_date,
+                            "div_proc": excluded.div_proc,
+                            "stk_div": excluded.stk_div,
+                            "cash_div": excluded.cash_div,
+                            "cash_div_tax": excluded.cash_div_tax,
+                            "sync_batch_id": excluded.sync_batch_id,
+                            "data_source": excluded.data_source,
+                            "ingested_at": excluded.ingested_at,
+                            "updated_at": excluded.updated_at,
+                        },
+                    )
+                )
+        return len(prepared)
+
+    def list_stock_corporate_actions(
+        self,
+        *,
+        ts_code: str,
+        start_date=None,
+        end_date=None,
+    ) -> List[StockCorporateAction]:
+        clauses = [StockCorporateAction.ts_code == ts_code]
+        normalized_start = self._normalize_daily_date(start_date) if start_date is not None else None
+        normalized_end = self._normalize_daily_date(end_date) if end_date is not None else None
+        if normalized_start is not None:
+            clauses.append(or_(StockCorporateAction.ex_date == None, StockCorporateAction.ex_date >= normalized_start))
+        if normalized_end is not None:
+            clauses.append(or_(StockCorporateAction.ex_date == None, StockCorporateAction.ex_date <= normalized_end))
+        with self.session_scope() as session:
+            return list(
+                session.execute(
+                    select(StockCorporateAction)
+                    .where(and_(*clauses))
+                    .order_by(StockCorporateAction.ex_date.asc(), StockCorporateAction.ann_date.asc())
+                ).scalars().all()
+            )
+
+    def save_trade_calendar_rows(self, rows: List[Dict[str, Any]]) -> int:
+        if not rows:
+            return 0
+        prepared: List[Dict[str, Any]] = []
+        for row in rows:
+            prepared.append(
+                {
+                    "exchange": str(row.get("exchange") or "").strip().upper() or "SSE",
+                    "cal_date": self._normalize_daily_date(row.get("cal_date")),
+                    "is_open": int(row.get("is_open") or 0),
+                    "pretrade_date": self._normalize_daily_date(row.get("pretrade_date")),
+                    "sync_batch_id": str(row.get("sync_batch_id") or "").strip() or None,
+                    "data_source": str(row.get("data_source") or "").strip() or None,
+                    "ingested_at": row.get("ingested_at") or datetime.now(),
+                    "updated_at": datetime.now(),
+                }
+            )
+
+        with self.session_scope() as session:
+            for item in prepared:
+                stmt = sqlite_insert(TradeCalendar).values(item)
+                excluded = stmt.excluded
+                session.execute(
+                    stmt.on_conflict_do_update(
+                        index_elements=["exchange", "cal_date"],
+                        set_={
+                            "is_open": excluded.is_open,
+                            "pretrade_date": excluded.pretrade_date,
+                            "sync_batch_id": excluded.sync_batch_id,
+                            "data_source": excluded.data_source,
+                            "ingested_at": excluded.ingested_at,
+                            "updated_at": excluded.updated_at,
+                        },
+                    )
+                )
+        return len(prepared)
+
+    def list_trade_calendar(
+        self,
+        *,
+        exchange: str = "SSE",
+        start_date=None,
+        end_date=None,
+        is_open: Optional[int] = None,
+    ) -> List[TradeCalendar]:
+        clauses = [TradeCalendar.exchange == str(exchange or "SSE").strip().upper()]
+        normalized_start = self._normalize_daily_date(start_date) if start_date is not None else None
+        normalized_end = self._normalize_daily_date(end_date) if end_date is not None else None
+        if normalized_start is not None:
+            clauses.append(TradeCalendar.cal_date >= normalized_start)
+        if normalized_end is not None:
+            clauses.append(TradeCalendar.cal_date <= normalized_end)
+        if is_open is not None:
+            clauses.append(TradeCalendar.is_open == int(is_open))
+        with self.session_scope() as session:
+            return list(
+                session.execute(
+                    select(TradeCalendar)
+                    .where(and_(*clauses))
+                    .order_by(TradeCalendar.cal_date.asc())
+                ).scalars().all()
+            )
 
     def save_theme_picker_task_history(
         self,

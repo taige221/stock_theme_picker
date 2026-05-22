@@ -12,6 +12,9 @@ from theme_picker.storage import (
     InformationEvent,
     InformationWatchItem,
     OpenDiscoveryProfile,
+    StockCorporateAction,
+    StockDailyAux,
+    StockDailyRaw,
     StockAlertEvent,
     StockAlertRule,
     StockDeepAnalysisHistory,
@@ -20,6 +23,7 @@ from theme_picker.storage import (
     StockWatchlist,
     ThemeFactorScanHistory,
     ThemePickerTaskHistory,
+    TradeCalendar,
     get_db,
 )
 
@@ -89,6 +93,38 @@ def save_stock_belong_boards_cache(db: DatabaseManager, **kwargs: Any) -> None:
 
 def get_stock_belong_boards_cache(db: DatabaseManager, stock_code: str):
     return db.get_stock_belong_boards_cache(stock_code)
+
+
+def save_stock_daily_raw_rows(db: DatabaseManager, rows: list[dict[str, Any]]) -> int:
+    return db.save_stock_daily_raw_rows(rows)
+
+
+def get_stock_daily_raw_range(db: DatabaseManager, ts_code: str, start_date, end_date):
+    return db.get_stock_daily_raw_range(ts_code, start_date, end_date)
+
+
+def save_stock_daily_aux_rows(db: DatabaseManager, rows: list[dict[str, Any]]) -> int:
+    return db.save_stock_daily_aux_rows(rows)
+
+
+def get_stock_daily_aux_range(db: DatabaseManager, ts_code: str, start_date, end_date):
+    return db.get_stock_daily_aux_range(ts_code, start_date, end_date)
+
+
+def save_stock_corporate_action_rows(db: DatabaseManager, rows: list[dict[str, Any]]) -> int:
+    return db.save_stock_corporate_action_rows(rows)
+
+
+def list_stock_corporate_actions(db: DatabaseManager, *, ts_code: str, start_date=None, end_date=None):
+    return db.list_stock_corporate_actions(ts_code=ts_code, start_date=start_date, end_date=end_date)
+
+
+def save_trade_calendar_rows(db: DatabaseManager, rows: list[dict[str, Any]]) -> int:
+    return db.save_trade_calendar_rows(rows)
+
+
+def list_trade_calendar(db: DatabaseManager, *, exchange: str = "SSE", start_date=None, end_date=None, is_open: int | None = None):
+    return db.list_trade_calendar(exchange=exchange, start_date=start_date, end_date=end_date, is_open=is_open)
 
 
 def upsert_stock_watchlist_item(db: DatabaseManager, **kwargs: Any):
@@ -260,6 +296,14 @@ __all__ = [
     "list_etf_query_records",
     "save_stock_belong_boards_cache",
     "get_stock_belong_boards_cache",
+    "save_stock_daily_raw_rows",
+    "get_stock_daily_raw_range",
+    "save_stock_daily_aux_rows",
+    "get_stock_daily_aux_range",
+    "save_stock_corporate_action_rows",
+    "list_stock_corporate_actions",
+    "save_trade_calendar_rows",
+    "list_trade_calendar",
     "upsert_stock_watchlist_item",
     "list_stock_watchlist_items",
     "get_stock_watchlist_item",

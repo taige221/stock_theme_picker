@@ -1,10 +1,8 @@
-from theme_picker.infrastructure.board_resolver_service import ThemeBoardResolverService
-from theme_picker.infrastructure.event_scanner import ThemeEventScanner
-from theme_picker.infrastructure.expansion_service import ThemeExpansionService
-from theme_picker.infrastructure.persistence import get_theme_picker_db
-from theme_picker.infrastructure.runtime import get_theme_picker_config
-from theme_picker.infrastructure.signal_service import ThemeSignalService
-from theme_picker.infrastructure.stock_pool_service import ThemeStockPoolService
+"""Infrastructure package exports with lazy imports to avoid circular dependencies."""
+
+from __future__ import annotations
+
+from importlib import import_module
 
 __all__ = [
     "ThemeBoardResolverService",
@@ -15,3 +13,21 @@ __all__ = [
     "ThemeSignalService",
     "ThemeStockPoolService",
 ]
+
+
+def __getattr__(name: str):
+    if name == "ThemeBoardResolverService":
+        return import_module("theme_picker.infrastructure.board_resolver_service").ThemeBoardResolverService
+    if name == "ThemeEventScanner":
+        return import_module("theme_picker.infrastructure.event_scanner").ThemeEventScanner
+    if name == "ThemeExpansionService":
+        return import_module("theme_picker.infrastructure.expansion_service").ThemeExpansionService
+    if name == "get_theme_picker_db":
+        return import_module("theme_picker.infrastructure.persistence").get_theme_picker_db
+    if name == "get_theme_picker_config":
+        return import_module("theme_picker.infrastructure.runtime").get_theme_picker_config
+    if name == "ThemeSignalService":
+        return import_module("theme_picker.infrastructure.signal_service").ThemeSignalService
+    if name == "ThemeStockPoolService":
+        return import_module("theme_picker.infrastructure.stock_pool_service").ThemeStockPoolService
+    raise AttributeError(name)

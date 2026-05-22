@@ -1,0 +1,268 @@
+# -*- coding: utf-8 -*-
+"""Minimal single-position backtest engine for daily-bar strategies."""
+
+from __future__ import annotations
+
+from typing import List, Optional
+
+import pandas as pd
+
+from theme_picker.backtest.metrics import calculate_metrics
+from theme_picker.backtest.models import BacktestConfig, BacktestResult, EquityPoint, Position, Trade
+from theme_picker.strategy.base import Strategy
+from theme_picker.strategy.params import StrategyParams
+
+
+class BacktestEngine:
+    """Run a single-symbol, single-position daily-bar backtest."""
+
+    def run(
+        self,
+        *,
+        stock_code: str,
+        bars: pd.DataFrame,
+        strategy: Strategy,
+        params: StrategyParams,
+        config: Optional[BacktestConfig] = None,
+    ) -> BacktestResult:
+        if bars is None or bars.empty:
+            raise ValueError(f"没有可用于回测的K线数据: {stock_code}")
+
+        runtime_config = config or BacktestConfig()
+        working = bars.copy().sort_values("date").reset_index(drop=True)
+        working["date"] = pd.to_datetime(working["date"], errors="coerce")
+
+        cash = float(runtime_config.initial_cash)
+        position: Optional[Position] = None
+        trades: List[Trade] = []
+        equity_curve: List[EquityPoint] = []
+        notes = [
+            "当前为单票、单仓位、按日线收盘近似成交的最小回测骨架。",
+            f"价格口径: {runtime_config.price_adjustment}。",
+            f"交易约束模式: {runtime_config.trading_constraint_mode}。",
+        ]
+        latest_signal_metadata: dict[str, object] = {}
+
+        for index in range(len(working)):
+            row = working.iloc[index]
+            trade_date = row["date"].date()
+            close_price = self._to_float(row.get("close"))
+            if close_price is None or close_price <= 0:
+                continue
+
+            holding_days = 0
+            entry_price = None
+            if position is not None:
+                holding_days = max(0, (trade_date - position.entry_date).days)
+                entry_price = position.entry_price
+
+            signal = strategy.generate_signal(
+                working,
+                current_index=index,
+                params=params,
+                price_adjustment=runtime_config.price_adjustment,
+                has_position=position is not None,
+                entry_price=entry_price,
+                holding_days=holding_days,
+            )
+            latest_signal_metadata = dict(signal.metadata or {})
+
+            if position is None and signal.action == "buy":
+                buy_block_reason = self._buy_block_reason(row, runtime_config)
+                if buy_block_reason is not None:
+                    notes.append(f"{trade_date.isoformat()} 买入信号因{buy_block_reason}被跳过。")
+                else:
+                    position = self._open_position(
+                        stock_code=stock_code,
+                        trade_date=trade_date,
+                        close_price=close_price,
+                        cash=cash,
+                        signal_reason=signal.reason,
+                        params=params,
+                        config=runtime_config,
+                    )
+                    if position is not None:
+                        cost = self._trade_cost(position.entry_price, position.shares, runtime_config)
+                        cash -= position.entry_price * position.shares + cost
+            elif position is not None and signal.action == "sell":
+                can_exit = not runtime_config.enforce_t_plus_one or trade_date > position.entry_date
+                if not can_exit:
+                    notes.append(f"{trade_date.isoformat()} 卖出信号因 T+1 约束延后。")
+                else:
+                    sell_block_reason = self._sell_block_reason(row, runtime_config)
+                    if sell_block_reason is not None:
+                        notes.append(f"{trade_date.isoformat()} 卖出信号因{sell_block_reason}被跳过。")
+                    else:
+                        trade = self._close_position(
+                            position=position,
+                            trade_date=trade_date,
+                            close_price=close_price,
+                            exit_reason=signal.reason,
+                            config=runtime_config,
+                        )
+                        cash += trade.exit_price * trade.shares - self._trade_cost(trade.exit_price, trade.shares, runtime_config)
+                        trades.append(trade)
+                        position = None
+
+            market_value = 0.0
+            if position is not None:
+                market_value = position.shares * close_price
+            equity_curve.append(
+                EquityPoint(
+                    trade_date=trade_date,
+                    cash=round(cash, 2),
+                    market_value=round(market_value, 2),
+                    equity=round(cash + market_value, 2),
+                )
+            )
+
+        final_equity = equity_curve[-1].equity if equity_curve else cash
+        metrics = calculate_metrics(
+            trades=trades,
+            equity_curve=equity_curve,
+            initial_cash=float(runtime_config.initial_cash),
+            final_equity=float(final_equity),
+        )
+        return BacktestResult(
+            strategy_name=strategy.name,
+            stock_code=stock_code,
+            start_date=working.iloc[0]["date"].date().isoformat(),
+            end_date=working.iloc[-1]["date"].date().isoformat(),
+            config=runtime_config.to_dict(),
+            params=params.to_dict(),
+            metrics=metrics,
+            data_context={
+                "price_adjustment": runtime_config.price_adjustment,
+                "trading_constraint_mode": runtime_config.trading_constraint_mode,
+                "columns": [str(column) for column in working.columns],
+                "has_raw_close": "raw_close" in working.columns,
+                "has_pre_close": "pre_close" in working.columns,
+                "has_raw_pct_chg": "raw_pct_chg" in working.columns,
+                "has_turnover_rate": "turnover_rate" in working.columns,
+                "has_up_limit": "up_limit" in working.columns,
+                "has_down_limit": "down_limit" in working.columns,
+                "has_is_suspended": "is_suspended" in working.columns,
+                "latest_signal_metadata": latest_signal_metadata,
+            },
+            trades=trades,
+            equity_curve=equity_curve,
+            notes=notes,
+        )
+
+    def _open_position(
+        self,
+        *,
+        stock_code: str,
+        trade_date,
+        close_price: float,
+        cash: float,
+        signal_reason: str,
+        params: StrategyParams,
+        config: BacktestConfig,
+    ) -> Optional[Position]:
+        budget = max(0.0, cash * float(params.position_size_pct))
+        entry_price = close_price * (1 + (config.slippage_bps / 10000.0))
+        commission_multiplier = 1 + (config.commission_bps / 10000.0)
+        gross_unit_cost = entry_price * commission_multiplier
+        if gross_unit_cost <= 0:
+            return None
+        raw_shares = int(budget // gross_unit_cost)
+        shares = (raw_shares // int(config.lot_size)) * int(config.lot_size)
+        if shares <= 0:
+            return None
+        return Position(
+            stock_code=stock_code,
+            entry_date=trade_date,
+            entry_price=round(entry_price, 4),
+            shares=shares,
+            entry_signal_reason=signal_reason,
+        )
+
+    def _close_position(
+        self,
+        *,
+        position: Position,
+        trade_date,
+        close_price: float,
+        exit_reason: str,
+        config: BacktestConfig,
+    ) -> Trade:
+        exit_price = close_price * (1 - (config.slippage_bps / 10000.0))
+        gross_pnl = (exit_price - position.entry_price) * position.shares
+        entry_cost = self._trade_cost(position.entry_price, position.shares, config)
+        exit_cost = self._trade_cost(exit_price, position.shares, config)
+        net_pnl = gross_pnl - entry_cost - exit_cost
+        holding_days = max(0, (trade_date - position.entry_date).days)
+        invested = position.entry_price * position.shares
+        return_pct = (net_pnl / invested * 100.0) if invested else 0.0
+        return Trade(
+            stock_code=position.stock_code,
+            entry_date=position.entry_date,
+            exit_date=trade_date,
+            entry_price=round(position.entry_price, 4),
+            exit_price=round(exit_price, 4),
+            shares=position.shares,
+            gross_pnl=round(gross_pnl, 2),
+            net_pnl=round(net_pnl, 2),
+            return_pct=round(return_pct, 2),
+            holding_days=holding_days,
+            exit_reason=exit_reason,
+        )
+
+    @staticmethod
+    def _trade_cost(price: float, shares: int, config: BacktestConfig) -> float:
+        turnover = float(price) * int(shares)
+        return turnover * (float(config.commission_bps) / 10000.0)
+
+    @staticmethod
+    def _buy_block_reason(row: pd.Series, config: BacktestConfig) -> Optional[str]:
+        if BacktestEngine._is_suspended(row):
+            return "停牌约束"
+        if str(config.trading_constraint_mode or "legacy_pct").strip().lower() == "daily_limits":
+            raw_close = BacktestEngine._to_float(row.get("raw_close"))
+            up_limit = BacktestEngine._to_float(row.get("up_limit"))
+            if not config.allow_limit_up_entry and raw_close is not None and up_limit is not None:
+                return "涨停约束" if raw_close >= (up_limit - 1e-6) else None
+            return None
+        if config.allow_limit_up_entry:
+            return None
+        pct_chg = BacktestEngine._to_float(row.get("raw_pct_chg"))
+        if pct_chg is None:
+            pct_chg = BacktestEngine._to_float(row.get("pct_chg")) or 0.0
+        return "涨停近似约束" if pct_chg >= 9.5 else None
+
+    @staticmethod
+    def _sell_block_reason(row: pd.Series, config: BacktestConfig) -> Optional[str]:
+        if BacktestEngine._is_suspended(row):
+            return "停牌约束"
+        if str(config.trading_constraint_mode or "legacy_pct").strip().lower() == "daily_limits":
+            raw_close = BacktestEngine._to_float(row.get("raw_close"))
+            down_limit = BacktestEngine._to_float(row.get("down_limit"))
+            if config.block_limit_down_exit and raw_close is not None and down_limit is not None:
+                return "跌停约束" if raw_close <= (down_limit + 1e-6) else None
+            return None
+        if not config.block_limit_down_exit:
+            return None
+        pct_chg = BacktestEngine._to_float(row.get("raw_pct_chg"))
+        if pct_chg is None:
+            pct_chg = BacktestEngine._to_float(row.get("pct_chg")) or 0.0
+        return "跌停近似约束" if pct_chg <= -9.5 else None
+
+    @staticmethod
+    def _is_suspended(row: pd.Series) -> bool:
+        value = row.get("is_suspended")
+        if value is None or value is pd.NA:
+            return False
+        try:
+            return int(value) == 1
+        except (TypeError, ValueError):
+            return False
+
+    @staticmethod
+    def _to_float(value) -> Optional[float]:
+        if value is None or value is pd.NA:
+            return None
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None

@@ -1,57 +1,42 @@
 # -*- coding: utf-8 -*-
-"""
-===================================
-数据源策略层 - 包初始化
-===================================
+"""Data provider package exports with lazy imports."""
 
-本包实现策略模式管理多个数据源，实现：
-1. 统一的数据获取接口
-2. 自动故障切换
-3. 防封禁流控策略
+from __future__ import annotations
 
-数据源优先级（动态调整）：
-【配置了 TUSHARE_TOKEN 时】
-1. TushareFetcher (Priority 0) - 🔥 最高优先级（动态提升）
-2. EfinanceFetcher (Priority 0) - 同优先级
-3. AkshareFetcher (Priority 1) - 来自 akshare 库
-4. PytdxFetcher (Priority 2) - 来自 pytdx 库（通达信）
-5. BaostockFetcher (Priority 3) - 来自 baostock 库
-6. YfinanceFetcher (Priority 4) - 来自 yfinance 库
-
-【未配置 TUSHARE_TOKEN 时】
-1. EfinanceFetcher (Priority 0) - 最高优先级，来自 efinance 库
-2. AkshareFetcher (Priority 1) - 来自 akshare 库
-3. PytdxFetcher (Priority 2) - 来自 pytdx 库（通达信）
-4. TushareFetcher (Priority 2) - 来自 tushare 库（不可用）
-5. BaostockFetcher (Priority 3) - 来自 baostock 库
-6. YfinanceFetcher (Priority 4) - 来自 yfinance 库
-7. LongbridgeFetcher (Priority 5) - 长桥 OpenAPI（美股/港股兜底）
-
-提示：优先级数字越小越优先，同优先级按初始化顺序排列
-"""
-
-from .base import BaseFetcher, DataFetcherManager
-from .us_index_mapping import is_us_index_code, is_us_stock_code, get_us_index_yf_symbol, US_INDEX_MAPPING
-
-try:
-    from .akshare_fetcher import is_hk_stock_code
-except Exception:  # pragma: no cover - optional dependency path
-    def is_hk_stock_code(stock_code: str) -> bool:
-        code = (stock_code or "").strip().lower()
-        if code.endswith(".hk"):
-            base = code[:-3]
-            return base.isdigit() and 1 <= len(base) <= 5
-        if code.startswith("hk"):
-            base = code[2:]
-            return base.isdigit() and 1 <= len(base) <= 5
-        return code.isdigit() and len(code) == 5
+from importlib import import_module
 
 __all__ = [
-    'BaseFetcher',
-    'DataFetcherManager',
-    'is_us_index_code',
-    'is_us_stock_code',
-    'is_hk_stock_code',
-    'get_us_index_yf_symbol',
-    'US_INDEX_MAPPING',
+    "BaseFetcher",
+    "DataFetcherManager",
+    "is_us_index_code",
+    "is_us_stock_code",
+    "is_hk_stock_code",
+    "get_us_index_yf_symbol",
+    "US_INDEX_MAPPING",
 ]
+
+
+def __getattr__(name: str):
+    if name in {"BaseFetcher", "DataFetcherManager"}:
+        module = import_module("theme_picker.data_provider.base")
+        return getattr(module, name)
+    if name in {"is_us_index_code", "is_us_stock_code", "get_us_index_yf_symbol", "US_INDEX_MAPPING"}:
+        module = import_module("theme_picker.data_provider.us_index_mapping")
+        return getattr(module, name)
+    if name == "is_hk_stock_code":
+        try:
+            module = import_module("theme_picker.data_provider.akshare_fetcher")
+            return getattr(module, name)
+        except Exception:
+            def fallback(stock_code: str) -> bool:
+                code = (stock_code or "").strip().lower()
+                if code.endswith(".hk"):
+                    base = code[:-3]
+                    return base.isdigit() and 1 <= len(base) <= 5
+                if code.startswith("hk"):
+                    base = code[2:]
+                    return base.isdigit() and 1 <= len(base) <= 5
+                return code.isdigit() and len(code) == 5
+
+            return fallback
+    raise AttributeError(name)

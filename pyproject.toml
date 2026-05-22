@@ -47,12 +47,14 @@ packages = [
   "theme_picker",
   "theme_picker.api",
   "theme_picker.application",
+  "theme_picker.backtest",
   "theme_picker.core",
   "theme_picker.data",
   "theme_picker.data_provider",
   "theme_picker.domain",
   "theme_picker.infrastructure",
   "theme_picker.patch",
+  "theme_picker.strategy",
 ]
 
 [tool.setuptools.package-data]

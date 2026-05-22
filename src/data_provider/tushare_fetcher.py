@@ -263,6 +263,9 @@ class TushareFetcher(BaseFetcher):
         method = getattr(self._api, method_name)
         return method(**kwargs)
 
+    def call_api(self, method_name: str, **kwargs) -> pd.DataFrame:
+        return self._call_api_with_rate_limit(method_name, **kwargs)
+
     def _get_china_now(self) -> datetime:
         """返回上海时区当前时间，方便测试覆盖跨日刷新逻辑。"""
         return datetime.now(ZoneInfo("Asia/Shanghai"))
@@ -401,6 +404,9 @@ class TushareFetcher(BaseFetcher):
         else:
             logger.warning(f"无法确定股票 {code} 的市场，默认使用深市")
             return f"{code}.SZ"
+
+    def convert_stock_code(self, stock_code: str) -> str:
+        return self._convert_stock_code(stock_code)
 
     def _convert_hk_stock_code_for_tushare(self, stock_code: str) -> str:
         """
