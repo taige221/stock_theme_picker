@@ -57,6 +57,7 @@ class WrappedDailyBarProvider:
 
     def __init__(self, *, default_fetch_bars: int = DEFAULT_ONLINE_DAILY_BAR_COUNT):
         self.default_fetch_bars = max(1, int(default_fetch_bars or DEFAULT_ONLINE_DAILY_BAR_COUNT))
+        self._fetcher_manager = None
 
     def fetch_online_daily_bars(
         self,
@@ -72,6 +73,43 @@ class WrappedDailyBarProvider:
             raise ValueError(f"暂不支持该标的的统一日K获取: {stock_code}")
 
         fetch_count = self._resolve_fetch_count(bars=bars, start_date=start_date, end_date=end_date)
+        errors: List[str] = []
+        for source in self._resolve_source_priority():
+            try:
+                if source == "mootdx":
+                    frame, source_label = self._fetch_mootdx_daily_bars(
+                        base_code,
+                        start_date=start_date,
+                        end_date=end_date,
+                        fetch_count=fetch_count,
+                    )
+                else:
+                    frame, source_label = self._fetch_manager_daily_bars(
+                        canonical_code,
+                        source=source,
+                        start_date=start_date,
+                        end_date=end_date,
+                        fetch_count=fetch_count,
+                    )
+                if frame is not None and not frame.empty:
+                    return frame, source_label
+                errors.append(f"{source}: empty result")
+                logger.debug("统一日K数据源返回空数据: code=%s source=%s", canonical_code, source)
+            except Exception as exc:
+                errors.append(f"{source}: {exc}")
+                logger.debug("统一日K数据源失败: code=%s source=%s error=%s", canonical_code, source, exc)
+                continue
+
+        raise ValueError(f"统一日K在线数据源全部失败: {canonical_code}; " + "; ".join(errors))
+
+    def _fetch_mootdx_daily_bars(
+        self,
+        base_code: str,
+        *,
+        start_date: Optional[date],
+        end_date: Optional[date],
+        fetch_count: int,
+    ) -> tuple[pd.DataFrame, str]:
         client = Quotes.factory(market="std")
         raw_df = client.bars(symbol=base_code, category=4, offset=fetch_count)
         if raw_df is None or raw_df.empty:
@@ -98,6 +136,72 @@ class WrappedDailyBarProvider:
         prepared = self._prepare_daily_frame(normalized)
         filtered = self._filter_frame(prepared, start_date=start_date, end_date=end_date)
         return filtered.reset_index(drop=True), "wrapped_daily_bar:mootdx"
+
+    def _fetch_manager_daily_bars(
+        self,
+        stock_code: str,
+        *,
+        source: str,
+        start_date: Optional[date],
+        end_date: Optional[date],
+        fetch_count: int,
+    ) -> tuple[pd.DataFrame, str]:
+        fetcher_name = self._source_to_fetcher_name(source)
+        manager = self._get_fetcher_manager()
+        fetcher = next(
+            (item for item in manager._get_fetchers_snapshot() if item.name == fetcher_name),
+            None,
+        )
+        if fetcher is None or not hasattr(fetcher, "get_daily_data"):
+            raise ValueError(f"不支持的统一日K数据源: {source}")
+
+        start_text = start_date.strftime("%Y-%m-%d") if start_date else None
+        end_text = end_date.strftime("%Y-%m-%d") if end_date else None
+        frame = manager._call_fetcher_method(
+            fetcher,
+            "get_daily_data",
+            stock_code=stock_code,
+            start_date=start_text,
+            end_date=end_text,
+            days=fetch_count,
+        )
+        prepared = self._prepare_daily_frame(frame)
+        filtered = self._filter_frame(prepared, start_date=start_date, end_date=end_date)
+        return filtered.reset_index(drop=True), f"wrapped_daily_bar:{source}"
+
+    def _get_fetcher_manager(self):
+        if self._fetcher_manager is None:
+            from theme_picker.data_provider import DataFetcherManager
+
+            self._fetcher_manager = DataFetcherManager()
+        return self._fetcher_manager
+
+    @staticmethod
+    def _source_to_fetcher_name(source: str) -> str:
+        source_map = {
+            "tushare": "TushareFetcher",
+            "efinance": "EfinanceFetcher",
+            "akshare": "AkshareFetcher",
+            "akshare_em": "AkshareFetcher",
+            "pytdx": "PytdxFetcher",
+            "baostock": "BaostockFetcher",
+        }
+        normalized = str(source or "").strip().lower()
+        if normalized not in source_map:
+            raise ValueError(f"不支持的统一日K数据源: {source}")
+        return source_map[normalized]
+
+    @staticmethod
+    def _resolve_source_priority() -> List[str]:
+        from theme_picker.infrastructure.runtime import get_theme_picker_config
+
+        priority = getattr(get_theme_picker_config(), "daily_bar_source_priority", "mootdx") or "mootdx"
+        sources = [
+            item.strip().lower()
+            for item in str(priority).split(",")
+            if item.strip()
+        ]
+        return sources or ["mootdx"]
 
     def _resolve_fetch_count(
         self,

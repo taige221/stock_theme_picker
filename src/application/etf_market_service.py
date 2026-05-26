@@ -16,6 +16,7 @@ from mootdx.quotes import Quotes
 from theme_picker.data.stock_index_loader import get_stock_name_index_map
 from theme_picker.data.stock_mapping import STOCK_NAME_MAP, is_meaningful_stock_name
 from theme_picker.config import get_config
+from theme_picker.data_provider import DataFetcherManager
 from theme_picker.data_provider.base import normalize_stock_code
 from theme_picker.infrastructure.daily_bar_service import get_daily_bar_resolver
 from theme_picker.infrastructure.etf_http_provider import get_etf_http_provider
@@ -36,6 +37,7 @@ class EtfMarketService:
     def __init__(self) -> None:
         self.daily_bar_resolver = get_daily_bar_resolver()
         self.http_provider = get_etf_http_provider()
+        self.fetcher_manager = DataFetcherManager()
         self.db = get_theme_picker_db()
         self._mootdx_etf_name_pairs: Optional[List[tuple[str, str]]] = None
         self._akshare_etf_name_pairs: Optional[List[tuple[str, str]]] = None
@@ -55,13 +57,22 @@ class EtfMarketService:
         estimated_iopv_payload: Dict[str, Any] = {}
         daily_metrics_payload: Dict[str, Any] = {}
         daily_bar_source = "wrapped_daily_bar:mootdx"
-        quote_source = "tencent"
+        quote_source = "unknown"
 
         try:
-            quote_payload = self.http_provider.get_tencent_quote(base_code)
+            quote_payload = self._run_with_timeout(
+                lambda: self._fetch_quote_payload(canonical_code),
+                timeout_seconds=float(getattr(config, "etf_realtime_quote_timeout_seconds", 8.0) or 0.0),
+                task_name="etf realtime quote",
+            )
         except Exception as exc:
-            logger.warning("ETF 腾讯行情失败: code=%s error=%s", base_code, exc)
-            errors.append(f"tencent quote failed: {exc}")
+            logger.warning("ETF 实时行情失败: code=%s error=%s", base_code, exc)
+            errors.append(f"realtime quote failed: {exc}")
+            try:
+                quote_payload = self.http_provider.get_tencent_quote(base_code)
+            except Exception as fallback_exc:
+                logger.warning("ETF 腾讯行情兜底失败: code=%s error=%s", base_code, fallback_exc)
+                errors.append(f"tencent quote fallback failed: {fallback_exc}")
 
         try:
             daily_result = self._run_with_timeout(
@@ -202,6 +213,28 @@ class EtfMarketService:
         if raw_source:
             return raw_source
         return "unknown"
+
+    def _fetch_quote_payload(self, canonical_code: str) -> Dict[str, Any]:
+        quote = self.fetcher_manager.get_realtime_quote(canonical_code, log_final_failure=False)
+        if quote is not None and quote.has_basic_data():
+            return {
+                "name": quote.name,
+                "price": quote.price,
+                "last_close": quote.pre_close,
+                "open": getattr(quote, "open_price", None),
+                "high": quote.high,
+                "low": quote.low,
+                "volume": quote.volume,
+                "amount": quote.amount,
+                "change_pct": quote.change_pct,
+                "volume_ratio": quote.volume_ratio,
+                "turnover_rate": quote.turnover_rate,
+                "server_time": getattr(quote, "timestamp", None),
+                "raw_source": getattr(getattr(quote, "source", None), "value", None) or "realtime_priority",
+            }
+
+        base_code = normalize_stock_code(canonical_code)
+        return self.http_provider.get_tencent_quote(base_code)
 
     def _resolve_etf_input(self, stock_code: str) -> str:
         raw = str(stock_code or "").strip()
