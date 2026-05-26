@@ -2,7 +2,7 @@ import type React from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { RefreshCw, RotateCcw, Save, Search, Settings2 } from 'lucide-react';
 import { getParsedApiError, type ParsedApiError } from '../api/error';
-import { ApiErrorAlert, AppPage, Badge, Button, Card, InlineAlert, Input, Select } from '../components/common';
+import { ApiErrorAlert, AppPage, Badge, Button, Card, InlineAlert, Input, PaperHero, PaperHeroHeader, Select } from '../components/common';
 import type { RuntimeSettingField, RuntimeSettingSection, RuntimeSettingsResponse } from '../api/settings';
 import { settingsApi } from '../api/settings';
 
@@ -171,7 +171,7 @@ const SettingsPage: React.FC = () => {
   };
 
   const renderSection = (section: RuntimeSettingSection) => (
-    <Card key={section.id} variant="bordered" padding="lg" className="rounded-[28px] border-border/60 bg-card/85">
+    <Card key={section.id} variant="bordered" padding="lg" className="paper-panel rounded-[24px]">
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div>
           <div className="flex items-center gap-3">
@@ -204,8 +204,8 @@ const SettingsPage: React.FC = () => {
           return (
             <div
               key={field.key}
-              className={`settings-surface rounded-[22px] border px-4 py-4 shadow-soft-card ${
-                isDirty ? 'border-cyan/40 shadow-lg shadow-cyan/10' : 'border-border/60'
+              className={`paper-list-card px-4 py-4 ${
+                isDirty ? 'border-foreground/16 bg-card/96' : ''
               }`}
             >
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -229,7 +229,7 @@ const SettingsPage: React.FC = () => {
                 {isDirty ? (
                   <button
                     type="button"
-                    className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-background/70 px-3 py-1 text-xs text-secondary-text transition hover:border-cyan/30 hover:text-foreground"
+                    className="paper-chip px-3 py-1 text-xs"
                     onClick={() => setFormValues((prev) => ({ ...prev, [field.key]: field.value ?? '' }))}
                   >
                     <RotateCcw className="h-3.5 w-3.5" />
@@ -251,20 +251,14 @@ const SettingsPage: React.FC = () => {
 
   return (
     <AppPage className="settings-page space-y-6 !max-w-[1680px] px-3 md:px-5 lg:px-6">
-      <section className="overflow-hidden rounded-[32px] border border-border/60 bg-[radial-gradient(circle_at_top_left,_rgba(6,182,212,0.15),_transparent_30%),radial-gradient(circle_at_bottom_right,_rgba(56,189,248,0.14),_transparent_32%),linear-gradient(180deg,rgba(255,255,255,0.98),rgba(246,249,252,0.96))] px-5 py-6 shadow-soft-card dark:bg-[radial-gradient(circle_at_top_left,_rgba(34,211,238,0.18),_transparent_30%),radial-gradient(circle_at_bottom_right,_rgba(14,165,233,0.14),_transparent_34%),linear-gradient(180deg,rgba(10,15,26,0.98),rgba(14,20,32,0.96))] lg:px-7 lg:py-7">
+      <PaperHero>
         <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex items-start gap-4">
-            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-cyan/10 text-cyan shadow-soft-card">
-              <Settings2 className="h-7 w-7" />
-            </div>
-            <div>
-              <p className="text-xs uppercase tracking-[0.18em] text-secondary-text">Runtime Settings</p>
-              <h1 className="mt-1 text-3xl font-semibold tracking-tight text-foreground">在界面里直接维护常用环境变量</h1>
-              <p className="mt-2 max-w-3xl text-sm leading-7 text-secondary-text">
-                这里只开放适合 Web UI 调整的白名单字段。保存后会写回当前 `.env`，并重载当前进程配置；带“需重启”的字段仍建议重启服务确认完全生效。
-              </p>
-            </div>
-          </div>
+          <PaperHeroHeader
+            eyebrow="Runtime Settings"
+            title="在界面里直接维护常用环境变量"
+            description="这里只开放适合 Web UI 调整的白名单字段。保存后会写回当前 `.env`，并重载当前进程配置；带“需重启”的字段仍建议重启服务确认完全生效。"
+            icon={<Settings2 className="h-7 w-7" />}
+          />
 
           <div className="flex flex-wrap items-center gap-3">
             <div className="min-w-[280px] flex-1">
@@ -289,7 +283,7 @@ const SettingsPage: React.FC = () => {
         {settings?.envFile ? (
           <div className="mt-5 flex flex-wrap items-center gap-3">
             <Badge variant="info" className="border-0 px-3 py-1">当前 .env</Badge>
-            <code className="rounded-full border border-border/60 bg-background/75 px-4 py-2 text-xs text-secondary-text">
+            <code className="paper-code-pill">
               {settings.envFile}
             </code>
             <Badge variant="default" className="border-0 px-3 py-1">
@@ -300,7 +294,7 @@ const SettingsPage: React.FC = () => {
             </Badge>
           </div>
         ) : null}
-      </section>
+      </PaperHero>
 
       {error ? <ApiErrorAlert error={error} onDismiss={() => setError(null)} /> : null}
       {message ? <InlineAlert variant="success" title="设置已处理" message={message} /> : null}

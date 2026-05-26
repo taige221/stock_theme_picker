@@ -15,9 +15,6 @@ interface DrawerProps {
   backdropClassName?: string;
 }
 
-/**
- * Side drawer component with terminal-inspired styling.
- */
 export const Drawer: React.FC<DrawerProps> = ({
   isOpen,
   onClose,
@@ -67,7 +64,7 @@ export const Drawer: React.FC<DrawerProps> = ({
       {/* Backdrop */}
       <div
         className={cn(
-          'absolute inset-0 bg-background/80 backdrop-blur-sm transition-opacity duration-300',
+          'absolute inset-0 bg-[hsl(var(--foreground)/0.12)] backdrop-blur-[2px] transition-opacity duration-300',
           backdropClassName,
         )}
         onClick={onClose}
@@ -79,23 +76,23 @@ export const Drawer: React.FC<DrawerProps> = ({
           aria-modal="true"
           aria-labelledby={titleId}
           className={cn(
-            'relative flex w-full flex-col bg-card',
+            'relative flex w-full flex-col bg-[linear-gradient(180deg,hsl(var(--card)/0.98),hsl(var(--background)/0.96))]',
             borderClass,
-            side === 'right' ? 'border-border/80' : 'border-border/70 shadow-2xl',
+            side === 'right' ? 'border-border/80 shadow-[0_18px_44px_hsl(var(--foreground)/0.10)]' : 'border-border/70 shadow-[0_18px_44px_hsl(var(--foreground)/0.10)]',
             side === 'left' ? 'animate-slide-in-left' : 'animate-slide-in-right'
           )}
         >
           <div className="flex items-center justify-between border-b border-border/60 px-6 py-4">
             {title ? (
               <div>
-                <span className="label-uppercase">DETAIL VIEW</span>
+                <span className="label-uppercase">DETAIL</span>
                 <h2 id={titleId} className="mt-1 text-lg font-semibold text-foreground">{title}</h2>
               </div>
             ) : <div />}
             <button
               type="button"
               onClick={onClose}
-              className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-border/70 bg-card/80 text-secondary-text transition-colors hover:bg-hover hover:text-foreground"
+              className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-border/75 bg-card/90 text-secondary-text transition-all duration-200 hover:border-foreground/16 hover:bg-background/70 hover:text-foreground"
               aria-label="关闭抽屉"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

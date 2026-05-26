@@ -55,7 +55,7 @@ export const Input = ({
         <Lock
           className={cn(
             'h-4 w-4',
-            isLoginAppearance ? 'text-[var(--login-input-icon)]' : 'text-muted-text/55'
+            isLoginAppearance ? 'text-[var(--login-input-icon)]' : 'text-muted-text/65'
           )}
         />
       );
@@ -65,7 +65,7 @@ export const Input = ({
         <Key
           className={cn(
             'h-4 w-4',
-            isLoginAppearance ? 'text-[var(--login-input-icon)]' : 'text-muted-text/55'
+            isLoginAppearance ? 'text-[var(--login-input-icon)]' : 'text-muted-text/65'
           )}
         />
       );
@@ -92,8 +92,8 @@ export const Input = ({
             ? 'border-[var(--login-input-toggle-active-border)] bg-[var(--login-input-toggle-active-bg)] text-[var(--login-input-toggle-active-text)] shadow-[0_0_14px_var(--login-accent-glow)] focus:ring-[var(--login-input-toggle-ring)]'
             : 'border-[var(--login-input-toggle-border)] bg-[var(--login-input-toggle-bg)] text-[var(--login-input-toggle-text)] hover:border-[var(--login-input-toggle-border-hover)] hover:bg-[var(--login-input-toggle-bg-hover)] hover:text-[var(--login-input-toggle-text-hover)] focus:ring-[var(--login-input-toggle-ring)]'
           : visible
-            ? 'border-warning/40 bg-warning/15 text-warning shadow-[0_0_10px_hsla(var(--warning),0.15)]'
-            : 'border-border/40 bg-muted/20 text-muted-text hover:border-warning/40 hover:text-warning hover:shadow-[0_0_10px_hsla(var(--warning),0.15)] focus:ring-primary/30'
+            ? 'border-foreground/16 bg-foreground/7 text-foreground shadow-[0_8px_18px_hsl(var(--foreground)/0.08)] focus:ring-foreground/10'
+            : 'border-border/70 bg-background/65 text-muted-text hover:border-foreground/16 hover:bg-card hover:text-foreground focus:ring-foreground/10'
       )}
       onClick={() => {
         const nextVisible = !visible;
@@ -137,10 +137,10 @@ export const Input = ({
           style={inputStyle}
           data-appearance={appearance}
           className={cn(
-            'input-surface input-focus-glow h-11 w-full rounded-xl border bg-transparent px-4 text-sm transition-all',
+            'input-surface input-focus-glow h-12 w-full rounded-2xl border bg-transparent px-4 text-sm transition-all',
             'focus:outline-none',
             isLoginAppearance ? 'input-appearance-login' : '',
-            error ? 'border-danger/30' : '',
+            error ? 'border-danger/45' : '',
             leadingIcon ? 'pl-10' : '',
             finalTrailingAction ? 'pr-12' : '',
             'disabled:cursor-not-allowed disabled:opacity-60',

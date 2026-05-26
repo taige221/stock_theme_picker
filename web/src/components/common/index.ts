@@ -9,3 +9,4 @@ export * from './Drawer';
 export * from './ApiErrorAlert';
 export * from './Select';
 export * from './Badge';
+export * from './Paper';
