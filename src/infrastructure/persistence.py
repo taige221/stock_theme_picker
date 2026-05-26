@@ -111,6 +111,10 @@ def get_stock_daily_aux_range(db: DatabaseManager, ts_code: str, start_date, end
     return db.get_stock_daily_aux_range(ts_code, start_date, end_date)
 
 
+def recompute_stock_daily_aux_features(db: DatabaseManager, ts_code: str, *, sync_batch_id: str | None = None) -> int:
+    return db.recompute_stock_daily_aux_features(ts_code, sync_batch_id=sync_batch_id)
+
+
 def save_stock_corporate_action_rows(db: DatabaseManager, rows: list[dict[str, Any]]) -> int:
     return db.save_stock_corporate_action_rows(rows)
 
@@ -300,6 +304,7 @@ __all__ = [
     "get_stock_daily_raw_range",
     "save_stock_daily_aux_rows",
     "get_stock_daily_aux_range",
+    "recompute_stock_daily_aux_features",
     "save_stock_corporate_action_rows",
     "list_stock_corporate_actions",
     "save_trade_calendar_rows",

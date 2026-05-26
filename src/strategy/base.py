@@ -40,5 +40,8 @@ class Strategy(ABC):
         has_position: bool,
         entry_price: Optional[float],
         holding_days: int,
+        entry_signal_reason: Optional[str] = None,
+        entry_signal_metadata: Optional[Dict[str, Any]] = None,
+        position_highest_price_seen: Optional[float] = None,
     ) -> StrategySignal:
         """Generate a buy/sell/hold decision from historical bars."""

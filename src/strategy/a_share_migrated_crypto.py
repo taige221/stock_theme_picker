@@ -31,6 +31,9 @@ class AShareMigratedCryptoStrategy(Strategy):
         has_position: bool,
         entry_price: Optional[float],
         holding_days: int,
+        entry_signal_reason: Optional[str] = None,
+        entry_signal_metadata: Optional[dict] = None,
+        position_highest_price_seen: Optional[float] = None,
     ) -> StrategySignal:
         min_required = max(20, params.breakout_lookback_days + 1)
         available_rows = (int(current_index) + 1) if current_index is not None else len(history)

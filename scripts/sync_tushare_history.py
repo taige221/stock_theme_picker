@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 from datetime import date, datetime, timedelta
+import json
 import sys
 from pathlib import Path
 from typing import Iterable, Sequence
@@ -27,7 +28,10 @@ DEFAULT_SECTIONS = ("calendar", "raw", "aux", "corporate")
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Sync 2000-point Tushare historical warehouse tables")
-    parser.add_argument("--ts-codes", help="Comma-separated ts_code values, such as 000001.SZ,600519.SH")
+    parser.add_argument(
+        "--ts-codes",
+        help="Comma-separated ts_code values, or a JSON file path containing stock codes",
+    )
     parser.add_argument("--start-date", required=True, help="Start date in YYYY-MM-DD")
     parser.add_argument("--end-date", required=True, help="End date in YYYY-MM-DD")
     parser.add_argument(
@@ -51,6 +55,11 @@ def parse_args() -> argparse.Namespace:
         default="ex_date",
         choices=("ex_date", "record_date", "ann_date", "imp_ann_date"),
         help="Dividend query key used for per-day event sync",
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Ignore local coverage checks and force refetch/recompute for requested sections",
     )
     return parser.parse_args()
 
@@ -91,8 +100,15 @@ def iter_calendar_days(*, start_date: date, end_date: date) -> Iterable[str]:
 
 
 def normalize_ts_codes(fetcher: TushareFetcher, value: str | None) -> list[str]:
+    candidate = Path(str(value or "").strip())
+    if candidate.is_file() and candidate.suffix.lower() == ".json":
+        payload = json.loads(candidate.read_text(encoding="utf-8"))
+        raw_codes = _extract_stock_codes_from_json(payload)
+    else:
+        raw_codes = [str(raw or "").strip() for raw in str(value or "").split(",")]
+
     items: list[str] = []
-    for raw in str(value or "").split(","):
+    for raw in raw_codes:
         code = str(raw or "").strip()
         if not code:
             continue
@@ -100,6 +116,68 @@ def normalize_ts_codes(fetcher: TushareFetcher, value: str | None) -> list[str]:
         if ts_code not in items:
             items.append(ts_code)
     return items
+
+
+def _extract_stock_codes_from_json(payload) -> list[str]:
+    items: list[str] = []
+
+    def add_code(value) -> None:
+        code = str(value or "").strip()
+        if code and code not in items:
+            items.append(code)
+
+    if isinstance(payload, list):
+        for item in payload:
+            if isinstance(item, str):
+                add_code(item)
+            elif isinstance(item, dict):
+                add_code(item.get("stock_code"))
+        return items
+
+    if isinstance(payload, dict):
+        stock_codes = payload.get("stock_codes")
+        if isinstance(stock_codes, list):
+            for item in stock_codes:
+                if isinstance(item, str):
+                    add_code(item)
+                elif isinstance(item, dict):
+                    add_code(item.get("stock_code"))
+
+        results = payload.get("results")
+        if isinstance(results, list):
+            for item in results:
+                if isinstance(item, dict):
+                    add_code(item.get("stock_code"))
+
+    return items
+
+
+def resolve_effective_trade_bounds(
+    *,
+    db,
+    exchange: str,
+    start_date: date,
+    end_date: date,
+    trade_calendar_df: pd.DataFrame | None = None,
+) -> tuple[date, date]:
+    calendar_dates: list[date] = []
+    if trade_calendar_df is not None and not trade_calendar_df.empty:
+        open_df = trade_calendar_df.loc[trade_calendar_df["is_open"].astype(int) == 1].copy()
+        for value in open_df["cal_date"].tolist():
+            normalized = _normalize_yyyymmdd(value)
+            if normalized is not None and start_date <= normalized <= end_date:
+                calendar_dates.append(normalized)
+    else:
+        rows = db.list_trade_calendar(exchange=exchange, start_date=start_date, end_date=end_date, is_open=1)
+        for row in rows:
+            normalized = getattr(row, "cal_date", None)
+            if normalized is not None:
+                calendar_dates.append(normalized)
+
+    if not calendar_dates:
+        return start_date, end_date
+    calendar_dates.sort()
+    return calendar_dates[0], calendar_dates[-1]
 
 
 def sync_trade_calendar(
@@ -149,9 +227,21 @@ def sync_stock_daily_raw(
     end_date: date,
     chunk_days: int,
     sync_batch_id: str,
-) -> int:
+    coverage_start_date: date,
+    coverage_end_date: date,
+    force: bool = False,
+) -> tuple[int, list[str]]:
     total_rows = 0
+    changed_codes: list[str] = []
     for ts_code in ts_codes:
+        if (not force) and db.has_stock_daily_raw_coverage(ts_code, coverage_start_date, coverage_end_date):
+            print(
+                f"[sync] raw skip ts_code={ts_code} "
+                f"range={start_date}~{end_date} effective_range={coverage_start_date}~{coverage_end_date} reason=covered"
+            )
+            continue
+
+        changed = bool(force)
         for chunk_start, chunk_end in iter_date_chunks(start_date=start_date, end_date=end_date, chunk_days=chunk_days):
             daily_df = fetcher.call_api(
                 "daily",
@@ -195,10 +285,14 @@ def sync_stock_daily_raw(
                 )
             inserted = db.save_stock_daily_raw_rows(rows)
             total_rows += inserted
+            changed = True
             print(f"[sync] raw ts_code={ts_code} chunk={chunk_start}~{chunk_end} rows={inserted}")
+        if not changed:
+            continue
+        changed_codes.append(ts_code)
         qfq_updated = db.recompute_stock_daily_raw_qfq(ts_code)
         print(f"[sync] raw ts_code={ts_code} recomputed_qfq_rows={qfq_updated}")
-    return total_rows
+    return total_rows, changed_codes
 
 
 def sync_stock_daily_aux(
@@ -210,9 +304,21 @@ def sync_stock_daily_aux(
     end_date: date,
     chunk_days: int,
     sync_batch_id: str,
-) -> int:
+    coverage_start_date: date,
+    coverage_end_date: date,
+    force: bool = False,
+) -> tuple[int, list[str]]:
     total_rows = 0
+    changed_codes: list[str] = []
     for ts_code in ts_codes:
+        if (not force) and db.has_stock_daily_aux_coverage(ts_code, coverage_start_date, coverage_end_date):
+            print(
+                f"[sync] aux skip ts_code={ts_code} "
+                f"range={start_date}~{end_date} effective_range={coverage_start_date}~{coverage_end_date} reason=covered"
+            )
+            continue
+
+        changed = bool(force)
         for chunk_start, chunk_end in iter_date_chunks(start_date=start_date, end_date=end_date, chunk_days=chunk_days):
             basic_df = fetcher.call_api(
                 "daily_basic",
@@ -269,7 +375,24 @@ def sync_stock_daily_aux(
                 )
             inserted = db.save_stock_daily_aux_rows(rows)
             total_rows += inserted
+            changed = True
             print(f"[sync] aux ts_code={ts_code} chunk={chunk_start}~{chunk_end} rows={inserted}")
+        if changed:
+            changed_codes.append(ts_code)
+    return total_rows, changed_codes
+
+
+def recompute_stock_style_features(
+    *,
+    db,
+    ts_codes: Sequence[str],
+    sync_batch_id: str,
+) -> int:
+    total_rows = 0
+    for ts_code in ts_codes:
+        updated = db.recompute_stock_daily_aux_features(ts_code, sync_batch_id=sync_batch_id)
+        total_rows += updated
+        print(f"[sync] features ts_code={ts_code} rows={updated}")
     return total_rows
 
 
@@ -412,6 +535,7 @@ def main() -> int:
     db = get_theme_picker_db()
     sync_batch_id = datetime.now().strftime("tushare-%Y%m%d-%H%M%S")
     trade_calendar_df = pd.DataFrame(columns=["exchange", "cal_date", "is_open", "pretrade_date"])
+    changed_feature_codes: list[str] = []
 
     if "calendar" in sections or "corporate" in sections:
         trade_calendar_df = sync_trade_calendar(
@@ -423,8 +547,16 @@ def main() -> int:
             sync_batch_id=sync_batch_id,
         )
 
+    effective_start_date, effective_end_date = resolve_effective_trade_bounds(
+        db=db,
+        exchange=str(args.exchange or "SSE").strip().upper(),
+        start_date=start_date,
+        end_date=end_date,
+        trade_calendar_df=trade_calendar_df if not trade_calendar_df.empty else None,
+    )
+
     if "raw" in sections:
-        sync_stock_daily_raw(
+        _, raw_changed_codes = sync_stock_daily_raw(
             fetcher=fetcher,
             db=db,
             ts_codes=ts_codes,
@@ -432,16 +564,32 @@ def main() -> int:
             end_date=end_date,
             chunk_days=args.chunk_days,
             sync_batch_id=sync_batch_id,
+            coverage_start_date=effective_start_date,
+            coverage_end_date=effective_end_date,
+            force=bool(args.force),
         )
+        changed_feature_codes.extend(raw_changed_codes)
 
     if "aux" in sections:
-        sync_stock_daily_aux(
+        _, aux_changed_codes = sync_stock_daily_aux(
             fetcher=fetcher,
             db=db,
             ts_codes=ts_codes,
             start_date=start_date,
             end_date=end_date,
             chunk_days=args.chunk_days,
+            sync_batch_id=sync_batch_id,
+            coverage_start_date=effective_start_date,
+            coverage_end_date=effective_end_date,
+            force=bool(args.force),
+        )
+        changed_feature_codes.extend(aux_changed_codes)
+
+    feature_codes = list(dict.fromkeys(code for code in changed_feature_codes if code))
+    if feature_codes and ("raw" in sections or "aux" in sections):
+        recompute_stock_style_features(
+            db=db,
+            ts_codes=feature_codes,
             sync_batch_id=sync_batch_id,
         )
 

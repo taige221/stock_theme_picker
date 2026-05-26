@@ -155,6 +155,9 @@ class StockDailyAux(Base):
     total_mv = Column(Float, nullable=True)
     up_limit = Column(Float, nullable=True)
     down_limit = Column(Float, nullable=True)
+    turnover_rate_median_20 = Column(Float, nullable=True)
+    atr_pct_20 = Column(Float, nullable=True)
+    style_bucket = Column(String(32), nullable=True, index=True)
     is_suspended = Column(Integer, nullable=True, index=True)
     suspend_type = Column(String(8), nullable=True)
     sync_batch_id = Column(String(64), nullable=True, index=True)
@@ -181,6 +184,9 @@ class StockDailyAux(Base):
             "total_mv": self.total_mv,
             "up_limit": self.up_limit,
             "down_limit": self.down_limit,
+            "turnover_rate_median_20": self.turnover_rate_median_20,
+            "atr_pct_20": self.atr_pct_20,
+            "style_bucket": self.style_bucket,
             "is_suspended": self.is_suspended,
             "suspend_type": self.suspend_type,
             "sync_batch_id": self.sync_batch_id,
@@ -691,6 +697,21 @@ class DatabaseManager:
             column_name="close_qfq",
             alter_sql="ALTER TABLE stock_daily_raw ADD COLUMN close_qfq FLOAT NULL",
         )
+        self._ensure_sqlite_column(
+            table_name="stock_daily_aux",
+            column_name="turnover_rate_median_20",
+            alter_sql="ALTER TABLE stock_daily_aux ADD COLUMN turnover_rate_median_20 FLOAT NULL",
+        )
+        self._ensure_sqlite_column(
+            table_name="stock_daily_aux",
+            column_name="atr_pct_20",
+            alter_sql="ALTER TABLE stock_daily_aux ADD COLUMN atr_pct_20 FLOAT NULL",
+        )
+        self._ensure_sqlite_column(
+            table_name="stock_daily_aux",
+            column_name="style_bucket",
+            alter_sql="ALTER TABLE stock_daily_aux ADD COLUMN style_bucket VARCHAR(32) NULL",
+        )
 
     def _ensure_sqlite_column(self, *, table_name: str, column_name: str, alter_sql: str) -> None:
         with self.engine.begin() as conn:
@@ -733,6 +754,24 @@ class DatabaseManager:
     @staticmethod
     def _normalize_sql_value(value: Any) -> Any:
         return None if pd.isna(value) else value
+
+    @staticmethod
+    def _classify_style_bucket_from_row(row: pd.Series) -> Optional[str]:
+        turnover_median = row.get("turnover_rate_median_20")
+        atr_pct = row.get("atr_pct_20")
+        if pd.isna(turnover_median) or pd.isna(atr_pct):
+            return None
+        turnover_value = float(turnover_median)
+        atr_value = float(atr_pct)
+        if atr_value >= 5.5:
+            return "high_beta"
+        if turnover_value >= 5.0:
+            return "high_beta"
+        if atr_value >= 4.5 and turnover_value >= 2.0:
+            return "high_beta"
+        if turnover_value < 1.5 and atr_value < 3.5:
+            return "slow_large"
+        return "balanced_trend"
 
     @staticmethod
     def _safe_json_dumps(value: Any) -> str:
@@ -903,6 +942,24 @@ class DatabaseManager:
                 ).scalars().all()
             )
 
+    def has_stock_daily_raw_coverage(self, ts_code: str, start_date, end_date) -> bool:
+        normalized_code = str(ts_code or "").strip().upper()
+        normalized_start = self._normalize_daily_date(start_date)
+        normalized_end = self._normalize_daily_date(end_date)
+        if not normalized_code or normalized_start is None or normalized_end is None:
+            return False
+
+        with self.session_scope() as session:
+            min_date, max_date = session.execute(
+                select(
+                    func.min(StockDailyRaw.trade_date),
+                    func.max(StockDailyRaw.trade_date),
+                ).where(StockDailyRaw.ts_code == normalized_code)
+            ).one()
+        if min_date is None or max_date is None:
+            return False
+        return min_date <= normalized_start and max_date >= normalized_end
+
     def recompute_stock_daily_raw_qfq(self, ts_code: str) -> int:
         normalized_code = str(ts_code or "").strip().upper()
         if not normalized_code:
@@ -961,6 +1018,9 @@ class DatabaseManager:
                     "total_mv": self._normalize_sql_value(row.get("total_mv")),
                     "up_limit": self._normalize_sql_value(row.get("up_limit")),
                     "down_limit": self._normalize_sql_value(row.get("down_limit")),
+                    "turnover_rate_median_20": self._normalize_sql_value(row.get("turnover_rate_median_20")),
+                    "atr_pct_20": self._normalize_sql_value(row.get("atr_pct_20")),
+                    "style_bucket": str(row.get("style_bucket") or "").strip() or None,
                     "is_suspended": self._normalize_sql_value(row.get("is_suspended")),
                     "suspend_type": str(row.get("suspend_type") or "").strip() or None,
                     "sync_batch_id": str(row.get("sync_batch_id") or "").strip() or None,
@@ -988,6 +1048,9 @@ class DatabaseManager:
                             "total_mv": excluded.total_mv,
                             "up_limit": excluded.up_limit,
                             "down_limit": excluded.down_limit,
+                            "turnover_rate_median_20": excluded.turnover_rate_median_20,
+                            "atr_pct_20": excluded.atr_pct_20,
+                            "style_bucket": excluded.style_bucket,
                             "is_suspended": excluded.is_suspended,
                             "suspend_type": excluded.suspend_type,
                             "sync_batch_id": excluded.sync_batch_id,
@@ -1016,6 +1079,124 @@ class DatabaseManager:
                     .order_by(StockDailyAux.trade_date.asc())
                 ).scalars().all()
             )
+
+    def has_stock_daily_aux_coverage(self, ts_code: str, start_date, end_date) -> bool:
+        normalized_code = str(ts_code or "").strip().upper()
+        normalized_start = self._normalize_daily_date(start_date)
+        normalized_end = self._normalize_daily_date(end_date)
+        if not normalized_code or normalized_start is None or normalized_end is None:
+            return False
+
+        with self.session_scope() as session:
+            min_date, max_date = session.execute(
+                select(
+                    func.min(StockDailyAux.trade_date),
+                    func.max(StockDailyAux.trade_date),
+                ).where(StockDailyAux.ts_code == normalized_code)
+            ).one()
+        if min_date is None or max_date is None:
+            return False
+        return min_date <= normalized_start and max_date >= normalized_end
+
+    def recompute_stock_daily_aux_features(self, ts_code: str, *, sync_batch_id: Optional[str] = None) -> int:
+        normalized_code = str(ts_code or "").strip().upper()
+        if not normalized_code:
+            return 0
+
+        with self.session_scope() as session:
+            raw_rows = list(
+                session.execute(
+                    select(StockDailyRaw)
+                    .where(StockDailyRaw.ts_code == normalized_code)
+                    .order_by(StockDailyRaw.trade_date.asc())
+                ).scalars().all()
+            )
+            aux_rows = list(
+                session.execute(
+                    select(StockDailyAux)
+                    .where(StockDailyAux.ts_code == normalized_code)
+                    .order_by(StockDailyAux.trade_date.asc())
+                ).scalars().all()
+            )
+            if not raw_rows or not aux_rows:
+                return 0
+
+            raw_frame = pd.DataFrame(
+                [
+                    {
+                        "trade_date": row.trade_date,
+                        "high": row.high,
+                        "low": row.low,
+                        "close": row.close,
+                        "high_qfq": row.high_qfq,
+                        "low_qfq": row.low_qfq,
+                        "close_qfq": row.close_qfq,
+                    }
+                    for row in raw_rows
+                ]
+            )
+            aux_frame = pd.DataFrame(
+                [
+                    {
+                        "trade_date": row.trade_date,
+                        "turnover_rate": row.turnover_rate,
+                    }
+                    for row in aux_rows
+                ]
+            )
+            if raw_frame.empty or aux_frame.empty:
+                return 0
+
+            frame = raw_frame.merge(aux_frame, on="trade_date", how="inner").sort_values("trade_date").reset_index(drop=True)
+            if frame.empty:
+                return 0
+
+            qfq_ready = frame[["high_qfq", "low_qfq", "close_qfq"]].notna().all(axis=1).any()
+            high_col = "high_qfq" if qfq_ready else "high"
+            low_col = "low_qfq" if qfq_ready else "low"
+            close_col = "close_qfq" if qfq_ready else "close"
+            frame["feature_close"] = pd.to_numeric(frame.get(close_col), errors="coerce")
+            frame["feature_high"] = pd.to_numeric(frame.get(high_col), errors="coerce")
+            frame["feature_low"] = pd.to_numeric(frame.get(low_col), errors="coerce")
+            frame["turnover_rate"] = pd.to_numeric(frame.get("turnover_rate"), errors="coerce")
+
+            previous_close = frame["feature_close"].shift(1)
+            tr_components = pd.concat(
+                [
+                    frame["feature_high"] - frame["feature_low"],
+                    (frame["feature_high"] - previous_close).abs(),
+                    (frame["feature_low"] - previous_close).abs(),
+                ],
+                axis=1,
+            )
+            frame["true_range"] = tr_components.max(axis=1, skipna=True)
+            frame["turnover_rate_median_20"] = frame["turnover_rate"].rolling(window=20, min_periods=5).median()
+            frame["atr_20"] = frame["true_range"].rolling(window=20, min_periods=5).mean()
+            frame["atr_pct_20"] = (frame["atr_20"] / frame["feature_close"] * 100.0).replace([float("inf"), float("-inf")], pd.NA)
+            frame["style_bucket"] = frame.apply(self._classify_style_bucket_from_row, axis=1)
+
+            aux_by_date = {row.trade_date: row for row in aux_rows}
+            updated = 0
+            current_time = datetime.now()
+            for record in frame.to_dict(orient="records"):
+                trade_date = record.get("trade_date")
+                aux_row = aux_by_date.get(trade_date)
+                if aux_row is None:
+                    continue
+                turnover_median = record.get("turnover_rate_median_20")
+                aux_row.turnover_rate_median_20 = self._normalize_sql_value(
+                    round(float(turnover_median), 4) if turnover_median is not None and pd.notna(turnover_median) else None
+                )
+                aux_row.atr_pct_20 = self._normalize_sql_value(
+                    round(float(record["atr_pct_20"]), 4) if record.get("atr_pct_20") is not None and pd.notna(record.get("atr_pct_20")) else None
+                )
+                style_bucket = record.get("style_bucket")
+                aux_row.style_bucket = None if style_bucket is None or pd.isna(style_bucket) else str(style_bucket).strip() or None
+                if sync_batch_id is not None:
+                    aux_row.sync_batch_id = str(sync_batch_id).strip() or aux_row.sync_batch_id
+                aux_row.updated_at = current_time
+                updated += 1
+            return updated
 
     def save_stock_corporate_action_rows(self, rows: List[Dict[str, Any]]) -> int:
         if not rows:

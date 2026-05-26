@@ -30,7 +30,16 @@ class Position:
     entry_date: date
     entry_price: float
     shares: int
+    highest_price_seen: float
+    lowest_price_seen: float
     entry_signal_reason: str = ""
+    entry_signal_score: float | None = None
+    entry_signal_metadata: Dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> Dict[str, Any]:
+        payload = asdict(self)
+        payload["entry_date"] = self.entry_date.isoformat()
+        return payload
 
 
 @dataclass(slots=True)
@@ -46,6 +55,13 @@ class Trade:
     return_pct: float
     holding_days: int
     exit_reason: str
+    entry_signal_reason: str = ""
+    entry_signal_score: float | None = None
+    entry_signal_metadata: Dict[str, Any] = field(default_factory=dict)
+    highest_price_seen: float | None = None
+    lowest_price_seen: float | None = None
+    max_favorable_excursion_pct: float | None = None
+    max_adverse_excursion_pct: float | None = None
 
     def to_dict(self) -> Dict[str, Any]:
         payload = asdict(self)
@@ -77,6 +93,7 @@ class BacktestResult:
     params: Dict[str, Any]
     metrics: Dict[str, Any]
     data_context: Dict[str, Any] = field(default_factory=dict)
+    open_position: Optional[Position] = None
     trades: List[Trade] = field(default_factory=list)
     equity_curve: List[EquityPoint] = field(default_factory=list)
     notes: List[str] = field(default_factory=list)
@@ -91,6 +108,7 @@ class BacktestResult:
             "params": self.params,
             "metrics": self.metrics,
             "data_context": self.data_context,
+            "open_position": self.open_position.to_dict() if self.open_position is not None else None,
             "trades": [item.to_dict() for item in self.trades],
             "equity_curve": [item.to_dict() for item in self.equity_curve],
             "notes": list(self.notes),

@@ -62,6 +62,28 @@ class DailyBarDataFeed:
         frame = frame.sort_values("date").reset_index(drop=True)
         return frame
 
+    def resolve_available_start_date(
+        self,
+        stock_code: str,
+        *,
+        start_date: date,
+        end_date: date,
+        price_adjustment: str = "raw",
+    ) -> date | None:
+        frame = self._load_cached_frame(
+            stock_code,
+            start_date=start_date,
+            end_date=end_date,
+            price_adjustment=price_adjustment,
+        )
+        if frame.empty:
+            return None
+        frame["date"] = pd.to_datetime(frame["date"], errors="coerce")
+        frame = frame.dropna(subset=["date"]).sort_values("date").reset_index(drop=True)
+        if frame.empty:
+            return None
+        return frame["date"].min().date()
+
     def _load_cached_frame(
         self,
         stock_code: str,
@@ -156,6 +178,9 @@ class DailyBarDataFeed:
                 "volume_ratio",
                 "turnover_rate",
                 "turnover_rate_f",
+                "turnover_rate_median_20",
+                "atr_pct_20",
+                "style_bucket",
                 "up_limit",
                 "down_limit",
                 "is_suspended",
@@ -181,6 +206,10 @@ class DailyBarDataFeed:
             merged["turnover_rate"] = pd.to_numeric(merged.get("turnover_rate"), errors="coerce")
         if "turnover_rate_f" in merged.columns:
             merged["turnover_rate_f"] = pd.to_numeric(merged.get("turnover_rate_f"), errors="coerce")
+        if "turnover_rate_median_20" in merged.columns:
+            merged["turnover_rate_median_20"] = pd.to_numeric(merged.get("turnover_rate_median_20"), errors="coerce")
+        if "atr_pct_20" in merged.columns:
+            merged["atr_pct_20"] = pd.to_numeric(merged.get("atr_pct_20"), errors="coerce")
         raw_frame = raw_frame.rename(columns={"trade_date": "date", "vol": "raw_volume"})
         raw_frame["date"] = pd.to_datetime(raw_frame["date"], errors="coerce")
         raw_frame["raw_close"] = pd.to_numeric(raw_frame.get("close"), errors="coerce")
@@ -205,6 +234,9 @@ class DailyBarDataFeed:
             "raw_pct_chg",
             "turnover_rate",
             "turnover_rate_f",
+            "turnover_rate_median_20",
+            "atr_pct_20",
+            "style_bucket",
             "up_limit",
             "down_limit",
             "is_suspended",

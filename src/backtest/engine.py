@@ -50,6 +50,9 @@ class BacktestEngine:
             if close_price is None or close_price <= 0:
                 continue
 
+            if position is not None:
+                self._update_position_excursion(position, row)
+
             holding_days = 0
             entry_price = None
             if position is not None:
@@ -64,8 +67,15 @@ class BacktestEngine:
                 has_position=position is not None,
                 entry_price=entry_price,
                 holding_days=holding_days,
+                entry_signal_reason=(position.entry_signal_reason if position is not None else None),
+                entry_signal_metadata=(
+                    dict(position.entry_signal_metadata or {}) if position is not None else None
+                ),
+                position_highest_price_seen=(
+                    float(position.highest_price_seen) if position is not None else None
+                ),
             )
-            latest_signal_metadata = dict(signal.metadata or {})
+            latest_signal_metadata = self._sanitize_json_value(signal.metadata or {})
 
             if position is None and signal.action == "buy":
                 buy_block_reason = self._buy_block_reason(row, runtime_config)
@@ -78,6 +88,8 @@ class BacktestEngine:
                         close_price=close_price,
                         cash=cash,
                         signal_reason=signal.reason,
+                        signal_score=signal.score,
+                        signal_metadata=signal.metadata,
                         params=params,
                         config=runtime_config,
                     )
@@ -122,6 +134,8 @@ class BacktestEngine:
             equity_curve=equity_curve,
             initial_cash=float(runtime_config.initial_cash),
             final_equity=float(final_equity),
+            open_position=position,
+            latest_close=close_price if "close_price" in locals() else None,
         )
         return BacktestResult(
             strategy_name=strategy.name,
@@ -144,6 +158,7 @@ class BacktestEngine:
                 "has_is_suspended": "is_suspended" in working.columns,
                 "latest_signal_metadata": latest_signal_metadata,
             },
+            open_position=position,
             trades=trades,
             equity_curve=equity_curve,
             notes=notes,
@@ -157,6 +172,8 @@ class BacktestEngine:
         close_price: float,
         cash: float,
         signal_reason: str,
+        signal_score: Optional[float],
+        signal_metadata: Optional[dict],
         params: StrategyParams,
         config: BacktestConfig,
     ) -> Optional[Position]:
@@ -175,7 +192,11 @@ class BacktestEngine:
             entry_date=trade_date,
             entry_price=round(entry_price, 4),
             shares=shares,
+            highest_price_seen=round(entry_price, 4),
+            lowest_price_seen=round(entry_price, 4),
             entry_signal_reason=signal_reason,
+            entry_signal_score=(round(float(signal_score), 4) if signal_score is not None else None),
+            entry_signal_metadata=self._build_entry_signal_snapshot(signal_metadata),
         )
 
     def _close_position(
@@ -195,6 +216,10 @@ class BacktestEngine:
         holding_days = max(0, (trade_date - position.entry_date).days)
         invested = position.entry_price * position.shares
         return_pct = (net_pnl / invested * 100.0) if invested else 0.0
+        highest_price_seen = float(position.highest_price_seen or position.entry_price)
+        lowest_price_seen = float(position.lowest_price_seen or position.entry_price)
+        max_favorable_excursion_pct = ((highest_price_seen - position.entry_price) / position.entry_price * 100.0) if position.entry_price else 0.0
+        max_adverse_excursion_pct = ((lowest_price_seen - position.entry_price) / position.entry_price * 100.0) if position.entry_price else 0.0
         return Trade(
             stock_code=position.stock_code,
             entry_date=position.entry_date,
@@ -206,13 +231,137 @@ class BacktestEngine:
             net_pnl=round(net_pnl, 2),
             return_pct=round(return_pct, 2),
             holding_days=holding_days,
+            entry_signal_reason=position.entry_signal_reason,
+            entry_signal_score=(
+                round(float(position.entry_signal_score), 4)
+                if position.entry_signal_score is not None
+                else None
+            ),
+            entry_signal_metadata=dict(position.entry_signal_metadata or {}),
             exit_reason=exit_reason,
+            highest_price_seen=round(highest_price_seen, 4),
+            lowest_price_seen=round(lowest_price_seen, 4),
+            max_favorable_excursion_pct=round(max_favorable_excursion_pct, 2),
+            max_adverse_excursion_pct=round(max_adverse_excursion_pct, 2),
         )
 
     @staticmethod
     def _trade_cost(price: float, shares: int, config: BacktestConfig) -> float:
         turnover = float(price) * int(shares)
         return turnover * (float(config.commission_bps) / 10000.0)
+
+    @classmethod
+    def _build_entry_signal_snapshot(cls, metadata: Optional[dict]) -> dict:
+        if not isinstance(metadata, dict):
+            return {}
+        allowlist = {
+            "signal_type",
+            "signal_number",
+            "quality_score",
+            "trend",
+            "previous_trend",
+            "recovering_from_downtrend",
+            "style_bucket",
+            "box_support",
+            "box_resistance",
+            "box_height",
+            "box_height_pct",
+            "box_stack_lift_pct",
+            "support_touches",
+            "resistance_touches",
+            "close_price",
+            "ma10",
+            "ma10_bias_pct",
+            "pct_chg",
+            "volume_ratio",
+            "turnover_rate",
+            "turnover_rate_median_20",
+            "atr_pct_20",
+            "rr_ratio",
+            "entry_price_hint",
+            "stop_price_hint",
+            "target_price_hint",
+            "effective_min_turnover_rate",
+            "effective_preferred_turnover_rate_low",
+            "effective_preferred_turnover_rate_high",
+            "effective_breakout_min_breakout_pct",
+            "effective_breakout_min_volume_ratio",
+            "effective_breakout_min_body_pct",
+            "effective_breakout_min_close_above_resistance_pct",
+            "effective_breakout_max_upper_shadow_ratio",
+            "effective_breakout_min_box_touches",
+            "effective_breakout_max_extension_pct",
+            "effective_breakout_max_bias_ma10_pct",
+            "effective_breakout_max_box_height_pct",
+            "effective_breakout_avoid_box_height_low_pct",
+            "effective_breakout_avoid_box_height_high_pct",
+            "effective_breakout_min_stack_lift_pct",
+            "effective_block_breakout_after_downtrend",
+            "effective_pullback_min_volume_ratio",
+            "effective_pullback_min_box_touches",
+            "effective_pullback_max_bias_ma10_pct",
+            "effective_pullback_min_box_height_pct",
+            "effective_pullback_enable_failure_exit",
+            "effective_pullback_failure_exit_days",
+            "effective_pullback_failure_confirm_days",
+            "effective_pullback_failure_buffer_pct",
+            "effective_pullback_failure_max_profit_pct",
+            "breakout_extension_pct",
+            "breakout_body_pct",
+            "breakout_close_above_resistance_pct",
+            "breakout_upper_shadow_ratio",
+            "had_breakout",
+            "touched_zone",
+            "reclaimed",
+            "rebound_bar",
+            "enough_volume",
+            "enough_touches",
+            "pullback_low_vs_resistance_pct",
+            "pullback_close_above_resistance_pct",
+        }
+        snapshot: dict = {}
+        for key in allowlist:
+            value = metadata.get(key)
+            if value is None or value is pd.NA:
+                continue
+            value = cls._sanitize_json_value(value)
+            if isinstance(value, (str, bool, int, float)):
+                snapshot[key] = value
+        return snapshot
+
+    @classmethod
+    def _sanitize_json_value(cls, value):
+        if value is None or value is pd.NA:
+            return None
+        if hasattr(value, "item") and not isinstance(value, (str, bytes)):
+            try:
+                value = value.item()
+            except Exception:
+                pass
+        if isinstance(value, dict):
+            sanitized = {}
+            for key, item in value.items():
+                normalized = cls._sanitize_json_value(item)
+                if normalized is not None:
+                    sanitized[str(key)] = normalized
+            return sanitized
+        if isinstance(value, (list, tuple)):
+            return [item for item in (cls._sanitize_json_value(item) for item in value) if item is not None]
+        if isinstance(value, (str, bool, int, float)):
+            return value
+        return str(value)
+
+    @classmethod
+    def _update_position_excursion(cls, position: Position, row: pd.Series) -> None:
+        high_price = cls._to_float(row.get("high"))
+        low_price = cls._to_float(row.get("low"))
+        close_price = cls._to_float(row.get("close"))
+        for candidate in (high_price, close_price):
+            if candidate is not None and candidate > float(position.highest_price_seen):
+                position.highest_price_seen = float(candidate)
+        for candidate in (low_price, close_price):
+            if candidate is not None and candidate < float(position.lowest_price_seen):
+                position.lowest_price_seen = float(candidate)
 
     @staticmethod
     def _buy_block_reason(row: pd.Series, config: BacktestConfig) -> Optional[str]:
