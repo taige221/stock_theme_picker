@@ -1267,7 +1267,7 @@ textarea {
   font-size: 11px;
   line-height: 16.5px;
   letter-spacing: -0.07px;
-  color: #847c70;
+  color: hsl(var(--muted-text));
 }
 
 .shell-brand-title {
@@ -1277,7 +1277,7 @@ textarea {
   font-weight: 600;
   line-height: 24px;
   letter-spacing: -0.03em;
-  color: #2a2520;
+  color: hsl(var(--foreground));
 }
 
 .shell-nav {
@@ -1286,7 +1286,7 @@ textarea {
   align-items: center;
   gap: 4px;
   border-radius: 999px;
-  background: #ece8db;
+  background: hsl(var(--hover));
   padding: 4px;
 }
 
@@ -1309,18 +1309,18 @@ textarea {
 }
 
 .shell-nav-link-active {
-  background: #2a2520;
-  color: #f7f5ef;
+  background: hsl(var(--foreground));
+  color: hsl(var(--background));
   box-shadow: 0 2px 8px hsl(var(--foreground) / 0.12);
 }
 
 .shell-nav-link-inactive {
-  color: #847c70;
+  color: hsl(var(--muted-text));
 }
 
 .shell-nav-link-inactive:hover {
-  color: #2a2520;
-  background: hsl(0 0% 100% / 0.42);
+  color: hsl(var(--foreground));
+  background: hsl(var(--foreground) / 0.06);
 }
 
 .shell-status {
@@ -1329,7 +1329,7 @@ textarea {
   gap: 0.45rem;
   font-size: 12px;
   line-height: 18px;
-  color: #847c70;
+  color: hsl(var(--muted-text));
   white-space: nowrap;
 }
 
@@ -1368,6 +1368,29 @@ textarea {
 .shell-icon-button:focus-visible {
   outline: none;
   box-shadow: 0 0 0 4px hsl(var(--foreground) / 0.08);
+}
+
+/* ---- Search bar pill card ---- */
+.search-bar-card {
+  border-radius: 1.25rem;
+  border: 1px solid hsl(var(--border) / 0.78);
+  background: linear-gradient(180deg, hsl(var(--card) / 0.96), hsl(var(--background) / 0.82));
+  box-shadow:
+    inset 0 1px 0 hsl(0 0% 100% / 0.36),
+    0 4px 12px hsl(var(--foreground) / 0.03);
+  padding: 0.65rem 1rem;
+}
+
+.search-bar-card input[type="text"],
+.search-bar-card input:not([type]) {
+  border-color: hsl(var(--border) / 0.6);
+  background: hsl(var(--background) / 0.5);
+}
+
+.search-bar-card input[type="text"]:focus,
+.search-bar-card input:not([type]):focus {
+  border-color: hsl(var(--foreground) / 0.2);
+  background: hsl(var(--background) / 0.7);
 }
 
 .paper-panel-muted {

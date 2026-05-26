@@ -6,6 +6,7 @@ import { cn } from '../../utils/cn';
 
 const NAV_ITEMS = [
   { to: '/', label: '工作台' },
+  { to: '/information-watch', label: '信息观察池' },
   { to: '/theme-factor-scans', label: '主题因子' },
   { to: '/theme-picker', label: '主题选股' },
   { to: '/stock-query', label: '单股查询' },

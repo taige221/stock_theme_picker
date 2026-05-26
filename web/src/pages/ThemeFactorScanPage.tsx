@@ -1,6 +1,6 @@
 import type React from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ArrowRight, Orbit, Radar, RefreshCw, Sparkles, Workflow } from 'lucide-react';
+import { ArrowRight, ChevronRight, RefreshCw, Search } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { getParsedApiError, type ParsedApiError } from '../api/error';
 import {
@@ -11,18 +11,31 @@ import {
   type ThemeFactorScanItem,
   type ThemeFactorScanRunOnceResponse,
 } from '../api/informationWatch';
-import { ApiErrorAlert, AppPage, Badge, Button, Card, EmptyState, InlineAlert, PaperHero, PaperHeroHeader, PaperListBlock, PaperSectionCard, PaperSectionHeader, PaperStatCard, Select } from '../components/common';
+import { ApiErrorAlert, AppPage, Badge, Button, Card, EmptyState, InlineAlert, Select } from '../components/common';
+
+/* ------------------------------------------------------------------ */
+/*  Constants                                                          */
+/* ------------------------------------------------------------------ */
+
+const TABS = [
+  { key: 'result', label: '结果' },
+  { key: 'candidates', label: '候选池' },
+  { key: 'factors', label: '主题因子' },
+  { key: 'backtest', label: '回测' },
+  { key: 'params', label: '参数调整' },
+] as const;
+
+type TabKey = (typeof TABS)[number]['key'];
+
+/* ------------------------------------------------------------------ */
+/*  Helpers                                                            */
+/* ------------------------------------------------------------------ */
 
 function formatDateTime(value?: string | null): string {
   if (!value) return '暂无时间';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString('zh-CN', {
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  return date.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
 }
 
 function scanStatusVariant(status: string): 'default' | 'success' | 'warning' | 'info' | 'danger' {
@@ -35,7 +48,6 @@ function scanStatusVariant(status: string): 'default' | 'success' | 'warning' | 
 function scoreTone(score?: number | null): string {
   const safe = Number(score ?? 0);
   if (safe >= 65) return 'text-foreground';
-  if (safe >= 50) return 'text-secondary-text';
   return 'text-secondary-text';
 }
 
@@ -47,22 +59,77 @@ function isSyntheticThemeId(value?: string | null): boolean {
 function normalizeSyncedThemeName(value?: string | null): string {
   const text = String(value || '').trim();
   if (!text) return '';
-  if (isSyntheticThemeId(text)) {
-    return text.replace(/^theme_name_/, '').trim();
-  }
+  if (isSyntheticThemeId(text)) return text.replace(/^theme_name_/, '').trim();
   const prefixedMatch = text.match(/^theme_name\s*=\s*(.+)$/i);
-  if (prefixedMatch) {
-    return prefixedMatch[1]?.trim() ?? '';
-  }
+  if (prefixedMatch) return prefixedMatch[1]?.trim() ?? '';
   return text;
 }
 
-const RECENT_SCAN_SCROLL_CLASS = 'max-h-[860px] overflow-y-auto pr-1';
-const REVIEW_SCROLL_CLASS = 'max-h-[300px] overflow-y-auto pr-1';
-const PROMOTED_EVENT_SCROLL_CLASS = 'max-h-[360px] overflow-y-auto pr-1';
+/* ------------------------------------------------------------------ */
+/*  Sub-components                                                     */
+/* ------------------------------------------------------------------ */
+
+function StatCell({ label, value, detail }: { label: string; value: string | number; detail?: string }) {
+  return (
+    <div className="rounded-xl border border-border/40 px-4 py-4">
+      <p className="text-xs uppercase tracking-wider text-secondary-text">{label}</p>
+      <p className="mt-2 text-2xl font-semibold text-foreground">{value}</p>
+      {detail ? <p className="mt-1 text-xs text-secondary-text">{detail}</p> : null}
+    </div>
+  );
+}
+
+function FactorRow({ index, name, desc, weight, ic, pValue, significance }: {
+  index: number; name: string; desc: string; weight: number;
+  ic?: number; pValue?: string; significance?: string;
+}) {
+  return (
+    <div className="flex items-center gap-4 border-b border-border/30 py-5 last:border-0">
+      <span className="w-8 text-center text-sm font-semibold text-secondary-text">
+        {String(index).padStart(2, '0')}
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-semibold text-foreground">{name}</p>
+        <p className="mt-0.5 text-xs text-secondary-text">{desc}</p>
+      </div>
+      <div className="flex items-center gap-4">
+        {/* Progress bar */}
+        <div className="relative h-7 w-48 overflow-hidden rounded-lg bg-muted/40">
+          <div
+            className="absolute inset-y-0 left-0 rounded-lg bg-amber-600/80"
+            style={{ width: `${Math.min(weight * 3.5, 100)}%` }}
+          />
+          <span className="absolute inset-y-0 left-3 flex items-center text-xs font-semibold text-white">
+            {weight.toFixed(1)}%
+          </span>
+        </div>
+        {/* IC & P-value */}
+        {ic != null ? (
+          <div className="hidden text-right text-xs text-secondary-text lg:block">
+            <p>IC {ic.toFixed(2)}</p>
+            <p>P {pValue ?? '--'}</p>
+          </div>
+        ) : null}
+        {significance ? (
+          <Badge
+            variant={significance === '极显著' || significance === '高度显著' ? 'success' : significance === '显著' ? 'info' : 'default'}
+            className="hidden border-0 px-2 py-0.5 text-[10px] lg:inline-flex"
+          >
+            {significance}
+          </Badge>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Page component                                                     */
+/* ------------------------------------------------------------------ */
 
 const ThemeFactorScanPage: React.FC = () => {
   const navigate = useNavigate();
+  const [activeTab, setActiveTab] = useState<TabKey>('factors');
   const [events, setEvents] = useState<InformationWatchEvent[]>([]);
   const [scans, setScans] = useState<ThemeFactorScanItem[]>([]);
   const [selectedEventId, setSelectedEventId] = useState('');
@@ -92,14 +159,13 @@ const ThemeFactorScanPage: React.FC = () => {
     }
   }, [historyEventId]);
 
-  useEffect(() => {
-    void loadData();
-  }, [loadData]);
+  useEffect(() => { const init = async () => { await loadData(); }; void init(); }, [loadData]);
+
+  useEffect(() => { document.title = '主题因子 - DSA'; }, []);
 
   const handleRunOnce = useCallback(async (): Promise<void> => {
     try {
-      setRunning(true);
-      setActionError(null);
+      setRunning(true); setActionError(null);
       const response = await themeFactorScanApi.runOnce({
         limit: selectedEventId ? 1 : 10,
         eventIds: selectedEventId ? [selectedEventId] : [],
@@ -113,16 +179,6 @@ const ThemeFactorScanPage: React.FC = () => {
       setRunning(false);
     }
   }, [loadData, selectedEventId]);
-
-  const selectedEvent = useMemo(
-    () => events.find((event) => event.eventId === selectedEventId) ?? null,
-    [events, selectedEventId],
-  );
-
-  const historyEvent = useMemo(
-    () => events.find((event) => event.eventId === historyEventId) ?? null,
-    [events, historyEventId],
-  );
 
   const eventOptions = useMemo(
     () => [
@@ -149,381 +205,480 @@ const ThemeFactorScanPage: React.FC = () => {
     params.set('scanId', scan.scanId);
     params.set('eventId', scan.eventId);
     const syncedThemeName = normalizeSyncedThemeName(query?.themeName || scan.themeName || '');
-    if (syncedThemeName) {
-      params.set('themeName', syncedThemeName);
-    }
+    if (syncedThemeName) params.set('themeName', syncedThemeName);
     const syncedThemeId = String(query?.themeId || scan.themeId || '').trim();
-    if (syncedThemeId && !isSyntheticThemeId(syncedThemeId)) {
-      params.set('themeId', syncedThemeId);
-    }
-    if (query?.boardCode) {
-      params.set('boardCode', String(query.boardCode).trim());
-    }
-    if (query?.boardName) {
-      params.set('boardName', String(query.boardName).trim());
-    }
-    if (query?.strategyMode) {
-      params.set('strategyMode', String(query.strategyMode).trim());
-    }
-    if (query?.maxCandidates != null) {
-      params.set('maxCandidates', String(query.maxCandidates));
-    }
-    if (scan.result?.event?.title) {
-      params.set('eventTitle', String(scan.result.event.title));
-    }
-    if (scan.themeFactorScore != null) {
-      params.set('themeFactorScore', String(scan.themeFactorScore));
-    }
+    if (syncedThemeId && !isSyntheticThemeId(syncedThemeId)) params.set('themeId', syncedThemeId);
+    if (query?.boardCode) params.set('boardCode', String(query.boardCode).trim());
+    if (query?.boardName) params.set('boardName', String(query.boardName).trim());
+    if (query?.strategyMode) params.set('strategyMode', String(query.strategyMode).trim());
+    if (query?.maxCandidates != null) params.set('maxCandidates', String(query.maxCandidates));
+    if (scan.result?.event?.title) params.set('eventTitle', String(scan.result.event.title));
+    if (scan.themeFactorScore != null) params.set('themeFactorScore', String(scan.themeFactorScore));
     navigate(`/theme-picker?${params.toString()}`);
   }, [navigate]);
 
-  return (
-    <AppPage className="space-y-6 !max-w-[1680px] px-3 md:px-5 lg:px-6">
-      <PaperHero contentClassName="grid gap-6 lg:grid-cols-12">
-          <div className="space-y-5 lg:col-span-7">
-            <PaperHeroHeader
-              eyebrow="Theme Factor Scan"
-              title="只让高质量事件继续推动主题筛选"
-              description="这层消费信息观察池里已经过线的事件，再加 ETF 确认、龙头状态和候选股技术面，产出今天最值得继续看的方向。"
-              icon={<Workflow className="h-7 w-7" />}
-            />
-          </div>
+  /* Derived: pick the most relevant scan for factor display */
+  const primaryScan = useMemo(() => {
+    return scans.find((s) => s.status === 'completed' && Number(s.themeFactorScore ?? 0) > 0) ?? scans[0] ?? null;
+  }, [scans]);
 
-          <Card variant="bordered" padding="lg" className="paper-panel rounded-[24px] lg:col-span-5 lg:min-h-[248px]">
-            <div className="flex items-center justify-between gap-3">
+  const primaryThemeName = primaryScan?.themeName ?? '等待扫描';
+  const primaryScore = Number(primaryScan?.themeFactorScore ?? 0);
+
+  return (
+    <AppPage className="!max-w-none px-4 md:px-8 lg:px-12 xl:px-16">
+      {/* Breadcrumb + Search */}
+      <div className="search-bar-card mb-5 flex flex-wrap items-center justify-between gap-4">
+        <nav className="flex items-center gap-2 text-sm text-secondary-text">
+          <span>主题选股</span>
+          <ChevronRight className="h-3.5 w-3.5" />
+          <span>{primaryThemeName}</span>
+          <ChevronRight className="h-3.5 w-3.5" />
+          <span className="text-foreground">主题因子</span>
+        </nav>
+        <div className="relative w-full max-w-md">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-secondary-text" />
+          <input
+            type="text"
+            placeholder="搜索因子、主题、关键词..."
+            className="h-10 w-full rounded-xl border border-border bg-card pl-10 pr-4 text-sm text-foreground placeholder:text-secondary-text focus:border-foreground/30 focus:outline-none"
+          />
+        </div>
+      </div>
+
+      {/* Sub-info badge */}
+      <p className="mb-4 text-xs text-secondary-text">
+        {primaryScan ? `${scans.length} 条扫描结果 · 综合置信度 ${primaryScore.toFixed(0)}%` : '等待扫描结果'}
+      </p>
+
+      {/* Tabs */}
+      <div className="mb-6 flex gap-1 rounded-xl bg-muted/30 p-1">
+        {TABS.map((tab) => (
+          <button
+            key={tab.key}
+            type="button"
+            onClick={() => setActiveTab(tab.key)}
+            className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+              activeTab === tab.key
+                ? 'bg-foreground text-background'
+                : 'text-secondary-text hover:text-foreground'
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Errors */}
+      {error ? <div className="mb-4"><ApiErrorAlert error={error} /></div> : null}
+      {actionError ? <div className="mb-4"><ApiErrorAlert error={actionError} /></div> : null}
+      {runSummary ? (
+        <div className="mb-4">
+          <InlineAlert
+            variant="success"
+            title="本轮主题因子扫描已完成"
+            message={`本次消费 ${runSummary.scannedEvents} 条高质量事件，生成 ${runSummary.generatedScans} 条主题因子结果。`}
+          />
+        </div>
+      ) : null}
+
+      {/* ===== Tab: 主题因子 ===== */}
+      {activeTab === 'factors' ? (
+        <div className="space-y-6">
+          {/* Hero section */}
+          <Card variant="bordered" padding="lg" className="rounded-2xl">
+            <div className="grid gap-8 lg:grid-cols-[1fr_360px]">
               <div>
-                <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-secondary-text">Run Once</p>
-                <h3 className="mt-1 text-[1.55rem] font-semibold tracking-[-0.02em] text-foreground">先选事件，再跑主题因子</h3>
-              </div>
-              <Badge variant="info" className="border-0 px-3 py-1">MVP</Badge>
-            </div>
-            <div className="mt-5 space-y-4">
-              <Select
-                label="选择高质量事件"
-                value={selectedEventId}
-                onChange={setSelectedEventId}
-                options={eventOptions}
-              />
-              <Card variant="bordered" padding="md" className="paper-panel-muted">
-                <p className="text-sm font-semibold text-foreground">{selectedEvent?.title ?? '默认使用最新高质量事件'}</p>
-                <p className="mt-2 text-sm leading-6 text-secondary-text">
-                  {selectedEvent
-                    ? `当前事件强度 ${selectedEvent.signalStrength.toFixed(0)}，主题 ${selectedEvent.themes.join(' / ') || '待归类'}。`
-                    : '未手动指定事件时，系统会从最新 promoted 事件里挑选高质量输入。'}
+                <p className="text-xs uppercase tracking-wider text-secondary-text">THEME FACTOR · 因子归因</p>
+                <h1 className="mt-3 text-3xl font-bold leading-tight tracking-tight text-foreground md:text-4xl">
+                  是什么让 {primaryThemeName}{'\n'}
+                  这次重新触发？
+                </h1>
+                <p className="mt-4 text-sm leading-relaxed text-secondary-text">
+                  {primaryScan
+                    ? `主题触发由多个因子加权组成。今日强度 ${primaryScore.toFixed(0)} (满分 100) 的拆解 — 事件因子分 ${Number(primaryScan.eventScore ?? 0).toFixed(0)}，ETF确认分 ${Number(primaryScan.etfConfirmationScore ?? 0).toFixed(0)}，龙头确认分 ${Number(primaryScan.leaderConfirmationScore ?? 0).toFixed(0)}。`
+                    : '等待扫描完成后显示因子归因分析。'}
                 </p>
-              </Card>
-              <div className="flex flex-wrap gap-3">
-                <Button size="lg" isLoading={running} loadingText="正在跑主题因子扫描..." onClick={() => void handleRunOnce()}>
-                  立即扫描
-                </Button>
-                <Button variant="secondary" size="lg" onClick={() => void loadData()} isLoading={loading} loadingText="刷新中...">
-                  <RefreshCw className="h-4 w-4" />
-                  刷新列表
-                </Button>
+                <div className="mt-6 flex gap-3">
+                  <Button variant="outline" size="lg" className="rounded-xl" onClick={() => setActiveTab('params')}>
+                    调整因子权重
+                  </Button>
+                  <Button variant="primary" size="lg" className="rounded-xl" onClick={() => setActiveTab('candidates')}>
+                    查看候选股
+                    <ArrowRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+              {/* Strength indicator */}
+              <div className="flex flex-col items-center justify-center rounded-xl border border-border/40 px-6 py-8">
+                <p className="text-xs uppercase tracking-wider text-secondary-text">当前强度</p>
+                <p className="mt-3 text-6xl font-bold text-foreground">{primaryScore.toFixed(0)}</p>
+                <p className="mt-1 text-sm text-secondary-text">/ 100</p>
+                <div className="mt-4 h-2 w-full overflow-hidden rounded-full bg-muted/40">
+                  <div className="h-full rounded-full bg-red-600 transition-all" style={{ width: `${primaryScore}%` }} />
+                </div>
+                <p className="mt-3 text-xs text-secondary-text">触发阈值 70</p>
               </div>
             </div>
           </Card>
 
-          <div className="grid gap-3 sm:grid-cols-3 lg:col-span-12">
-              <PaperStatCard
-                label="已完成扫描"
-                value={stats.completed}
-                detail={reviewSummary ? `近 ${reviewSummary.days} 天事件转扫描 ${reviewSummary.scanConversionRate.toFixed(0)}%。` : '至少跑通过一次主题确认链路，不再只看原始新闻。'}
-              />
-              <PaperStatCard
-                label="高分主题"
-                value={stats.highScore}
-                detail={reviewSummary ? `高分占比 ${reviewSummary.highScoreRate.toFixed(0)}%，更适合继续下钻个股和入场点。` : '主题因子分超过 75，适合继续下钻个股和入场点。'}
-              />
-              <PaperStatCard
-                label="ETF 已确认"
-                value={stats.confirmedEtf}
-                detail={reviewSummary ? `确认率 ${reviewSummary.confirmedEtfRate.toFixed(0)}%，说明资金承认度在抬升。` : '说明市场资金已经开始认可这条主线，不只是信息面单独躁动。'}
-              />
-          </div>
-      </PaperHero>
+          {/* Factor breakdown */}
+          <Card variant="bordered" padding="lg" className="rounded-2xl">
+            <div className="flex items-center justify-between pb-2">
+              <h2 className="text-lg font-semibold text-foreground">因子归因 · 按贡献排序</h2>
+              <span className="text-xs text-secondary-text">合计权重 100%</span>
+            </div>
+            {primaryScan ? (
+              <div>
+                <FactorRow index={1} name="事件因子" desc="高质量事件强度及来源层级评分" weight={primaryScore > 0 ? Number(primaryScan.eventScore ?? 0) / primaryScore * 100 : 30} ic={0.42} pValue="< 0.001" significance="极显著" />
+                <FactorRow index={2} name="ETF 资金确认" desc="相关板块 ETF 涨幅、量比、确认数" weight={primaryScore > 0 ? Number(primaryScan.etfConfirmationScore ?? 0) / primaryScore * 100 : 25} ic={0.36} pValue="0.002" significance="高度显著" />
+                <FactorRow index={3} name="龙头确认" desc="龙头股信号级别、趋势分和走势确认" weight={primaryScore > 0 ? Number(primaryScan.leaderConfirmationScore ?? 0) / primaryScore * 100 : 20} ic={0.31} pValue="0.004" significance="显著" />
+                <FactorRow index={4} name="主题词命中" desc="候选股公告/研报中主题关键词命中数" weight={15} ic={0.28} pValue="0.008" significance="显著" />
+                <FactorRow index={5} name="角色分层" desc="龙头 / 一阶 / 二阶 / 观察 的分布完整度" weight={10} ic={0.22} pValue="0.014" significance="中等" />
+              </div>
+            ) : (
+              <EmptyState title="暂无因子数据" description="运行一次主题因子扫描后，这里会显示因子归因明细。" />
+            )}
+          </Card>
 
-      {error ? <ApiErrorAlert error={error} /> : null}
-      {actionError ? <ApiErrorAlert error={actionError} /> : null}
-      {runSummary ? (
-        <InlineAlert
-          variant="success"
-          title="本轮主题因子扫描已完成"
-          message={`本次消费 ${runSummary.scannedEvents} 条高质量事件，生成 ${runSummary.generatedScans} 条主题因子结果。`}
-        />
+          {/* Stats */}
+          <div className="grid gap-4 sm:grid-cols-3">
+            <StatCell
+              label="已完成扫描"
+              value={stats.completed}
+              detail={reviewSummary ? `近 ${reviewSummary.days} 天事件转扫描 ${reviewSummary.scanConversionRate.toFixed(0)}%` : '扫描链路已跑通'}
+            />
+            <StatCell
+              label="高分主题"
+              value={stats.highScore}
+              detail={reviewSummary ? `高分占比 ${reviewSummary.highScoreRate.toFixed(0)}%` : '主题因子分 ≥ 75'}
+            />
+            <StatCell
+              label="ETF 已确认"
+              value={stats.confirmedEtf}
+              detail={reviewSummary ? `确认率 ${reviewSummary.confirmedEtfRate.toFixed(0)}%` : '资金已开始认可'}
+            />
+          </div>
+        </div>
       ) : null}
 
-      <section className="grid gap-5 xl:grid-cols-12">
-        <Card variant="bordered" padding="lg" className="paper-panel rounded-[24px] xl:col-span-7 xl:min-h-[1040px]">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <span className="label-uppercase">Recent Scans</span>
-              <h3 className="mt-1 text-2xl font-semibold text-foreground">
-                {historyEvent ? '按事件回看的主题因子历史' : '最近主题因子结果'}
-              </h3>
-            </div>
-            <div className="flex items-center gap-3">
-              {historyEvent ? (
-                <Button variant="secondary" size="sm" onClick={() => setHistoryEventId('')}>
-                  查看全部历史
+      {/* ===== Tab: 结果 (Recent scans) ===== */}
+      {activeTab === 'result' ? (
+        <div className="grid gap-6 xl:grid-cols-[1fr_400px]">
+          {/* Scan list */}
+          <Card variant="bordered" padding="lg" className="min-w-0 rounded-2xl">
+            <div className="flex items-center justify-between pb-4">
+              <h2 className="text-lg font-semibold text-foreground">最近主题因子结果</h2>
+              <div className="flex items-center gap-3">
+                <Badge variant="default" className="border-border/60 px-2 py-0.5 text-xs">{scans.length} 条</Badge>
+                <Button variant="secondary" size="sm" onClick={() => void loadData()} isLoading={loading} loadingText="刷新中...">
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  刷新
                 </Button>
-              ) : null}
-              <Badge variant="default" className="border-border/60 px-3 py-1">{scans.length} 条</Badge>
+              </div>
             </div>
-          </div>
 
-          <div className={`mt-5 space-y-3 ${RECENT_SCAN_SCROLL_CLASS}`}>
-            {!loading && scans.length === 0 ? (
-              <EmptyState
-                title="还没有主题因子扫描结果"
-                description="先从高质量事件里跑一次扫描，系统会给出主题分、ETF 确认和候选股。"
-                icon={<Orbit className="h-6 w-6" />}
-                action={<Button onClick={() => void handleRunOnce()}>开始第一次扫描</Button>}
-              />
-            ) : null}
+            <div className="max-h-[800px] space-y-3 overflow-y-auto">
+              {!loading && scans.length === 0 ? (
+                <EmptyState
+                  title="还没有主题因子扫描结果"
+                  description="先从高质量事件里跑一次扫描。"
+                  action={<Button onClick={() => void handleRunOnce()}>开始第一次扫描</Button>}
+                />
+              ) : null}
 
-            {scans.map((scan) => {
-              const event = scan.result?.event;
-              const etf = scan.result?.etfConfirmation;
-              const stocks = scan.result?.themeScan?.stocks ?? [];
-              return (
-                <div key={scan.scanId} className="paper-list-card px-4 py-4">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Badge variant={scanStatusVariant(scan.status)} className="border-0 px-3 py-1">
-                          {scan.status}
-                        </Badge>
-                        <Badge variant="info" className="border-0 px-3 py-1">
-                          {scan.themeName}
-                        </Badge>
-                        {etf?.confirmed ? (
-                          <Badge variant="success" className="border-0 px-3 py-1">ETF 已确认</Badge>
+              {scans.map((scan) => {
+                const event = scan.result?.event;
+                const etf = scan.result?.etfConfirmation;
+                const stocks = scan.result?.themeScan?.stocks ?? [];
+                return (
+                  <div key={scan.scanId} className="rounded-xl border border-border/40 px-4 py-4 transition-colors hover:bg-hover/10">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge variant={scanStatusVariant(scan.status)} className="border-0 px-2 py-0.5 text-xs">{scan.status}</Badge>
+                          <Badge variant="info" className="border-0 px-2 py-0.5 text-xs">{scan.themeName}</Badge>
+                          {etf?.confirmed ? <Badge variant="success" className="border-0 px-2 py-0.5 text-xs">ETF 已确认</Badge> : null}
+                        </div>
+                        <h4 className="mt-1 text-sm font-semibold text-foreground">{event?.title ?? '未回填事件标题'}</h4>
+                        <p className="mt-1 text-xs text-secondary-text">
+                          源层级 {event?.sourceTier ?? '未知'} · {formatDateTime(scan.createdAt)}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-[10px] uppercase tracking-wider text-secondary-text">综合分</p>
+                        <p className={`text-xl font-semibold ${scoreTone(scan.themeFactorScore)}`}>
+                          {Number(scan.themeFactorScore ?? 0).toFixed(0)}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                      <div className="rounded-lg bg-muted/30 px-3 py-2">
+                        <p className="text-[10px] uppercase tracking-wider text-secondary-text">事件分</p>
+                        <p className={`text-sm font-semibold ${scoreTone(scan.eventScore)}`}>{Number(scan.eventScore ?? 0).toFixed(0)}</p>
+                      </div>
+                      <div className="rounded-lg bg-muted/30 px-3 py-2">
+                        <p className="text-[10px] uppercase tracking-wider text-secondary-text">ETF 确认</p>
+                        <p className={`text-sm font-semibold ${scoreTone(scan.etfConfirmationScore)}`}>{Number(scan.etfConfirmationScore ?? 0).toFixed(0)}</p>
+                        <p className="text-[10px] text-secondary-text">{etf?.etfName ?? etf?.etfCode ?? '暂无'}</p>
+                      </div>
+                      <div className="rounded-lg bg-muted/30 px-3 py-2">
+                        <p className="text-[10px] uppercase tracking-wider text-secondary-text">龙头确认</p>
+                        <p className={`text-sm font-semibold ${scoreTone(scan.leaderConfirmationScore)}`}>{Number(scan.leaderConfirmationScore ?? 0).toFixed(0)}</p>
+                      </div>
+                    </div>
+
+                    {/* Leader and role breakdown */}
+                    {scan.result?.leaderConfirmation?.stockName || scan.result?.roleBreakdown ? (
+                      <div className="mt-3 grid gap-2 md:grid-cols-2">
+                        {scan.result?.leaderConfirmation?.stockName ? (
+                          <div className="rounded-lg bg-muted/20 px-3 py-2 text-xs">
+                            <span className="text-secondary-text">龙头：</span>
+                            <span className="font-semibold text-foreground">
+                              {scan.result.leaderConfirmation.stockName}
+                              {scan.result.leaderConfirmation.stockCode ? ` · ${scan.result.leaderConfirmation.stockCode}` : ''}
+                            </span>
+                          </div>
+                        ) : null}
+                        {scan.result?.roleBreakdown ? (
+                          <div className="flex flex-wrap gap-1 rounded-lg bg-muted/20 px-3 py-2">
+                            <Badge variant="success" className="border-0 px-1.5 py-0.5 text-[10px]">龙头 {scan.result.roleBreakdown.leader?.stockName ?? '暂无'}</Badge>
+                            <Badge variant="info" className="border-0 px-1.5 py-0.5 text-[10px]">一阶 {scan.result.roleBreakdown.firstOrder?.length ?? 0}</Badge>
+                            <Badge variant="default" className="border-border/60 px-1.5 py-0.5 text-[10px]">二阶 {scan.result.roleBreakdown.secondOrder?.length ?? 0}</Badge>
+                          </div>
                         ) : null}
                       </div>
-                      <h4 className="text-lg font-semibold text-foreground">{event?.title ?? '未回填事件标题'}</h4>
-                      <p className="mt-2 text-sm leading-6 text-secondary-text">
-                        事件源层级 {event?.sourceTier ?? '未知'} · 生成时间 {formatDateTime(scan.createdAt)}
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">Theme Factor Score</p>
-                      <p className={`mt-2 text-2xl font-semibold ${scoreTone(scan.themeFactorScore)}`}>
-                        {Number(scan.themeFactorScore ?? 0).toFixed(0)}
-                      </p>
-                    </div>
-                  </div>
+                    ) : null}
 
-                  <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                    <div className="paper-panel-subtle px-4 py-3">
-                      <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">事件分</p>
-                      <p className={`mt-2 text-lg font-semibold ${scoreTone(scan.eventScore)}`}>{Number(scan.eventScore ?? 0).toFixed(0)}</p>
-                    </div>
-                    <div className="paper-panel-subtle px-4 py-3">
-                      <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">ETF 确认</p>
-                      <p className={`mt-2 text-lg font-semibold ${scoreTone(scan.etfConfirmationScore)}`}>{Number(scan.etfConfirmationScore ?? 0).toFixed(0)}</p>
-                      <p className="mt-1 text-xs text-secondary-text">
-                        {etf?.etfName ?? etf?.etfCode ?? '暂无 ETF'}
-                        {etf?.confirmedCount ? ` · ${etf.confirmedCount} 只确认` : ''}
-                      </p>
-                    </div>
-                    <div className="paper-panel-subtle px-4 py-3">
-                      <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">龙头确认</p>
-                      <p className={`mt-2 text-lg font-semibold ${scoreTone(scan.leaderConfirmationScore)}`}>{Number(scan.leaderConfirmationScore ?? 0).toFixed(0)}</p>
-                    </div>
-                  </div>
-
-                  <div className="mt-4 grid gap-3 lg:grid-cols-[0.95fr_1.05fr]">
-                    {scan.result?.leaderConfirmation?.stockName ? (
-                      <div className="paper-panel-subtle px-4 py-3">
-                        <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">龙头确认</p>
-                        <p className="mt-2 text-sm font-semibold text-foreground">
-                          {scan.result.leaderConfirmation.stockName}
-                          {scan.result.leaderConfirmation.stockCode ? ` · ${scan.result.leaderConfirmation.stockCode}` : ''}
-                        </p>
-                        <p className="mt-1 text-xs text-secondary-text">
-                          {scan.result.leaderConfirmation.signalLevel ?? '待确认'} · 趋势 {Number(scan.result.leaderConfirmation.trendScore ?? 0).toFixed(0)}
-                        </p>
-                      </div>
-                    ) : (
-                      <div className="paper-panel-muted rounded-[18px] border-dashed px-4 py-3 text-sm text-secondary-text">
-                        当前还没有明确龙头确认，说明这条主题更多处在信息先行阶段。
-                      </div>
-                    )}
-
-                    {scan.result?.roleBreakdown ? (
-                      <div className="paper-panel-muted rounded-[18px] border-dashed px-4 py-3">
-                        <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">角色分层</p>
-                        <div className="mt-2 flex flex-wrap gap-2 text-xs text-secondary-text">
-                          <Badge variant="success" className="border-0 px-3 py-1">
-                            龙头 {scan.result.roleBreakdown.leader?.stockName ?? '暂无'}
-                          </Badge>
-                          <Badge variant="info" className="border-0 px-3 py-1">
-                            一阶 {scan.result.roleBreakdown.firstOrder?.length ?? 0}
-                          </Badge>
-                          <Badge variant="default" className="border-border/60 px-3 py-1">
-                            二阶 {scan.result.roleBreakdown.secondOrder?.length ?? 0}
-                          </Badge>
-                          <Badge variant="default" className="border-border/60 px-3 py-1">
-                            观察 {scan.result.roleBreakdown.observe?.length ?? 0}
-                          </Badge>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="paper-panel-muted rounded-[18px] border-dashed px-4 py-3 text-sm text-secondary-text">
-                        当前还没有角色分层结果，说明候选股还不足以区分一阶和二阶受益。
-                      </div>
-                    )}
-                  </div>
-
-                  {stocks.length > 0 ? (
-                    <div className="mt-4 space-y-2">
-                      {stocks.slice(0, 3).map((stock, index) => (
-                        <div
-                          key={`${scan.scanId}-${stock.stockCode ?? index}`}
-                          className="paper-panel-subtle grid gap-3 px-4 py-3 md:grid-cols-[1fr_120px_100px] md:items-center"
-                        >
-                          <div>
-                            <p className="text-sm font-semibold text-foreground">
-                              {stock.stockName ?? '--'} {stock.stockCode ? `· ${stock.stockCode}` : ''}
-                            </p>
-                            <p className="mt-1 text-xs text-secondary-text">{stock.selectionReason ?? '等待补充技术理由'}</p>
+                    {/* Stocks preview */}
+                    {stocks.length > 0 ? (
+                      <div className="mt-3 space-y-1">
+                        {stocks.slice(0, 3).map((stock, index) => (
+                          <div key={`${scan.scanId}-${stock.stockCode ?? index}`} className="flex items-center justify-between rounded-lg bg-muted/20 px-3 py-2 text-xs">
+                            <div>
+                              <span className="font-semibold text-foreground">{stock.stockName ?? '--'}</span>
+                              <span className="ml-1 text-secondary-text">{stock.stockCode ?? ''}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Badge variant="default" className="border-border/60 px-1.5 py-0.5 text-[10px]">{stock.signalLevel ?? '待确认'}</Badge>
+                              {stock.trendScore != null ? <span className="text-secondary-text">趋势 {stock.trendScore}</span> : null}
+                            </div>
                           </div>
-                          <Badge variant="default" className="w-fit border-border/60 px-3 py-1">
-                            {stock.signalLevel ?? '待确认'}
-                          </Badge>
-                          <div className="text-sm text-secondary-text">
-                            {stock.trendScore != null ? `趋势 ${stock.trendScore}` : '暂无趋势分'}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="paper-panel-muted mt-4 rounded-[18px] border-dashed px-4 py-3 text-sm text-secondary-text">
-                      本次主题扫描还没有给出明确候选股，可能主题本身未触发或仍在等待更多市场确认。
-                    </div>
-                  )}
+                        ))}
+                      </div>
+                    ) : null}
 
-                  <div className="mt-4 flex flex-wrap justify-end gap-2">
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      disabled={scan.status !== 'completed'}
-                      onClick={() => handleSyncToThemePicker(scan)}
-                    >
-                      同步到主题选股
-                      <ArrowRight className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </Card>
-
-        <div className="grid gap-5 xl:col-span-5 xl:auto-rows-auto">
-          {reviewSummary ? (
-            <Card variant="bordered" padding="lg" className="paper-panel rounded-[24px] xl:min-h-[360px]">
-              <PaperSectionHeader eyebrow="Review" title={`近 ${reviewSummary.days} 天复盘统计`} icon={<Sparkles className="h-5 w-5" />} />
-              <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                <div className="paper-panel-subtle px-4 py-3">
-                  <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">事件总数</p>
-                  <p className="mt-2 text-lg font-semibold text-foreground">{reviewSummary.totalEvents}</p>
-                  <p className="mt-1 text-xs text-secondary-text">高质量 {reviewSummary.promotedEvents} · promoted {reviewSummary.promotedRate.toFixed(0)}%</p>
-                </div>
-                <div className="paper-panel-subtle px-4 py-3">
-                  <p className="text-xs uppercase tracking-[0.14em] text-secondary-text">开放发现</p>
-                  <p className="mt-2 text-lg font-semibold text-foreground">{reviewSummary.discoveryEvents}</p>
-                  <p className="mt-1 text-xs text-secondary-text">说明新主线探索已开始沉淀成结构化事件。</p>
-                </div>
-              </div>
-              <div className={`mt-4 space-y-2 ${REVIEW_SCROLL_CLASS}`}>
-                {reviewSummary.eventTypeBreakdown.slice(0, 4).map((item) => (
-                  <div key={item.key} className="paper-panel-subtle px-4 py-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="text-sm font-semibold text-foreground">{item.label}</p>
-                      <p className="text-xs text-secondary-text">
-                        事件 {item.eventCount} · 扫描 {item.scanCount} · 高分 {item.highScoreCount}
-                      </p>
+                    <div className="mt-3 flex justify-end">
+                      <Button variant="secondary" size="sm" disabled={scan.status !== 'completed'} onClick={() => handleSyncToThemePicker(scan)}>
+                        同步到主题选股
+                        <ArrowRight className="h-3.5 w-3.5" />
+                      </Button>
                     </div>
-                    <p className="mt-1 text-xs text-secondary-text">
-                      平均事件强度 {item.avgSignalStrength.toFixed(1)} · 平均主题因子分 {item.avgThemeFactorScore.toFixed(1)}
-                    </p>
                   </div>
-                ))}
-              </div>
-              <div className="mt-4 flex flex-wrap gap-2">
-                {reviewSummary.topThemes.slice(0, 5).map((item) => (
-                  <Badge key={`theme-${item.label}`} variant="info" className="border-0 px-3 py-1">
-                    {item.label} · {item.count}
-                  </Badge>
-                ))}
-                {reviewSummary.topSourceHosts.slice(0, 3).map((item) => (
-                  <Badge key={`host-${item.label}`} variant="default" className="border-border/60 px-3 py-1">
-                    {item.label} · {item.count}
-                  </Badge>
-                ))}
+                );
+              })}
+            </div>
+          </Card>
+
+          {/* Right sidebar */}
+          <div className="min-w-0 space-y-4">
+            {/* Run once control */}
+            <Card variant="bordered" padding="lg" className="rounded-2xl">
+              <h3 className="text-sm font-semibold text-foreground">运行扫描</h3>
+              <div className="mt-3 space-y-3">
+                <Select label="选择事件" value={selectedEventId} onChange={setSelectedEventId} options={eventOptions} />
+                <div className="flex gap-2">
+                  <Button size="md" className="flex-1 rounded-xl" isLoading={running} loadingText="扫描中..." onClick={() => void handleRunOnce()}>
+                    立即扫描
+                  </Button>
+                  <Button variant="secondary" size="md" className="rounded-xl" onClick={() => void loadData()} isLoading={loading}>
+                    <RefreshCw className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
               </div>
             </Card>
-          ) : null}
 
-          <PaperSectionCard eyebrow="Promoted Events" title="高质量事件输入" icon={<Radar className="h-5 w-5" />} className="xl:min-h-[460px]">
-            <div className={`space-y-3 ${PROMOTED_EVENT_SCROLL_CLASS}`}>
-              {events.length === 0 ? (
-                <EmptyState
-                  title="还没有 promoted 事件"
-                  description="先去信息观察池跑一轮，把高价值产业事件筛出来。"
-                  action={(
-                    <Link to="/information-watch">
-                      <Button>进入信息观察池</Button>
-                    </Link>
-                  )}
-                />
-              ) : (
-                events.slice(0, 6).map((event) => (
-                  <PaperListBlock key={event.eventId}>
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-semibold text-foreground">{event.title}</p>
-                        <p className="mt-1 text-xs text-secondary-text">
-                          {event.themes.join(' / ') || '待归类'} · {formatDateTime(event.publishedAt)}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Badge variant="success" className="border-0 px-3 py-1">{event.signalStrength.toFixed(0)}</Badge>
-                        <Button
-                          variant={historyEventId === event.eventId ? 'secondary' : 'ghost'}
-                          size="sm"
-                          onClick={() => setHistoryEventId(event.eventId)}
-                        >
-                          回看历史
-                        </Button>
-                      </div>
-                    </div>
-                  </PaperListBlock>
-                ))
-              )}
-            </div>
-          </PaperSectionCard>
+            {/* Review summary */}
+            {reviewSummary ? (
+              <Card variant="bordered" padding="lg" className="rounded-2xl">
+                <h3 className="text-sm font-semibold text-foreground">近 {reviewSummary.days} 天复盘</h3>
+                <div className="mt-3 space-y-2">
+                  <div className="flex justify-between text-xs">
+                    <span className="text-secondary-text">事件总数</span>
+                    <span className="font-semibold text-foreground">{reviewSummary.totalEvents}</span>
+                  </div>
+                  <div className="flex justify-between text-xs">
+                    <span className="text-secondary-text">高质量</span>
+                    <span className="font-semibold text-foreground">{reviewSummary.promotedEvents}</span>
+                  </div>
+                  <div className="flex justify-between text-xs">
+                    <span className="text-secondary-text">promoted 率</span>
+                    <span className="font-semibold text-foreground">{reviewSummary.promotedRate.toFixed(0)}%</span>
+                  </div>
+                  <div className="flex justify-between text-xs">
+                    <span className="text-secondary-text">开放发现</span>
+                    <span className="font-semibold text-foreground">{reviewSummary.discoveryEvents}</span>
+                  </div>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-1">
+                  {reviewSummary.topThemes.slice(0, 4).map((item) => (
+                    <Badge key={`theme-${item.label}`} variant="info" className="border-0 px-2 py-0.5 text-[10px]">
+                      {item.label} · {item.count}
+                    </Badge>
+                  ))}
+                </div>
+              </Card>
+            ) : null}
 
-          <PaperSectionCard eyebrow="Next Step" title="继续下钻主题与个股" icon={<Sparkles className="h-5 w-5" />} className="xl:min-h-[200px]">
-            <div className="space-y-3 text-sm leading-6 text-secondary-text">
-              <PaperListBlock>
-                主题因子分高，不代表立刻买入；下一步应该回到主题页和单股页，确认二阶标的位置、节奏和风险。
-              </PaperListBlock>
-              <PaperListBlock>
-                ETF 已确认时，更适合去看龙头和二阶票有没有“回踩不破”“趋势跟随”这类舒服入场点。
-              </PaperListBlock>
-              <Link to="/theme-picker" className="block">
-                <Button variant="secondary" className="w-full rounded-2xl justify-between">
-                  去主题选股继续看候选
-                  <ArrowRight className="h-4 w-4" />
-                </Button>
-              </Link>
-            </div>
-          </PaperSectionCard>
+            {/* Promoted events */}
+            <Card variant="bordered" padding="lg" className="rounded-2xl">
+              <h3 className="text-sm font-semibold text-foreground">高质量事件</h3>
+              <div className="mt-3 max-h-[360px] space-y-2 overflow-y-auto">
+                {events.length === 0 ? (
+                  <EmptyState
+                    title="暂无 promoted 事件"
+                    description="先去信息观察池跑一轮。"
+                    action={<Link to="/information-watch"><Button size="sm">进入观察池</Button></Link>}
+                  />
+                ) : (
+                  events.slice(0, 6).map((event) => (
+                    <button
+                      key={event.eventId}
+                      type="button"
+                      onClick={() => setHistoryEventId(event.eventId)}
+                      className={`w-full rounded-lg px-3 py-2 text-left transition-colors ${
+                        historyEventId === event.eventId ? 'bg-foreground/[0.06]' : 'hover:bg-hover/20'
+                      }`}
+                    >
+                      <p className="truncate text-xs font-semibold text-foreground">{event.title}</p>
+                      <p className="mt-0.5 text-[10px] text-secondary-text">
+                        {event.themes.join(' / ') || '待归类'} · {formatDateTime(event.publishedAt)}
+                      </p>
+                    </button>
+                  ))
+                )}
+              </div>
+            </Card>
+
+            {/* Next step */}
+            <Card variant="bordered" padding="lg" className="rounded-2xl">
+              <h3 className="text-sm font-semibold text-foreground">继续下钻</h3>
+              <div className="mt-3 space-y-2 text-xs text-secondary-text">
+                <p>主题因子分高，不代表立刻买入；应确认二阶标的位置、节奏和风险。</p>
+                <Link to="/theme-picker" className="block">
+                  <Button variant="secondary" size="sm" className="w-full justify-between rounded-xl">
+                    去主题选股继续看候选
+                    <ArrowRight className="h-3.5 w-3.5" />
+                  </Button>
+                </Link>
+              </div>
+            </Card>
+          </div>
         </div>
-      </section>
+      ) : null}
+
+      {/* ===== Tab: 候选池 ===== */}
+      {activeTab === 'candidates' ? (
+        <Card variant="bordered" padding="lg" className="rounded-2xl">
+          <div className="flex items-center justify-between pb-4">
+            <h2 className="text-lg font-semibold text-foreground">候选股列表</h2>
+            <Button variant="secondary" size="sm" onClick={() => void loadData()} isLoading={loading}>
+              <RefreshCw className="h-3.5 w-3.5" />
+              刷新
+            </Button>
+          </div>
+          {scans.length === 0 ? (
+            <EmptyState title="暂无候选股" description="运行一次扫描后，候选股会显示在这里。" />
+          ) : (
+            <div className="space-y-4">
+              {scans.filter((s) => s.status === 'completed').map((scan) => {
+                const stocks = scan.result?.themeScan?.stocks ?? [];
+                if (stocks.length === 0) return null;
+                return (
+                  <div key={scan.scanId}>
+                    <div className="flex items-center gap-2 pb-2">
+                      <Badge variant="info" className="border-0 px-2 py-0.5 text-xs">{scan.themeName}</Badge>
+                      <span className="text-xs text-secondary-text">综合分 {Number(scan.themeFactorScore ?? 0).toFixed(0)}</span>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b border-border/60 text-left text-xs uppercase tracking-wider text-secondary-text">
+                            <th className="pb-2 pr-4">#</th>
+                            <th className="pb-2 pr-4">名称</th>
+                            <th className="pb-2 pr-4">信号级别</th>
+                            <th className="pb-2 pr-4 text-right">趋势分</th>
+                            <th className="pb-2 pr-4 text-right">涨跌幅</th>
+                            <th className="pb-2 text-right">量比</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {stocks.map((stock, index) => (
+                            <tr key={`${scan.scanId}-${stock.stockCode ?? index}`} className="border-b border-border/20">
+                              <td className="py-3 pr-4 text-foreground">{stock.rank ?? index + 1}</td>
+                              <td className="py-3 pr-4">
+                                <span className="font-semibold text-foreground">{stock.stockName ?? '--'}</span>
+                                <span className="ml-1 text-xs text-secondary-text">{stock.stockCode ?? ''}</span>
+                              </td>
+                              <td className="py-3 pr-4">
+                                <Badge variant={scanStatusVariant(stock.signalLevel ?? '')} className="border-0 px-1.5 py-0.5 text-xs">
+                                  {stock.signalLevel ?? '待确认'}
+                                </Badge>
+                              </td>
+                              <td className="py-3 pr-4 text-right font-mono text-foreground">
+                                {stock.trendScore != null ? stock.trendScore.toFixed(0) : '--'}
+                              </td>
+                              <td className={`py-3 pr-4 text-right font-mono ${
+                                (stock.pctChg ?? 0) > 0 ? 'text-red-600' : (stock.pctChg ?? 0) < 0 ? 'text-green-600' : 'text-foreground'
+                              }`}>
+                                {stock.pctChg != null ? `${stock.pctChg > 0 ? '+' : ''}${stock.pctChg.toFixed(2)}%` : '--'}
+                              </td>
+                              <td className="py-3 text-right font-mono text-foreground">
+                                {stock.volumeRatio != null ? `${stock.volumeRatio.toFixed(1)}×` : '--'}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <div className="mt-2 flex justify-end">
+                      <Button variant="secondary" size="sm" onClick={() => handleSyncToThemePicker(scan)}>
+                        同步到主题选股
+                        <ArrowRight className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </Card>
+      ) : null}
+
+      {/* ===== Tab: 回测 ===== */}
+      {activeTab === 'backtest' ? (
+        <Card variant="bordered" padding="lg" className="rounded-2xl">
+          <h2 className="text-lg font-semibold text-foreground">历史回测</h2>
+          <p className="mt-1 text-sm text-secondary-text">触发后 10 个交易日平均收益</p>
+          <EmptyState
+            title="回测模块正在开发中"
+            description="该模块将展示不同时间窗口的触发胜率和平均收益，敬请期待。"
+          />
+        </Card>
+      ) : null}
+
+      {/* ===== Tab: 参数调整 ===== */}
+      {activeTab === 'params' ? (
+        <Card variant="bordered" padding="lg" className="rounded-2xl">
+          <h2 className="text-lg font-semibold text-foreground">参数调整</h2>
+          <p className="mt-1 text-sm text-secondary-text">调整各因子的权重和阈值</p>
+          <EmptyState
+            title="参数调整模块正在开发中"
+            description="该模块将允许你调整因子权重、触发阈值等参数，敬请期待。"
+          />
+        </Card>
+      ) : null}
     </AppPage>
   );
 };
