@@ -598,6 +598,227 @@ class ThemeFactorScanHistory(Base):
     )
 
 
+class StrategyBacktestRun(Base):
+    __tablename__ = "strategy_backtest_run"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    run_id = Column(String(64), nullable=False, unique=True, index=True)
+    run_name = Column(String(160), nullable=True)
+    status = Column(String(24), nullable=False, default="finished", index=True)
+    source_type = Column(String(32), nullable=False, default="json_import", index=True)
+    source_path = Column(Text, nullable=True)
+    artifact_digest = Column(String(64), nullable=False, unique=True, index=True)
+    logical_signature = Column(String(64), nullable=True, index=True)
+    strategy = Column(String(64), nullable=False, index=True)
+    strategy_version = Column(String(64), nullable=True, index=True)
+    preset_id = Column(String(64), nullable=True, index=True)
+    stock_pool_id = Column(String(64), nullable=True, index=True)
+    stock_pool_name = Column(String(160), nullable=True)
+    start_date = Column(Date, nullable=True, index=True)
+    end_date = Column(Date, nullable=True, index=True)
+    price_adjustment = Column(String(24), nullable=True)
+    trading_constraints = Column(String(32), nullable=True)
+    total_symbols = Column(Integer, nullable=True)
+    ok_symbols = Column(Integer, nullable=True)
+    error_symbols = Column(Integer, nullable=True)
+    profitable_symbols = Column(Integer, nullable=True)
+    losing_symbols = Column(Integer, nullable=True)
+    flat_symbols = Column(Integer, nullable=True)
+    total_initial_cash = Column(Float, nullable=True)
+    total_final_equity = Column(Float, nullable=True)
+    total_pnl = Column(Float, nullable=True)
+    aggregate_return_pct = Column(Float, nullable=True)
+    average_return_pct = Column(Float, nullable=True)
+    total_trade_count = Column(Integer, nullable=True)
+    max_drawdown_pct = Column(Float, nullable=True)
+    win_rate_pct = Column(Float, nullable=True)
+    profit_factor = Column(Float, nullable=True)
+    average_holding_days = Column(Float, nullable=True)
+    params_payload = Column(Text, nullable=True)
+    config_payload = Column(Text, nullable=True)
+    aggregate_payload = Column(Text, nullable=True)
+    raw_summary_payload = Column(Text, nullable=True)
+    started_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True, index=True)
+    generated_at = Column(DateTime, nullable=True, index=True)
+    created_at = Column(DateTime, default=datetime.now, index=True)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, index=True)
+
+    __table_args__ = (
+        Index("ix_strategy_backtest_run_strategy_generated", "strategy", "generated_at"),
+        Index("ix_strategy_backtest_run_pool_generated", "stock_pool_id", "generated_at"),
+        Index("ix_strategy_backtest_run_status_created", "status", "created_at"),
+    )
+
+
+class StrategyBacktestSymbolResult(Base):
+    __tablename__ = "strategy_backtest_symbol_result"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    run_id = Column(String(64), nullable=False, index=True)
+    stock_code = Column(String(16), nullable=False, index=True)
+    stock_name = Column(String(64), nullable=True)
+    status = Column(String(24), nullable=False, default="ok", index=True)
+    error = Column(Text, nullable=True)
+    requested_start_date = Column(Date, nullable=True)
+    effective_start_date = Column(Date, nullable=True)
+    end_date = Column(Date, nullable=True)
+    initial_cash = Column(Float, nullable=True)
+    final_equity = Column(Float, nullable=True)
+    total_return_pct = Column(Float, nullable=True)
+    max_drawdown_pct = Column(Float, nullable=True)
+    trade_count = Column(Integer, nullable=True)
+    win_rate_pct = Column(Float, nullable=True)
+    avg_win_pct = Column(Float, nullable=True)
+    avg_loss_pct = Column(Float, nullable=True)
+    profit_factor = Column(Float, nullable=True)
+    has_open_position = Column(Integer, nullable=False, default=0)
+    open_position_market_value = Column(Float, nullable=True)
+    final_unrealized_pnl = Column(Float, nullable=True)
+    final_unrealized_pnl_pct = Column(Float, nullable=True)
+    max_trade_mfe_pct = Column(Float, nullable=True)
+    max_trade_mae_pct = Column(Float, nullable=True)
+    contribution_pct = Column(Float, nullable=True)
+    result_path = Column(Text, nullable=True)
+    params_payload = Column(Text, nullable=True)
+    config_payload = Column(Text, nullable=True)
+    metrics_payload = Column(Text, nullable=True)
+    data_context_payload = Column(Text, nullable=True)
+    latest_signal_metadata_payload = Column(Text, nullable=True)
+    open_position_payload = Column(Text, nullable=True)
+    raw_result_payload = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.now, index=True)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, index=True)
+
+    __table_args__ = (
+        UniqueConstraint("run_id", "stock_code", name="uix_strategy_backtest_symbol_run_code"),
+        Index("ix_strategy_backtest_symbol_return", "run_id", "total_return_pct"),
+        Index("ix_strategy_backtest_symbol_status", "run_id", "status"),
+    )
+
+
+class StrategyBacktestTrade(Base):
+    __tablename__ = "strategy_backtest_trade"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    trade_id = Column(String(96), nullable=False, unique=True, index=True)
+    run_id = Column(String(64), nullable=False, index=True)
+    stock_code = Column(String(16), nullable=False, index=True)
+    stock_name = Column(String(64), nullable=True)
+    entry_date = Column(Date, nullable=True, index=True)
+    exit_date = Column(Date, nullable=True, index=True)
+    entry_price = Column(Float, nullable=True)
+    exit_price = Column(Float, nullable=True)
+    shares = Column(Integer, nullable=True)
+    gross_pnl = Column(Float, nullable=True)
+    net_pnl = Column(Float, nullable=True)
+    return_pct = Column(Float, nullable=True)
+    holding_days = Column(Integer, nullable=True)
+    exit_reason = Column(String(96), nullable=True)
+    entry_signal_type = Column(String(96), nullable=True)
+    entry_signal_reason = Column(String(160), nullable=True)
+    entry_signal_score = Column(Float, nullable=True)
+    highest_price_seen = Column(Float, nullable=True)
+    lowest_price_seen = Column(Float, nullable=True)
+    max_favorable_excursion_pct = Column(Float, nullable=True)
+    max_adverse_excursion_pct = Column(Float, nullable=True)
+    entry_signal_metadata_payload = Column(Text, nullable=True)
+    raw_trade_payload = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.now, index=True)
+
+    __table_args__ = (
+        Index("ix_strategy_backtest_trade_entry", "run_id", "entry_date"),
+        Index("ix_strategy_backtest_trade_stock_entry", "run_id", "stock_code", "entry_date"),
+        Index("ix_strategy_backtest_trade_exit_reason", "run_id", "exit_reason"),
+        Index("ix_strategy_backtest_trade_signal_type", "run_id", "entry_signal_type"),
+        Index("ix_strategy_backtest_trade_entry_reason", "run_id", "entry_signal_reason"),
+    )
+
+
+class StrategyBacktestEquityPoint(Base):
+    __tablename__ = "strategy_backtest_equity_point"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    run_id = Column(String(64), nullable=False, index=True)
+    scope = Column(String(24), nullable=False, index=True)
+    stock_code = Column(String(16), nullable=True, index=True)
+    benchmark_code = Column(String(32), nullable=True, index=True)
+    trade_date = Column(Date, nullable=False, index=True)
+    cash = Column(Float, nullable=True)
+    market_value = Column(Float, nullable=True)
+    equity = Column(Float, nullable=True)
+    return_pct = Column(Float, nullable=True)
+    drawdown_pct = Column(Float, nullable=True)
+    source = Column(String(32), nullable=False, default="json_import")
+    created_at = Column(DateTime, default=datetime.now, index=True)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "run_id",
+            "scope",
+            "stock_code",
+            "benchmark_code",
+            "trade_date",
+            name="uix_strategy_backtest_equity_point",
+        ),
+        Index("ix_strategy_backtest_equity_run_scope_date", "run_id", "scope", "trade_date"),
+    )
+
+
+class StrategyBacktestStockPool(Base):
+    __tablename__ = "strategy_backtest_stock_pool"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    pool_id = Column(String(64), nullable=False, unique=True, index=True)
+    name = Column(String(160), nullable=True)
+    source_type = Column(String(32), nullable=False, default="json_file", index=True)
+    source_path = Column(Text, nullable=True)
+    source_digest = Column(String(64), nullable=False, unique=True, index=True)
+    total_symbols = Column(Integer, nullable=True)
+    filters_payload = Column(Text, nullable=True)
+    raw_payload = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.now, index=True)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, index=True)
+
+
+class StrategyBacktestStockPoolMember(Base):
+    __tablename__ = "strategy_backtest_stock_pool_member"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    pool_id = Column(String(64), nullable=False, index=True)
+    stock_code = Column(String(16), nullable=False, index=True)
+    stock_name = Column(String(64), nullable=True)
+    rank = Column(Integer, nullable=True)
+    weight = Column(Float, nullable=True)
+    source_payload = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.now, index=True)
+
+    __table_args__ = (
+        UniqueConstraint("pool_id", "stock_code", name="uix_strategy_backtest_pool_member"),
+        Index("ix_strategy_backtest_pool_member_rank", "pool_id", "rank"),
+    )
+
+
+class StrategyBacktestImportBatch(Base):
+    __tablename__ = "strategy_backtest_import_batch"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    import_id = Column(String(64), nullable=False, unique=True, index=True)
+    status = Column(String(24), nullable=False, index=True)
+    source_path = Column(Text, nullable=False)
+    stock_pool_path = Column(Text, nullable=True)
+    mode = Column(String(24), nullable=False, default="upsert")
+    dry_run = Column(Integer, nullable=False, default=0)
+    run_id = Column(String(64), nullable=True, index=True)
+    artifact_digest = Column(String(64), nullable=True, index=True)
+    counts_payload = Column(Text, nullable=True)
+    warnings_payload = Column(Text, nullable=True)
+    error = Column(Text, nullable=True)
+    started_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.now, index=True)
+
+
 @dataclass
 class _SqliteSettings:
     database_path: Path
@@ -741,6 +962,18 @@ class DatabaseManager:
             table_name="stock_alert_rule",
             column_name="last_scan_payload_json",
             alter_sql="ALTER TABLE stock_alert_rule ADD COLUMN last_scan_payload_json TEXT NULL",
+        )
+        self._ensure_sqlite_column(
+            table_name="strategy_backtest_trade",
+            column_name="entry_signal_type",
+            alter_sql="ALTER TABLE strategy_backtest_trade ADD COLUMN entry_signal_type VARCHAR(96) NULL",
+        )
+        self._ensure_sqlite_index(
+            index_name="ix_strategy_backtest_trade_signal_type",
+            create_sql=(
+                "CREATE INDEX IF NOT EXISTS ix_strategy_backtest_trade_signal_type "
+                "ON strategy_backtest_trade (run_id, entry_signal_type)"
+            ),
         )
 
     def _ensure_sqlite_column(self, *, table_name: str, column_name: str, alter_sql: str) -> None:

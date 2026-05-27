@@ -13,6 +13,7 @@ const NAV_ITEMS = [
   { to: '/etf-query', label: '单 ETF' },
   { to: '/watchlist', label: '观察池' },
   { to: '/deep-analysis', label: '深度分析' },
+  { to: '/strategy-backtest', label: '策略回测' }
 ] as const;
 
 export const AppShell: React.FC = () => {

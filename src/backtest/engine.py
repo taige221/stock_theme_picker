@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
+from datetime import date, timedelta
 from typing import List, Optional
 
 import pandas as pd
@@ -11,6 +13,15 @@ from theme_picker.backtest.metrics import calculate_metrics
 from theme_picker.backtest.models import BacktestConfig, BacktestResult, EquityPoint, Position, Trade
 from theme_picker.strategy.base import Strategy
 from theme_picker.strategy.params import StrategyParams
+
+
+@dataclass(slots=True)
+class _PendingOrder:
+    action: str
+    signal_date: date
+    reason: str
+    score: Optional[float] = None
+    metadata: dict = field(default_factory=dict)
 
 
 class BacktestEngine:
@@ -37,11 +48,14 @@ class BacktestEngine:
         trades: List[Trade] = []
         equity_curve: List[EquityPoint] = []
         notes = [
-            "当前为单票、单仓位、按日线收盘近似成交的最小回测骨架。",
+            "当前为单票、单仓位、信号次日开盘近似成交的最小回测骨架。",
             f"价格口径: {runtime_config.price_adjustment}。",
             f"交易约束模式: {runtime_config.trading_constraint_mode}。",
         ]
         latest_signal_metadata: dict[str, object] = {}
+        symbol_loss_streak = 0
+        symbol_loss_cooldown_until: Optional[date] = None
+        pending_order: Optional[_PendingOrder] = None
 
         for index in range(len(working)):
             row = working.iloc[index]
@@ -49,6 +63,69 @@ class BacktestEngine:
             close_price = self._to_float(row.get("close"))
             if close_price is None or close_price <= 0:
                 continue
+            execution_price = self._resolve_execution_price(row)
+
+            if pending_order is not None and execution_price is not None:
+                order = pending_order
+                pending_order = None
+                if order.action == "buy" and position is None:
+                    cooldown_block_reason = self._symbol_loss_cooldown_block_reason(
+                        trade_date=trade_date,
+                        params=params,
+                        cooldown_until=symbol_loss_cooldown_until,
+                    )
+                    buy_block_reason = self._buy_block_reason(row, runtime_config)
+                    if cooldown_block_reason is not None:
+                        notes.append(
+                            f"{trade_date.isoformat()} 买入信号({order.signal_date.isoformat()})因{cooldown_block_reason}被跳过。"
+                        )
+                    elif buy_block_reason is not None:
+                        notes.append(
+                            f"{trade_date.isoformat()} 买入信号({order.signal_date.isoformat()})因{buy_block_reason}被跳过。"
+                        )
+                    else:
+                        position = self._open_position(
+                            stock_code=stock_code,
+                            trade_date=trade_date,
+                            execution_price=execution_price,
+                            cash=cash,
+                            signal_reason=order.reason,
+                            signal_score=order.score,
+                            signal_metadata=order.metadata,
+                            params=params,
+                            config=runtime_config,
+                        )
+                        if position is not None:
+                            cost = self._trade_cost(position.entry_price, position.shares, runtime_config)
+                            cash -= position.entry_price * position.shares + cost
+                elif order.action == "sell" and position is not None:
+                    can_exit = not runtime_config.enforce_t_plus_one or trade_date > position.entry_date
+                    if not can_exit:
+                        notes.append(f"{trade_date.isoformat()} 卖出信号因 T+1 约束延后。")
+                        pending_order = order
+                    else:
+                        sell_block_reason = self._sell_block_reason(row, runtime_config)
+                        if sell_block_reason is not None:
+                            notes.append(
+                                f"{trade_date.isoformat()} 卖出信号({order.signal_date.isoformat()})因{sell_block_reason}被跳过。"
+                            )
+                        else:
+                            trade = self._close_position(
+                                position=position,
+                                trade_date=trade_date,
+                                execution_price=execution_price,
+                                exit_reason=order.reason,
+                                config=runtime_config,
+                            )
+                            cash += trade.exit_price * trade.shares - self._trade_cost(trade.exit_price, trade.shares, runtime_config)
+                            trades.append(trade)
+                            symbol_loss_streak, symbol_loss_cooldown_until = self._update_symbol_loss_cooldown(
+                                trade=trade,
+                                params=params,
+                                current_loss_streak=symbol_loss_streak,
+                                current_cooldown_until=symbol_loss_cooldown_until,
+                            )
+                            position = None
 
             if position is not None:
                 self._update_position_excursion(position, row)
@@ -77,44 +154,30 @@ class BacktestEngine:
             )
             latest_signal_metadata = self._sanitize_json_value(signal.metadata or {})
 
-            if position is None and signal.action == "buy":
-                buy_block_reason = self._buy_block_reason(row, runtime_config)
-                if buy_block_reason is not None:
-                    notes.append(f"{trade_date.isoformat()} 买入信号因{buy_block_reason}被跳过。")
+            if pending_order is None and position is None and signal.action == "buy":
+                cooldown_block_reason = self._symbol_loss_cooldown_block_reason(
+                    trade_date=trade_date,
+                    params=params,
+                    cooldown_until=symbol_loss_cooldown_until,
+                )
+                if cooldown_block_reason is not None:
+                    notes.append(f"{trade_date.isoformat()} 买入信号因{cooldown_block_reason}被跳过。")
                 else:
-                    position = self._open_position(
-                        stock_code=stock_code,
-                        trade_date=trade_date,
-                        close_price=close_price,
-                        cash=cash,
-                        signal_reason=signal.reason,
-                        signal_score=signal.score,
-                        signal_metadata=signal.metadata,
-                        params=params,
-                        config=runtime_config,
+                    pending_order = _PendingOrder(
+                        action="buy",
+                        signal_date=trade_date,
+                        reason=signal.reason,
+                        score=signal.score,
+                        metadata=self._sanitize_json_value(signal.metadata or {}),
                     )
-                    if position is not None:
-                        cost = self._trade_cost(position.entry_price, position.shares, runtime_config)
-                        cash -= position.entry_price * position.shares + cost
-            elif position is not None and signal.action == "sell":
-                can_exit = not runtime_config.enforce_t_plus_one or trade_date > position.entry_date
-                if not can_exit:
-                    notes.append(f"{trade_date.isoformat()} 卖出信号因 T+1 约束延后。")
-                else:
-                    sell_block_reason = self._sell_block_reason(row, runtime_config)
-                    if sell_block_reason is not None:
-                        notes.append(f"{trade_date.isoformat()} 卖出信号因{sell_block_reason}被跳过。")
-                    else:
-                        trade = self._close_position(
-                            position=position,
-                            trade_date=trade_date,
-                            close_price=close_price,
-                            exit_reason=signal.reason,
-                            config=runtime_config,
-                        )
-                        cash += trade.exit_price * trade.shares - self._trade_cost(trade.exit_price, trade.shares, runtime_config)
-                        trades.append(trade)
-                        position = None
+            elif pending_order is None and position is not None and signal.action == "sell":
+                pending_order = _PendingOrder(
+                    action="sell",
+                    signal_date=trade_date,
+                    reason=signal.reason,
+                    score=signal.score,
+                    metadata=self._sanitize_json_value(signal.metadata or {}),
+                )
 
             market_value = 0.0
             if position is not None:
@@ -169,7 +232,7 @@ class BacktestEngine:
         *,
         stock_code: str,
         trade_date,
-        close_price: float,
+        execution_price: float,
         cash: float,
         signal_reason: str,
         signal_score: Optional[float],
@@ -178,7 +241,7 @@ class BacktestEngine:
         config: BacktestConfig,
     ) -> Optional[Position]:
         budget = max(0.0, cash * float(params.position_size_pct))
-        entry_price = close_price * (1 + (config.slippage_bps / 10000.0))
+        entry_price = execution_price * (1 + (config.slippage_bps / 10000.0))
         commission_multiplier = 1 + (config.commission_bps / 10000.0)
         gross_unit_cost = entry_price * commission_multiplier
         if gross_unit_cost <= 0:
@@ -204,11 +267,11 @@ class BacktestEngine:
         *,
         position: Position,
         trade_date,
-        close_price: float,
+        execution_price: float,
         exit_reason: str,
         config: BacktestConfig,
     ) -> Trade:
-        exit_price = close_price * (1 - (config.slippage_bps / 10000.0))
+        exit_price = execution_price * (1 - (config.slippage_bps / 10000.0))
         gross_pnl = (exit_price - position.entry_price) * position.shares
         entry_cost = self._trade_cost(position.entry_price, position.shares, config)
         exit_cost = self._trade_cost(exit_price, position.shares, config)
@@ -251,17 +314,80 @@ class BacktestEngine:
         return turnover * (float(config.commission_bps) / 10000.0)
 
     @classmethod
+    def _resolve_execution_price(cls, row: pd.Series) -> Optional[float]:
+        open_price = cls._to_float(row.get("open"))
+        if open_price is not None and open_price > 0:
+            return open_price
+        close_price = cls._to_float(row.get("close"))
+        if close_price is not None and close_price > 0:
+            return close_price
+        return None
+
+    @classmethod
+    def _symbol_loss_cooldown_block_reason(
+        cls,
+        *,
+        trade_date: date,
+        params: StrategyParams,
+        cooldown_until: Optional[date],
+    ) -> Optional[str]:
+        if not cls._symbol_loss_cooldown_enabled(params) or cooldown_until is None:
+            return None
+        if trade_date <= cooldown_until:
+            return f"单股连续亏损冷却至 {cooldown_until.isoformat()}"
+        return None
+
+    @classmethod
+    def _update_symbol_loss_cooldown(
+        cls,
+        *,
+        trade: Trade,
+        params: StrategyParams,
+        current_loss_streak: int,
+        current_cooldown_until: Optional[date],
+    ) -> tuple[int, Optional[date]]:
+        if not cls._symbol_loss_cooldown_enabled(params):
+            return current_loss_streak, current_cooldown_until
+        if float(trade.net_pnl or 0.0) >= 0:
+            return 0, current_cooldown_until
+
+        loss_streak = int(current_loss_streak) + 1
+        trigger_losses = max(1, int(params.symbol_loss_cooldown_losses))
+        if loss_streak < trigger_losses:
+            return loss_streak, current_cooldown_until
+
+        cooldown_days = max(0, int(params.symbol_loss_cooldown_days))
+        return 0, trade.exit_date + timedelta(days=cooldown_days)
+
+    @staticmethod
+    def _symbol_loss_cooldown_enabled(params: StrategyParams) -> bool:
+        return (
+            bool(params.enable_symbol_loss_cooldown)
+            and int(params.symbol_loss_cooldown_losses) > 0
+            and int(params.symbol_loss_cooldown_days) >= 0
+        )
+
+    @classmethod
     def _build_entry_signal_snapshot(cls, metadata: Optional[dict]) -> dict:
         if not isinstance(metadata, dict):
             return {}
         allowlist = {
             "signal_type",
+            "signal_strategy",
+            "stock_signal",
+            "strategy_label",
+            "target_decision_label",
+            "target_decision_matched",
             "signal_number",
             "quality_score",
+            "trend_score",
             "trend",
+            "trend_status",
             "previous_trend",
             "recovering_from_downtrend",
             "style_bucket",
+            "buy_signal",
+            "pattern",
             "box_support",
             "box_resistance",
             "box_height",
@@ -270,11 +396,19 @@ class BacktestEngine:
             "support_touches",
             "resistance_touches",
             "close_price",
+            "ma5",
             "ma10",
+            "ma20",
+            "ma60",
+            "bias_ma5",
+            "bias_ma10",
+            "bias_ma20",
             "ma10_bias_pct",
             "pct_chg",
             "volume_ratio",
             "turnover_rate",
+            "support",
+            "pressure",
             "turnover_rate_median_20",
             "atr_pct_20",
             "rr_ratio",

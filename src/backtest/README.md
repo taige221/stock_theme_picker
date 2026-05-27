@@ -63,6 +63,140 @@ python3 scripts/run_backtest_batch.py \
 --fail-fast
 ```
 
+### 3. 交易诊断报表
+
+用于比较箱体策略不同版本的交易质量，尤其是 `breakout_long` / `pullback_bounce`、分数段、风格桶、信号序号和退出原因：
+
+```bash
+rtk python3 scripts/analyze_box_trades.py \
+  --run data/backtests/change_params_v48_3 \
+  --run data/backtests/change_params_v58_all \
+  --run data/backtests/change_params_v60_all \
+  --output-dir data/backtests/diagnostics/box_quality_v48_v58_v60
+```
+
+输出包含：
+
+- `diagnostics.json`：整体诊断、最好/最差 cohort、最大亏损/盈利交易
+- `cohorts.csv`：按版本、信号类型、分数段、风格桶、信号序号、退出原因聚合后的统计
+- `trades.csv`：展开后的逐笔交易明细，带入场分数、MAE/MFE、箱体和回踩/突破特征
+
+如果回测结果已经通过 `scripts/import_backtest_json.py` 导入 SQLite，也可以直接按 DB `run_id` 读取，不要求原始 `result_path` JSON 仍然存在：
+
+```bash
+rtk python3 scripts/analyze_box_trades.py \
+  --db-run-id bt_d2c840a083f0 \
+  --database-path data/stock_analysis.db \
+  --output-dir data/backtests/diagnostics/db_box_quality_bt_d2c840a083f0
+```
+
+DB 模式使用只读 SQLite 连接。导入表 `strategy_backtest_trade` 已保留逐笔交易的标准列、`entry_signal_metadata_payload` 和 `raw_trade_payload`，足够重建当前 cohort 诊断；`--database-path` 不传时默认使用 `DATABASE_PATH` 或 `data/stock_analysis.db`。
+
+导入回测 JSON 时，权益曲线明细可以按三档落库，默认是 `traded_daily`：
+
+```bash
+rtk python3 scripts/import_backtest_json.py \
+  --source data/backtests/change_params_v60_all/summary.json \
+  --stock-pool data/backtests/stock-codes.json \
+  --equity-mode traded_daily
+```
+
+- `portfolio_only`：只保存组合每日权益点，适合只看净值、回撤和版本对比。
+- `traded_daily`：保存组合每日权益点，以及单股持仓区间/退出锚点权益点；这是默认档，兼顾复盘与 DB 体积。
+- `all_daily`：保存所有股票每日权益点，适合深度诊断，但每个综合池 run 会写入约 24 万条单股权益点。
+
+### 4. 信号分层排序实验
+
+用于验证有限资金下“每天只选少数候选”的效果。该脚本不会改变单票策略本体，而是读取已有回测交易，按入场日把 `pullback_bounce` 和 `breakout_long` 分池排序，再按每日配额筛选：
+
+```bash
+rtk python3 scripts/rank_box_signals.py \
+  --run data/backtests/change_params_v48_3 \
+  --run data/backtests/change_params_v58_all \
+  --run data/backtests/change_params_v60_all \
+  --rank-mode cohort_ev \
+  --min-rank-score 2.0 \
+  --max-per-day 3 \
+  --pullback-quota 2 \
+  --breakout-quota 1 \
+  --output-dir data/backtests/diagnostics/layered_rank_v48_v58_v60_ev_min20
+```
+
+常用选项：
+
+- `--rank-mode signal_score`：每个信号池内按原始入场评分排序
+- `--rank-mode cohort_ev`：按 `signal_type + score_bin`、`signal_type + style_bucket + signal_number` 的历史 cohort 收益做收缩排序
+- `--rank-mode cohort_ev_walk_forward`：只用当天之前已平仓的历史 cohort 收益排序，降低样本内前视偏差
+- `--min-rank-score`：只允许分层排序分达到阈值的候选进入每日配额；这是组合层 EV 过滤，不等同于策略入场的全局高分阈值
+- `--max-per-day`：单日最多选择几笔
+- `--pullback-quota` / `--breakout-quota`：单日两个信号池的基础配额
+- `--max-open-positions`：可选并发持仓上限，`0` 表示不限制
+- `--no-fill`：信号配额未用满时不再用其他候选补位
+
+读取已导入 DB 的 run：
+
+```bash
+rtk python3 scripts/rank_box_signals.py \
+  --db-run-id bt_d2c840a083f0 \
+  --database-path data/stock_analysis.db \
+  --rank-mode cohort_ev_walk_forward \
+  --max-per-day 3 \
+  --pullback-quota 2 \
+  --breakout-quota 1 \
+  --output-dir data/backtests/diagnostics/db_layered_rank_bt_d2c840a083f0
+```
+
+输出包含：
+
+- `selection_summary.json` / `selection_summary.csv`：分层排序后的交易数、胜率、平均单笔收益、pullback/breakout 选中数
+- `ranked_candidates.csv`：每个候选的每日排名、是否通过 `min_rank_score`、是否被选中、选中来源
+
+排序核心在 `src/backtest/signal_ranking.py`，脚本可以读取已有回测 JSON 或已导入 SQLite 的 DB run，并落 CSV/JSON。`cohort_ev` 是样本内排序诊断，不能直接当成默认实盘规则；`cohort_ev_walk_forward` 只用当天之前已平仓交易来降前视偏差，但仍应作为研究 overlay 验证，而不是默认 live rule。
+
+### 5. 风格股票池实验
+
+用于先按本地日线/辅助指标生成风格池，再批量比较不同 profile。网络检索只作为主题锚点，入池排序仍以本地 `stock_daily_raw` / `stock_daily_aux` 为准：
+
+```bash
+rtk python3 scripts/build_style_stock_pools.py \
+  --pool-size 24 \
+  --end-date 2026-05-21
+```
+
+输出：
+
+- `data/backtests/style_pools/style_*.json`
+- `data/backtests/style_pools/style_pool_candidates.csv`
+- `data/backtests/style_pools/style_pool_summary.json`
+
+批量跑 profile：
+
+```bash
+rtk python3 scripts/run_style_pool_backtests.py \
+  --profiles v53,v57,v60,v64 \
+  --start-date 2020-01-01 \
+  --end-date 2026-05-21 \
+  --reuse-existing
+```
+
+如果要落库：
+
+```bash
+rtk python3 scripts/run_style_pool_backtests.py \
+  --profiles v53,v57,v60,v64 \
+  --start-date 2020-01-01 \
+  --end-date 2026-05-21 \
+  --import-db \
+  --import-equity-mode portfolio_only
+```
+
+输出汇总：
+
+- `data/backtests/style_profile_runs/style_profile_summary.json`
+- `data/backtests/style_profile_runs/style_profile_summary.csv`
+
+注意：静态风格池如果用最新快照选股、再回测历史，会有选股前视。该工具当前用于 profile selector 研究；正式规则需要改成按历史 `as-of` 滚动生成风格池。
+
 ## 历史数据同步
 
 ```bash
@@ -119,9 +253,14 @@ rtk python3 scripts/sync_tushare_history.py \
   结束日期，格式 `YYYY-MM-DD`
 
 - `--strategy`
-  当前可选：
-  - `a_share_box`
-  - `a_share_migrated_crypto`
+当前可选：
+- `a_share_box`
+- `a_share_migrated_crypto`
+- `stock_signal_auto`
+- `stock_signal_pullback`
+- `stock_signal_breakout`
+- `stock_signal_trend_follow`
+- `stock_signal_holding`
 
 - `--params-file`
   外部 JSON 参数文件，用于覆盖默认策略参数
@@ -308,6 +447,15 @@ rtk python3 scripts/sync_tushare_history.py \
 - `pullback_balanced_trend_entry_stall_min_return_pct`
 - `pullback_high_beta_entry_stall_min_return_pct`
   仅对 `pullback_bounce` 生效，且按 `style_bucket` 进一步覆盖 entry stall 最低收益要求
+
+- `enable_symbol_loss_cooldown`
+  单股已实现亏损冷却开关；开启后，同一只股票连续亏损达到阈值，会暂停该股后续新开仓一段时间。该规则由单票回测引擎维护，只影响该股票自身，不影响其他股票。
+
+- `symbol_loss_cooldown_losses`
+  触发冷却所需的连续亏损笔数；例如 `2` 表示同一只股票连续两笔亏损后触发。
+
+- `symbol_loss_cooldown_days`
+  冷却自然日天数；例如 `20` 表示触发后 20 个自然日内跳过该股的新买点。
 
 - `breakout_enable_ma10_confirm_exit`
   仅对 `breakout_long` 生效的 MA10 确认卖出开关；不填时回退到 `enable_ma10_confirm_exit`

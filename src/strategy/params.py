@@ -86,6 +86,9 @@ class StrategyParams:
     pullback_slow_large_entry_stall_min_return_pct: Optional[float] = None
     pullback_balanced_trend_entry_stall_min_return_pct: Optional[float] = None
     pullback_high_beta_entry_stall_min_return_pct: Optional[float] = None
+    enable_symbol_loss_cooldown: bool = False
+    symbol_loss_cooldown_losses: int = 2
+    symbol_loss_cooldown_days: int = 20
     enable_trailing_stop: bool = False
     breakout_enable_trailing_stop: Optional[bool] = None
     pullback_enable_trailing_stop: Optional[bool] = None

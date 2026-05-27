@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import sqlite3
 import sys
 from datetime import date, datetime
 from pathlib import Path
@@ -57,6 +58,29 @@ def parse_args() -> argparse.Namespace:
         "--fail-fast",
         action="store_true",
         help="Stop immediately when any stock fails instead of continuing",
+    )
+    parser.add_argument(
+        "--import-db",
+        action="store_true",
+        help="Import the generated summary.json and per-stock details into SQLite after the batch finishes",
+    )
+    parser.add_argument(
+        "--import-stock-pool",
+        help="Optional stock pool JSON path used by the DB import; defaults to --stock-codes when it is a JSON file",
+    )
+    parser.add_argument(
+        "--import-dry-run",
+        action="store_true",
+        help="Validate and count generated artifacts without writing DB rows when used with --import-db",
+    )
+    parser.add_argument(
+        "--import-equity-mode",
+        default="traded_daily",
+        choices=("portfolio_only", "traded_daily", "all_daily"),
+        help=(
+            "DB import equity detail: portfolio_only, traded_daily "
+            "(portfolio plus active symbol holding days), or all_daily"
+        ),
     )
     return parser.parse_args()
 
@@ -272,6 +296,27 @@ def main() -> int:
 
     print(f"saved_summary={summary_path}")
     print(f"saved_summary_csv={summary_csv_path}")
+
+    if args.import_db:
+        try:
+            import_result = _import_generated_summary(
+                summary_path,
+                stock_pool_path=args.import_stock_pool or _default_import_stock_pool(args.stock_codes),
+                dry_run=args.import_dry_run,
+                equity_mode=args.import_equity_mode,
+            )
+        except (RuntimeError, sqlite3.OperationalError) as exc:
+            text = str(exc)
+            if "database is locked" in text.lower() or "single-writer" in text.lower():
+                print(
+                    "import_failed=database_locked "
+                    "Backtest import writes must run one at a time; stop other theme_picker writers and retry.",
+                    file=sys.stderr,
+                )
+                return 2
+            raise
+        print("import_result=" + json.dumps(import_result, ensure_ascii=False))
+
     if errors and args.fail_fast:
         return 1
     return 0
@@ -350,6 +395,32 @@ def _build_aggregate_summary(rows: list[dict[str, object]]) -> dict[str, object]
         "total_final_unrealized_pnl": round(total_final_unrealized_pnl, 2),
         "open_position_symbols": open_position_symbols,
     }
+
+
+def _default_import_stock_pool(stock_codes_arg: str) -> str | None:
+    candidate = Path(str(stock_codes_arg or "").strip())
+    if candidate.is_file() and candidate.suffix.lower() == ".json":
+        return str(candidate)
+    return None
+
+
+def _import_generated_summary(
+    summary_path: Path,
+    *,
+    stock_pool_path: str | None,
+    dry_run: bool,
+    equity_mode: str,
+) -> dict[str, object]:
+    from theme_picker.application.backtest_import_service import BacktestImportService
+
+    service = BacktestImportService(project_root=ROOT_DIR)
+    result = service.import_artifact(
+        summary_path,
+        stock_pool_path=stock_pool_path,
+        dry_run=dry_run,
+        equity_mode=equity_mode,
+    )
+    return result.to_dict()
 
 
 def _resolve_adjusted_start_date(
