@@ -472,7 +472,7 @@ const ThemeStockPickerPage: React.FC = () => {
   };
 
   const handleDeepAnalyze = (stockCode: string, stockName: string) => {
-    navigate(`/chat?stock=${encodeURIComponent(stockCode)}&name=${encodeURIComponent(stockName)}`);
+    navigate(`/stock-query?stock=${encodeURIComponent(stockCode)}&name=${encodeURIComponent(stockName)}&intent=deep-analysis`);
   };
 
   const handleSingleStockAnalyze = (stockCode: string, stockName: string) => {

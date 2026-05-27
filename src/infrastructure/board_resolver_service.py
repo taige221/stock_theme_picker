@@ -59,6 +59,34 @@ class ThemeBoardResolverService:
         *,
         max_candidates: int = 30,
     ) -> List[str]:
+        if str(get_theme_picker_config().tushare_token or "").strip():
+            candidates = self._resolve_theme_candidates_from_tushare_dc(
+                theme,
+                max_candidates=max_candidates,
+            )
+            if candidates:
+                return candidates
+            return self._resolve_theme_candidates_from_eastmoney(
+                theme,
+                max_candidates=max_candidates,
+            )
+        candidates = self._resolve_theme_candidates_from_eastmoney(
+            theme,
+            max_candidates=max_candidates,
+        )
+        if candidates:
+            return candidates
+        return self._resolve_theme_candidates_from_tushare_dc(
+            theme,
+            max_candidates=max_candidates,
+        )
+
+    def _resolve_theme_candidates_from_eastmoney(
+        self,
+        theme: ThemeDefinitionSchema,
+        *,
+        max_candidates: int,
+    ) -> List[str]:
         candidates: List[str] = []
         seen = set()
         em_board_codes = self._resolve_theme_board_codes(theme)
@@ -87,6 +115,21 @@ class ThemeBoardResolverService:
             )
             return candidates
 
+        logger.info(
+            "主题板块扩池未命中东方财富概念成分股: theme=%s em_codes=%s",
+            theme.id,
+            em_board_codes,
+        )
+        return []
+
+    def _resolve_theme_candidates_from_tushare_dc(
+        self,
+        theme: ThemeDefinitionSchema,
+        *,
+        max_candidates: int,
+    ) -> List[str]:
+        candidates: List[str] = []
+        seen = set()
         dc_theme_codes = self._resolve_theme_dc_codes(theme)
         for theme_code in dc_theme_codes:
             for stock_code in self._fetch_dc_theme_constituent_codes(theme_code):
@@ -114,9 +157,8 @@ class ThemeBoardResolverService:
             return candidates
 
         logger.info(
-            "主题板块扩池未命中结构化成分股: theme=%s em_codes=%s dc_codes=%s",
+            "主题板块扩池未命中 Tushare 东财题材成分股: theme=%s dc_codes=%s",
             theme.id,
-            em_board_codes,
             dc_theme_codes,
         )
         return []

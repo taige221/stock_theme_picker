@@ -104,7 +104,7 @@ class StockQueryService:
         instrument_type = self._infer_instrument_type(stock_code)
         instrument_label = self._instrument_label(instrument_type)
 
-        daily_df, daily_source = self._load_daily_data(stock_code, days=120)
+        daily_df, daily_source = self._load_daily_data(stock_code, days=260)
         if daily_df is None or daily_df.empty:
             raise ValueError(f"未获取到 {stock_code} 的日线数据")
 
@@ -116,6 +116,7 @@ class StockQueryService:
         trend_df = self._augment_with_realtime(daily_df.copy(), quote) if quote else daily_df.copy()
         trend_result = self.trend_analyzer.analyze(trend_df, stock_code)
         latest = trend_df.iloc[-1]
+        range_metrics = self._calculate_range_metrics(trend_df)
 
         current_price = self._safe_float(getattr(quote, "price", None) if quote else trend_result.current_price)
         pct_chg = self._safe_float(getattr(quote, "change_pct", None) if quote else latest.get("pct_chg"))
@@ -190,6 +191,9 @@ class StockQueryService:
             "pb_ratio": valuation_snapshot["pb_ratio"],
             "total_mv": valuation_snapshot["total_mv"],
             "circ_mv": valuation_snapshot["circ_mv"],
+            "change_60d": range_metrics["change_60d"],
+            "high_52w": range_metrics["high_52w"],
+            "low_52w": range_metrics["low_52w"],
             "trend_score": self._safe_float(trend_result.signal_score),
             "signal": signal_payload["signal"],
             "pattern": signal_payload["pattern"],
@@ -643,6 +647,52 @@ class StockQueryService:
                 "matched_theme_count": len((concept_attribution or {}).get("matched_themes") or []),
             }
 
+        tushare_lockup_timeout = float(
+            getattr(self.config, "stock_query_tushare_lockup_timeout_seconds", 3.0) or 0.0
+        )
+        tushare_lockup: Dict[str, Any] = {}
+        if tushare_lockup_timeout > 0:
+            try:
+                tushare_lockup = self._run_with_timeout(
+                    lambda: self.fetcher_manager.get_tushare_lockup_text(stock_code, stock_name),
+                    timeout_seconds=tushare_lockup_timeout,
+                    task_name="stock-query-tushare-lockup",
+                )
+            except Exception as exc:
+                tushare_lockup = {}
+                if isinstance(trace_block, dict):
+                    trace_block["tushare_lockup"] = {"status": "error", "error": str(exc)}
+        if isinstance(tushare_lockup, dict) and tushare_lockup:
+            supplement["lockup"] = tushare_lockup
+        tushare_peers_timeout = float(
+            getattr(self.config, "stock_query_tushare_peers_timeout_seconds", 5.0) or 0.0
+        )
+        tushare_peers: Dict[str, Any] = {}
+        if tushare_peers_timeout > 0:
+            try:
+                tushare_peers = self._run_with_timeout(
+                    lambda: self.fetcher_manager.get_tushare_peer_comparison(stock_code, top_n=5),
+                    timeout_seconds=tushare_peers_timeout,
+                    task_name="stock-query-tushare-peers",
+                )
+            except Exception as exc:
+                tushare_peers = {}
+                if isinstance(trace_block, dict):
+                    trace_block["tushare_peers"] = {"status": "error", "error": str(exc)}
+        if isinstance(tushare_peers, dict) and tushare_peers.get("items"):
+            supplement["peers"] = tushare_peers
+        if isinstance(trace_block, dict):
+            if "tushare_lockup" not in trace_block:
+                trace_block["tushare_lockup"] = {
+                    "status": "ok" if tushare_lockup else "empty",
+                    "headline_count": len((tushare_lockup or {}).get("headlines") or []) if isinstance(tushare_lockup, dict) else 0,
+                }
+            if "tushare_peers" not in trace_block:
+                trace_block["tushare_peers"] = {
+                    "status": "ok" if tushare_peers else "empty",
+                    "peer_count": len((tushare_peers or {}).get("items") or []) if isinstance(tushare_peers, dict) else 0,
+                }
+
         if not self.text_supplement_service.is_available:
             if isinstance(trace_block, dict):
                 trace_block["available"] = False
@@ -677,7 +727,18 @@ class StockQueryService:
                 if isinstance(trace_block, dict):
                     trace_block[key] = {"status": "error", "error": str(exc)}
             if isinstance(value, dict) and value:
-                supplement[key] = value
+                if key == "lockup" and isinstance(supplement.get("lockup"), dict):
+                    current = dict(supplement["lockup"])
+                    current["headlines"] = list(current.get("headlines") or []) + list(value.get("headlines") or [])
+                    current["highlights"] = list(current.get("highlights") or []) + list(value.get("highlights") or [])
+                    current["provider"] = " / ".join(
+                        item for item in [str(current.get("provider") or "").strip(), str(value.get("provider") or "").strip()] if item
+                    ) or None
+                    if not current.get("summary"):
+                        current["summary"] = value.get("summary")
+                    supplement[key] = current
+                else:
+                    supplement[key] = value
                 if isinstance(trace_block, dict):
                     trace_block[key] = {
                         "status": "ok",
@@ -1040,6 +1101,35 @@ class StockQueryService:
             if isinstance(data, dict) and data:
                 details[key] = data
         return details
+
+    @staticmethod
+    def _calculate_range_metrics(df: pd.DataFrame) -> Dict[str, Optional[float]]:
+        if df is None or df.empty:
+            return {"change_60d": None, "high_52w": None, "low_52w": None}
+        rows = df.copy()
+        close = pd.to_numeric(rows.get("close"), errors="coerce") if "close" in rows.columns else pd.Series(dtype="float64")
+        high = pd.to_numeric(rows.get("high"), errors="coerce") if "high" in rows.columns else pd.Series(dtype="float64")
+        low = pd.to_numeric(rows.get("low"), errors="coerce") if "low" in rows.columns else pd.Series(dtype="float64")
+
+        latest_close = close.dropna().iloc[-1] if not close.dropna().empty else None
+        change_60d = None
+        close_60 = close.dropna()
+        if latest_close is not None and len(close_60) >= 61:
+            base = close_60.iloc[-61]
+            if base:
+                change_60d = round((float(latest_close) - float(base)) / float(base) * 100.0, 4)
+
+        high_52w = None
+        high_52 = high.dropna().tail(252)
+        if not high_52.empty:
+            high_52w = round(float(high_52.max()), 4)
+
+        low_52w = None
+        low_52 = low.dropna().tail(252)
+        if not low_52.empty:
+            low_52w = round(float(low_52.min()), 4)
+
+        return {"change_60d": change_60d, "high_52w": high_52w, "low_52w": low_52w}
 
     def _persist_query_record(
         self,

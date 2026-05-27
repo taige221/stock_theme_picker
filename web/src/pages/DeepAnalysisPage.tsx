@@ -99,6 +99,23 @@ function ruleTypeLabel(value: string): string {
   return value;
 }
 
+function formatPercent(value?: number | null): string {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return '--';
+  return `${value > 0 ? '+' : ''}${value.toFixed(2)}%`;
+}
+
+function formatMoney(value?: number | null): string {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return '--';
+  const abs = Math.abs(value);
+  if (abs >= 100000000) return `¥${(value / 100000000).toFixed(1)} 亿`;
+  if (abs >= 10000) return `¥${(value / 10000).toFixed(1)} 万`;
+  return `¥${value.toFixed(0)}`;
+}
+
+function compactText(value?: string | null): string {
+  return value && value.trim() ? value.trim() : '--';
+}
+
 /* ------------------------------------------------------------------ */
 /*  Main component                                                     */
 /* ------------------------------------------------------------------ */
@@ -140,6 +157,8 @@ const DeepAnalysisPage: React.FC = () => {
   const stockResult = analysis?.contextSnapshot?.stockQueryResult;
   const contextSupplement = (analysis?.fundamental?.contextSupplement ?? stockResult?.stockContextSupplement ?? null) as StockQueryContextSupplement | null;
   const conceptAttribution = contextSupplement?.conceptAttribution ?? null;
+  const peerComparison = contextSupplement?.peers ?? null;
+  const peerRows = peerComparison?.items ?? [];
   const generationMode = analysis?.contextSnapshot?.generationMode || 'deterministic';
   const generationModel = analysis?.contextSnapshot?.generationModel || '';
   const analysisMessages = analysis?.messages ?? [];
@@ -332,6 +351,280 @@ const DeepAnalysisPage: React.FC = () => {
   const handleOpenHistoryDrawer = async (): Promise<void> => {
     setHistoryDrawerOpen(true);
     await loadAllHistory();
+  };
+
+  const fundamentalDetails = analysis?.fundamental?.details ?? stockResult?.fundamentalDetails;
+  const valuationDetails = fundamentalDetails?.valuation;
+  const growthDetails = fundamentalDetails?.growth;
+  const earningsDetails = fundamentalDetails?.earnings;
+  const institutionDetails = fundamentalDetails?.institution;
+  const capitalFlowDetails = fundamentalDetails?.capitalFlow;
+  const dragonTigerDetails = fundamentalDetails?.dragonTiger;
+  const boardItems = fundamentalDetails?.boards?.items ?? [];
+  const fundamentalCoverage = analysis?.fundamental?.coverage ?? stockResult?.fundamentalCoverage ?? stockResult?.fundamentalContext?.coverage ?? {};
+  const fundamentalErrors = analysis?.fundamental?.errors ?? stockResult?.fundamentalErrors ?? stockResult?.fundamentalContext?.errors ?? [];
+
+  const renderAnalysisTab = () => {
+    if (loading && !analysis) {
+      return (
+        <Card padding="lg" className="!rounded-2xl">
+          <div className="flex items-center gap-4">
+            <RefreshCw className="h-5 w-5 animate-spin text-foreground" />
+            <p className="text-sm text-secondary-text">正在加载深度分析数据...</p>
+          </div>
+        </Card>
+      );
+    }
+
+    if (!analysis) {
+      return (
+        <Card padding="lg" className="!rounded-2xl">
+          <EmptyState
+            title="暂无可展示数据"
+            description="先从单股查询生成一次深度分析，再查看分项数据。"
+            icon={<BrainCircuit className="h-8 w-8" />}
+            action={<Link to="/stock-query"><Button className="rounded-xl">前往单股查询</Button></Link>}
+          />
+        </Card>
+      );
+    }
+
+    if (analysis.status !== 'completed') {
+      return (
+        <Card padding="lg" className="!rounded-2xl">
+          <InlineAlert
+            variant={analysis.status === 'failed' ? 'danger' : 'info'}
+            title={analysisStatusLabel(analysis.status)}
+            message={analysis.error || '分项数据会在深度分析完成后展示。'}
+          />
+        </Card>
+      );
+    }
+
+    if (activeTab === 'finance') {
+      const report = earningsDetails?.financialReport;
+      const balanceSheet = earningsDetails?.balanceSheet;
+      return (
+        <div className="space-y-5">
+          <Card padding="lg" className="!rounded-2xl">
+            <SectionTitle title="财务质量" subtitle={analysis.fundamental?.assessment || '基于当前可用的财务与补充文本数据。'} />
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <MetricTile label="营收同比" value={formatPercent(growthDetails?.revenueYoy)} />
+              <MetricTile label="归母净利同比" value={formatPercent(growthDetails?.netProfitYoy)} />
+              <MetricTile label="ROE" value={formatPercent(growthDetails?.roe)} />
+              <MetricTile label="毛利率" value={formatPercent(growthDetails?.grossMargin)} />
+            </div>
+          </Card>
+          <Card padding="lg" className="!rounded-2xl">
+            <SectionTitle title="最近财报" subtitle={report?.reportDate ? `报告期 ${report.reportDate}` : '暂无明确报告期'} />
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <MetricTile label="营业收入" value={formatMoney(report?.revenue)} />
+              <MetricTile label="归母净利润" value={formatMoney(report?.netProfitParent)} />
+              <MetricTile label="经营现金流" value={formatMoney(report?.operatingCashFlow)} />
+              <MetricTile label="股息率" value={formatPercent(earningsDetails?.dividend?.ttmDividendYieldPct)} />
+            </div>
+            <TextBlock title="盈利补充" text={earningsDetails?.forecastSummary || earningsDetails?.quickReportSummary || earningsDetails?.textSummary} />
+          </Card>
+          <Card padding="lg" className="!rounded-2xl">
+            <SectionTitle title="资产负债" subtitle={balanceSheet?.reportDate ? `报告期 ${balanceSheet.reportDate}` : 'Tushare balancesheet 结构化字段'} />
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <MetricTile label="总资产" value={formatMoney(balanceSheet?.totalAssets)} />
+              <MetricTile label="总负债" value={formatMoney(balanceSheet?.totalLiabilities)} />
+              <MetricTile label="资产负债率" value={formatPercent(balanceSheet?.debtToAsset)} />
+              <MetricTile label="现金/短债" value={formatNumber(balanceSheet?.cashToShortDebt)} />
+            </div>
+          </Card>
+          {Object.keys(fundamentalCoverage).length > 0 || fundamentalErrors.length > 0 ? (
+            <Card padding="lg" className="!rounded-2xl">
+              <SectionTitle title="数据覆盖" subtitle="用于判断哪些模块已经拿到结构化数据。" />
+              <div className="mt-4 flex flex-wrap gap-2">
+                {Object.entries(fundamentalCoverage).map(([key, value]) => (
+                  <Badge key={key} variant={value === 'ok' ? 'success' : 'warning'} size="sm">{key}: {value}</Badge>
+                ))}
+              </div>
+              {fundamentalErrors.length > 0 ? (
+                <div className="mt-4 space-y-1">
+                  {fundamentalErrors.map((item) => <p key={item} className="text-xs text-secondary-text">{item}</p>)}
+                </div>
+              ) : null}
+            </Card>
+          ) : null}
+        </div>
+      );
+    }
+
+    if (activeTab === 'valuation') {
+      return (
+        <div className="space-y-5">
+          <Card padding="lg" className="!rounded-2xl">
+            <SectionTitle title="估值带" subtitle="把估值指标和交易计划价位放在同一张表里，便于判断赔率。" />
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <MetricTile label="PE(TTM)" value={formatNumber(valuationDetails?.peRatio ?? stockResult?.peRatio)} />
+              <MetricTile label="PB" value={formatNumber(valuationDetails?.pbRatio ?? stockResult?.pbRatio)} />
+              <MetricTile label="总市值" value={formatMoney(valuationDetails?.totalMv ?? stockResult?.totalMv)} />
+              <MetricTile label="流通市值" value={formatMoney(valuationDetails?.circMv ?? stockResult?.circMv)} />
+            </div>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <MetricTile label="PE分位" value={formatPercent(valuationDetails?.pePercentile)} />
+              <MetricTile label="PB分位" value={formatPercent(valuationDetails?.pbPercentile)} />
+              <MetricTile label="PE区间" value={`${formatNumber(valuationDetails?.peLow)} / ${formatNumber(valuationDetails?.peHigh)}`} />
+              <MetricTile label="PB区间" value={`${formatNumber(valuationDetails?.pbLow)} / ${formatNumber(valuationDetails?.pbHigh)}`} />
+            </div>
+          </Card>
+          <Card padding="lg" className="!rounded-2xl">
+            <SectionTitle title="交易价位" subtitle={tradePlan?.actionLabel || actionLabel(analysis.action)} />
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+              <MetricTile label="当前价" value={formatNumber(levels?.currentPrice ?? stockResult?.currentPrice)} />
+              <MetricTile label="试仓位" value={formatNumber(levels?.trialPrice)} />
+              <MetricTile label="确认位" value={formatNumber(levels?.confirmPrice)} />
+              <MetricTile label="止损位" value={formatNumber(levels?.stopLoss)} />
+              <MetricTile label="目标位" value={formatNumber(levels?.targetPrice)} />
+            </div>
+            <div className="mt-4 grid gap-3 sm:grid-cols-3">
+              <MetricTile label="初始仓位" value={compactText(tradePlan?.positionPlan?.initial)} />
+              <MetricTile label="加仓条件" value={compactText(tradePlan?.positionPlan?.add)} />
+              <MetricTile label="最大仓位" value={compactText(tradePlan?.positionPlan?.max)} />
+            </div>
+          </Card>
+        </div>
+      );
+    }
+
+    if (activeTab === 'peers') {
+      const concepts = conceptAttribution?.conceptNames ?? [];
+      const matchedBoards = conceptAttribution?.matchedBoardNames ?? [];
+      return (
+        <div className="space-y-5">
+          <Card padding="lg" className="!rounded-2xl">
+            <SectionTitle title="同业与概念归属" subtitle={conceptAttribution?.summary || peerComparison?.industry || '展示概念、题材、板块归属与同业估值对比。'} />
+            <div className="mt-4 flex flex-wrap gap-2">
+              {[...concepts, ...matchedBoards].slice(0, 16).map((item) => (
+                <span key={item} className="rounded-full border border-border bg-elevated/40 px-3 py-1 text-xs font-medium text-foreground">{item}</span>
+              ))}
+              {concepts.length === 0 && matchedBoards.length === 0 ? <p className="text-sm text-secondary-text">暂无概念归属数据。</p> : null}
+            </div>
+          </Card>
+          <Card padding="lg" className="!rounded-2xl">
+            <SectionTitle title="同业估值" subtitle={peerComparison?.provider || 'Tushare 行业同组 daily_basic 指标'} />
+            {peerRows.length > 0 ? (
+              <div className="mt-4 overflow-x-auto">
+                <table className="min-w-full text-left text-sm">
+                  <thead className="text-xs text-secondary-text">
+                    <tr className="border-b border-border">
+                      <th className="py-2 pr-4 font-medium">股票</th>
+                      <th className="py-2 pr-4 font-medium">价格</th>
+                      <th className="py-2 pr-4 font-medium">PE</th>
+                      <th className="py-2 pr-4 font-medium">PB</th>
+                      <th className="py-2 pr-4 font-medium">换手</th>
+                      <th className="py-2 pr-4 font-medium">量比</th>
+                      <th className="py-2 pr-4 font-medium">营收同比</th>
+                      <th className="py-2 pr-4 font-medium">ROE</th>
+                      <th className="py-2 pr-4 font-medium">总市值</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {peerRows.map((item) => (
+                      <tr key={item.stockCode} className={`border-b border-border/60 ${item.isTarget ? 'bg-elevated/40' : ''}`}>
+                        <td className="py-2 pr-4">
+                          <p className="font-medium text-foreground">{item.stockName}</p>
+                          <p className="text-xs text-secondary-text">{item.stockCode}{item.isTarget ? ' · 当前' : ''}</p>
+                        </td>
+                        <td className="py-2 pr-4 text-foreground">{formatNumber(item.price)}</td>
+                        <td className="py-2 pr-4 text-foreground">{formatNumber(item.peRatio)}</td>
+                        <td className="py-2 pr-4 text-foreground">{formatNumber(item.pbRatio)}</td>
+                        <td className="py-2 pr-4 text-foreground">{formatPercent(item.turnoverRate)}</td>
+                        <td className="py-2 pr-4 text-foreground">{formatNumber(item.volumeRatio)}</td>
+                        <td className="py-2 pr-4 text-foreground">{formatPercent(item.revenueYoy)}</td>
+                        <td className="py-2 pr-4 text-foreground">{formatPercent(item.roe)}</td>
+                        <td className="py-2 pr-4 text-foreground">{formatMoney(item.totalMv)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <EmptyState title="暂无同业估值数据" description="Tushare 未返回可展示的行业同组 daily_basic 指标。" icon={<BrainCircuit className="h-8 w-8" />} />
+            )}
+          </Card>
+          <Card padding="lg" className="!rounded-2xl">
+            <SectionTitle title="板块列表" subtitle={fundamentalDetails?.boards?.provider || fundamentalDetails?.boards?.source || '结构化板块数据'} />
+            {boardItems.length > 0 ? (
+              <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                {boardItems.slice(0, 12).map((item) => (
+                  <div key={`${item.code || item.name}-${item.type || ''}`} className="rounded-xl border border-border bg-elevated/20 px-3 py-2.5">
+                    <p className="text-sm font-medium text-foreground">{item.name}</p>
+                    <p className="mt-0.5 text-xs text-secondary-text">{item.code || '--'}{item.type ? ` · ${item.type}` : ''}</p>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <EmptyState title="暂无同业结构化数据" description="目前只有题材和板块归属，后续可补同业估值、收入增速和资金强度排序。" icon={<BrainCircuit className="h-8 w-8" />} />
+            )}
+          </Card>
+        </div>
+      );
+    }
+
+    if (activeTab === 'institution') {
+      return (
+        <div className="space-y-5">
+          <Card padding="lg" className="!rounded-2xl">
+            <SectionTitle title="机构观点" subtitle={institutionDetails?.textSummary || contextSupplement?.profile?.summary || '暂无机构文本摘要'} />
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <MetricTile label="机构持仓变化" value={formatPercent(institutionDetails?.institutionHoldingChange)} />
+              <MetricTile label="前十股东变化" value={formatPercent(institutionDetails?.top10HolderChange)} />
+            </div>
+            <TextList title="机构/研报线索" items={institutionDetails?.textHeadlines ?? contextSupplement?.profile?.headlines ?? []} />
+          </Card>
+          <Card padding="lg" className="!rounded-2xl">
+            <SectionTitle title="公告与事件" subtitle={contextSupplement?.announcements?.summary || contextSupplement?.lockup?.summary || '暂无公告摘要'} />
+            <TextList title="公告标题" items={contextSupplement?.announcements?.headlines ?? []} />
+            <TextList title="解禁/锁定提示" items={contextSupplement?.lockup?.headlines ?? contextSupplement?.lockup?.highlights ?? []} />
+          </Card>
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-5">
+        <Card padding="lg" className="!rounded-2xl">
+          <SectionTitle title="技术面" subtitle={analysis.technical?.assessment || '基于趋势、均线、支撑压力和买点信号。'} />
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <MetricTile label="趋势分" value={analysis.technical?.trendScore != null ? String(Math.round(analysis.technical.trendScore)) : '--'} />
+            <MetricTile label="趋势状态" value={compactText(analysis.technical?.trendStatus)} />
+            <MetricTile label="买点信号" value={compactText(analysis.technical?.buySignal)} />
+            <MetricTile label="形态" value={compactText(analysis.technical?.pattern)} />
+          </div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <MetricTile label="支撑" value={formatNumber(analysis.technical?.support ?? stockResult?.support)} />
+            <MetricTile label="压力" value={formatNumber(analysis.technical?.pressure ?? stockResult?.pressure)} />
+            <MetricTile label="MA10" value={formatNumber(analysis.technical?.ma10 ?? stockResult?.ma10)} />
+            <MetricTile label="MA20" value={formatNumber(analysis.technical?.ma20 ?? stockResult?.ma20)} />
+          </div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-3">
+            <MetricTile label="60日涨跌" value={formatPercent(stockResult?.change60d)} />
+            <MetricTile label="52周高" value={formatNumber(stockResult?.high52w)} />
+            <MetricTile label="52周低" value={formatNumber(stockResult?.low52w)} />
+          </div>
+        </Card>
+        <Card padding="lg" className="!rounded-2xl">
+          <SectionTitle title="触发条件" subtitle="用于转成观察池告警和实际交易动作。" />
+          <TextList title="执行触发" items={tradePlan?.triggers ?? []} />
+          <div className="mt-4 grid gap-3 sm:grid-cols-3">
+            <MetricTile label="换手率" value={formatPercent(stockResult?.turnoverRate)} />
+            <MetricTile label="量比" value={formatNumber(stockResult?.volumeRatio)} />
+            <MetricTile label="主力净流入" value={formatMoney(capitalFlowDetails?.stockFlow?.mainNetInflow)} />
+          </div>
+          {dragonTigerDetails?.isOnList ? (
+            <InlineAlert
+              variant="warning"
+              title="龙虎榜"
+              message={`${dragonTigerDetails.latestDate || '近期'} 上榜${dragonTigerDetails.reason ? `：${dragonTigerDetails.reason}` : ''}`}
+            />
+          ) : null}
+        </Card>
+      </div>
+    );
   };
 
   /* ================================================================ */
@@ -729,16 +1022,8 @@ const DeepAnalysisPage: React.FC = () => {
 
           </>) : null}
 
-          {/* ---- Tab: placeholder tabs ---- */}
-          {activeTab !== 'chat' ? (
-            <Card padding="lg" className="!rounded-2xl">
-              <EmptyState
-                title={ANALYSIS_TABS.find((t) => t.key === activeTab)?.label ?? ''}
-                description="该模块正在开发中，敬请期待。"
-                icon={<BrainCircuit className="h-8 w-8" />}
-              />
-            </Card>
-          ) : null}
+          {/* ---- Structured analysis tabs ---- */}
+          {activeTab !== 'chat' ? renderAnalysisTab() : null}
         </div>
 
         {/* ======================== RIGHT COLUMN ======================== */}
@@ -899,5 +1184,44 @@ const LevelCard: React.FC<{ label: string; value: string }> = ({ label, value })
     <p className="mt-1 text-xl font-bold text-foreground">{value}</p>
   </div>
 );
+
+const SectionTitle: React.FC<{ title: string; subtitle?: string | null }> = ({ title, subtitle }) => (
+  <div>
+    <h3 className="text-lg font-semibold text-foreground">{title}</h3>
+    {subtitle ? <p className="mt-1 text-sm leading-6 text-secondary-text">{subtitle}</p> : null}
+  </div>
+);
+
+const MetricTile: React.FC<{ label: string; value: string }> = ({ label, value }) => (
+  <div className="rounded-xl border border-border bg-elevated/20 px-3 py-3">
+    <p className="text-xs text-secondary-text">{label}</p>
+    <p className="mt-1 break-words text-lg font-semibold text-foreground">{value}</p>
+  </div>
+);
+
+const TextBlock: React.FC<{ title: string; text?: string | null }> = ({ title, text }) => {
+  if (!text) return null;
+  return (
+    <div className="mt-4 rounded-xl border border-border bg-elevated/20 px-4 py-3">
+      <p className="text-sm font-medium text-foreground">{title}</p>
+      <p className="mt-1 text-sm leading-6 text-secondary-text">{text}</p>
+    </div>
+  );
+};
+
+const TextList: React.FC<{ title: string; items: string[] }> = ({ title, items }) => {
+  const visibleItems = items.filter(Boolean).slice(0, 6);
+  if (visibleItems.length === 0) return null;
+  return (
+    <div className="mt-4">
+      <p className="text-sm font-medium text-foreground">{title}</p>
+      <div className="mt-2 space-y-2">
+        {visibleItems.map((item) => (
+          <p key={item} className="rounded-xl border border-border bg-elevated/20 px-3 py-2 text-sm leading-6 text-secondary-text">{item}</p>
+        ))}
+      </div>
+    </div>
+  );
+};
 
 export default DeepAnalysisPage;

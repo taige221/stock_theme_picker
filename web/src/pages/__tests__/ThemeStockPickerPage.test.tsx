@@ -250,7 +250,7 @@ describe('ThemeStockPickerPage', () => {
     expect(stockNames.length).toBeGreaterThan(0);
     const deepAnalysisBtn = screen.getByRole('button', { name: /深度分析/ });
     fireEvent.click(deepAnalysisBtn);
-    expect(navigateMock).toHaveBeenCalledWith('/chat?stock=688629.SH&name=%E5%8D%8E%E4%B8%B0%E7%A7%91%E6%8A%80');
+    expect(navigateMock).toHaveBeenCalledWith('/stock-query?stock=688629.SH&name=%E5%8D%8E%E4%B8%B0%E7%A7%91%E6%8A%80&intent=deep-analysis');
   });
 
   it('submits board code as the effective field from the form', async () => {

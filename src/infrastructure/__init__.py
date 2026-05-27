@@ -1,8 +1,13 @@
-"""Infrastructure package exports with lazy imports to avoid circular dependencies."""
+"""Infrastructure package exports with lazy imports.
+
+Avoid importing provider-heavy modules during package initialization; several
+data providers also import infrastructure modules and would otherwise form a
+cycle during Config/DataFetcherManager startup.
+"""
 
 from __future__ import annotations
 
-from importlib import import_module
+from typing import Any
 
 __all__ = [
     "ThemeBoardResolverService",
@@ -15,19 +20,33 @@ __all__ = [
 ]
 
 
-def __getattr__(name: str):
+def __getattr__(name: str) -> Any:
     if name == "ThemeBoardResolverService":
-        return import_module("theme_picker.infrastructure.board_resolver_service").ThemeBoardResolverService
+        from theme_picker.infrastructure.board_resolver_service import ThemeBoardResolverService
+
+        return ThemeBoardResolverService
     if name == "ThemeEventScanner":
-        return import_module("theme_picker.infrastructure.event_scanner").ThemeEventScanner
+        from theme_picker.infrastructure.event_scanner import ThemeEventScanner
+
+        return ThemeEventScanner
     if name == "ThemeExpansionService":
-        return import_module("theme_picker.infrastructure.expansion_service").ThemeExpansionService
+        from theme_picker.infrastructure.expansion_service import ThemeExpansionService
+
+        return ThemeExpansionService
     if name == "get_theme_picker_db":
-        return import_module("theme_picker.infrastructure.persistence").get_theme_picker_db
+        from theme_picker.infrastructure.persistence import get_theme_picker_db
+
+        return get_theme_picker_db
     if name == "get_theme_picker_config":
-        return import_module("theme_picker.infrastructure.runtime").get_theme_picker_config
+        from theme_picker.infrastructure.runtime import get_theme_picker_config
+
+        return get_theme_picker_config
     if name == "ThemeSignalService":
-        return import_module("theme_picker.infrastructure.signal_service").ThemeSignalService
+        from theme_picker.infrastructure.signal_service import ThemeSignalService
+
+        return ThemeSignalService
     if name == "ThemeStockPoolService":
-        return import_module("theme_picker.infrastructure.stock_pool_service").ThemeStockPoolService
+        from theme_picker.infrastructure.stock_pool_service import ThemeStockPoolService
+
+        return ThemeStockPoolService
     raise AttributeError(name)

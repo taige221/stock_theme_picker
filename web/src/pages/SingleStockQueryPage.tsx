@@ -5,12 +5,13 @@ import {
   Search,
   Sparkles,
 } from 'lucide-react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { createParsedApiError, getParsedApiError, type ParsedApiError } from '../api/error';
 import {
   stockQueryApi,
   type StockQueryAnalyzeResponse,
   type StockQueryHistoryItem,
+  type StockQueryStrategyDecision,
   type StockQueryTaskStatus,
   type StockQueryThemeAttribution,
 } from '../api/stockQuery';
@@ -321,10 +322,12 @@ function turnoverLabel(value?: number | null): string {
 
 const SingleStockQueryPage: React.FC = () => {
   const location = useLocation();
+  const navigate = useNavigate();
+  const queryParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
   const initialQuery = useMemo(() => {
-    const params = new URLSearchParams(location.search);
-    return params.get('stock') ?? params.get('query') ?? QUICK_QUERIES[0].value;
-  }, [location.search]);
+    return queryParams.get('stock') ?? queryParams.get('query') ?? QUICK_QUERIES[0].value;
+  }, [queryParams]);
+  const deepAnalysisIntent = queryParams.get('intent') === 'deep-analysis';
 
   const [query, setQuery] = useState(initialQuery);
   const [strategy, setStrategy] = useState<string>('auto');
@@ -347,6 +350,8 @@ const SingleStockQueryPage: React.FC = () => {
   const [watchlistActionError, setWatchlistActionError] = useState<ParsedApiError | null>(null);
   const [watchlistActionMessage, setWatchlistActionMessage] = useState<string | null>(null);
   const pollTimeoutRef = useRef<number | null>(null);
+  const pollAnalyzeStatusRef = useRef<(taskId: string, resolvedInput: string) => Promise<void>>(async () => {});
+  const autoDeepAnalysisStartedRef = useRef(false);
   const hasPendingInputChange = query.trim() !== (lastResolvedInput || '').trim();
 
   /* ---- data loaders ---- */
@@ -395,13 +400,16 @@ const SingleStockQueryPage: React.FC = () => {
     setQueryTask(null);
     void loadStockAlertRules(response.stockCode);
     void loadHistory();
-  }, []);
+    if (deepAnalysisIntent && response.queryId) {
+      navigate(`/deep-analysis?queryId=${encodeURIComponent(response.queryId)}&stock=${encodeURIComponent(response.stockCode)}&name=${encodeURIComponent(response.stockName)}`, { replace: true });
+    }
+  }, [deepAnalysisIntent, navigate]);
 
   useEffect(() => {
     const init = async () => {
       const [historyResponse] = await Promise.all([loadHistory(), loadWatchlist()]);
       // Auto-restore the latest completed history item on first load
-      if (historyResponse && historyResponse.items.length > 0) {
+      if (!deepAnalysisIntent && historyResponse && historyResponse.items.length > 0) {
         const latest = historyResponse.items.find((item) => item.status === 'completed' && item.result);
         if (latest?.result) {
           const resolvedInput = latest.stockCode ?? latest.queryText ?? '';
@@ -411,10 +419,10 @@ const SingleStockQueryPage: React.FC = () => {
       }
     };
     void init();
-  }, [applyAnalyzeResult, initialQuery]);
+  }, [applyAnalyzeResult, deepAnalysisIntent, initialQuery]);
   useEffect(() => () => { if (pollTimeoutRef.current != null) window.clearTimeout(pollTimeoutRef.current); }, []);
 
-  const pollAnalyzeStatus = async (taskId: string, resolvedInput: string) => {
+  const pollAnalyzeStatus = useCallback(async (taskId: string, resolvedInput: string) => {
     try {
       const status = await stockQueryApi.getAnalyzeStatus(taskId);
       setQueryTask(status);
@@ -432,15 +440,19 @@ const SingleStockQueryPage: React.FC = () => {
         void loadHistory();
         return;
       }
-      pollTimeoutRef.current = window.setTimeout(() => { void pollAnalyzeStatus(taskId, resolvedInput); }, 3000);
+      pollTimeoutRef.current = window.setTimeout(() => { void pollAnalyzeStatusRef.current(taskId, resolvedInput); }, 3000);
     } catch (requestError) {
       setError(getParsedApiError(requestError));
       setIsLoading(false);
       pollTimeoutRef.current = null;
     }
-  };
+  }, [applyAnalyzeResult]);
 
-  const analyzeStock = async (rawInput: string) => {
+  useEffect(() => {
+    pollAnalyzeStatusRef.current = pollAnalyzeStatus;
+  }, [pollAnalyzeStatus]);
+
+  const analyzeStock = useCallback(async (rawInput: string) => {
     const normalized = rawInput.trim();
     if (!normalized) return;
     if (pollTimeoutRef.current != null) { window.clearTimeout(pollTimeoutRef.current); pollTimeoutRef.current = null; }
@@ -458,7 +470,13 @@ const SingleStockQueryPage: React.FC = () => {
     } finally {
       if (pollTimeoutRef.current == null) setIsLoading(false);
     }
-  };
+  }, [pollAnalyzeStatus, strategy]);
+
+  useEffect(() => {
+    if (!deepAnalysisIntent || autoDeepAnalysisStartedRef.current) return;
+    autoDeepAnalysisStartedRef.current = true;
+    void analyzeStock(initialQuery);
+  }, [analyzeStock, deepAnalysisIntent, initialQuery]);
 
   useEffect(() => {
     const syncQuery = () => { setQuery(initialQuery); setError(null); };

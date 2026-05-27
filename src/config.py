@@ -896,6 +896,8 @@ class Config:
     enable_chip_distribution: bool = True
     # 筹码分布数据源优先级（逗号分隔）；当前支持 akshare / tushare
     chip_distribution_source_priority: str = "akshare"
+    # 统一日K在线补数数据源优先级（逗号分隔）；当前支持 mootdx / tushare
+    daily_bar_source_priority: str = "mootdx"
     # 单股查询中单个日线数据源的最大等待时间（秒）；超时后切换到下一个候选源
     stock_query_daily_fetch_timeout_seconds: float = 8.0
     # 单股查询是否在日线在线抓取时临时禁用代理，避免本机代理误伤国内数据源
@@ -906,10 +908,18 @@ class Config:
     stock_query_chip_timeout_seconds: float = 2.5
     # 单股查询中文本情报补充的最大等待时间（秒）；超时后直接降级，不阻塞主结果
     stock_query_text_timeout_seconds: float = 10.0
+    # 单股查询中 Tushare 解禁补充的最大等待时间（秒）；超时后直接降级
+    stock_query_tushare_lockup_timeout_seconds: float = 3.0
+    # 单股查询中 Tushare 同业补充的最大等待时间（秒）；超时后直接降级
+    stock_query_tushare_peers_timeout_seconds: float = 5.0
     # 单股查询中新闻摘要补充的最大等待时间（秒）；超时后直接降级，不阻塞主结果
     stock_query_news_timeout_seconds: float = 10.0
     # ETF 快照中统一日K抓取超时（秒）；超时后降级返回，不阻塞 ETF 主结果
     etf_daily_bar_timeout_seconds: float = 8.0
+    # ETF 快照中实时行情抓取超时（秒）；超时后降级返回，不阻塞 ETF 主结果
+    etf_realtime_quote_timeout_seconds: float = 8.0
+    # 观察池规则扫描中单股实时行情抓取超时（秒）；超时后记录本次失败原因并继续扫描其它股票
+    watchlist_realtime_quote_timeout_seconds: float = 8.0
     # ETF 快照中 mootdx 盘口抓取超时（秒）
     etf_mootdx_quote_timeout_seconds: float = 8.0
     # ETF 快照中重仓股抓取超时（秒）
@@ -921,7 +931,7 @@ class Config:
     # 东财接口补丁开关
     enable_eastmoney_patch: bool = False
     # 实时行情数据源优先级（逗号分隔）
-    # 推荐顺序：tencent > akshare_sina > efinance > akshare_em > tushare
+    # 推荐顺序：tushare(配置 token 时自动前置) > tencent > akshare_sina > efinance > akshare_em
     # - tencent: 腾讯财经，有量比/换手率/市盈率等，单股查询稳定（推荐）
     # - akshare_sina: 新浪财经，基本行情稳定，但无量比
     # - efinance/akshare_em: 东财全量接口，数据最全但容易被封
@@ -982,7 +992,6 @@ class Config:
     
     # Tushare 每分钟最大请求数（免费配额）
     tushare_rate_limit_per_minute: int = 80
-    
     # 重试配置
     max_retries: int = 3
     retry_base_delay: float = 1.0
@@ -1389,7 +1398,7 @@ class Config:
             feishu_app_id=os.getenv('FEISHU_APP_ID'),
             feishu_app_secret=os.getenv('FEISHU_APP_SECRET'),
             feishu_folder_token=os.getenv('FEISHU_FOLDER_TOKEN'),
-            tushare_token=os.getenv('TUSHARE_TOKEN'),
+            tushare_token=cls._get_tushare_token(),
             tickflow_api_key=os.getenv('TICKFLOW_API_KEY'),
             longbridge_app_key=os.getenv('LONGBRIDGE_APP_KEY') or None,
             longbridge_app_secret=os.getenv('LONGBRIDGE_APP_SECRET') or None,
@@ -1732,9 +1741,15 @@ class Config:
                 'ENABLE_REALTIME_TECHNICAL_INDICATORS', 'true'
             ).lower() == 'true',
             enable_chip_distribution=os.getenv('ENABLE_CHIP_DISTRIBUTION', 'true').lower() == 'true',
-            chip_distribution_source_priority=os.getenv(
-                'CHIP_DISTRIBUTION_SOURCE_PRIORITY',
-                'akshare',
+            chip_distribution_source_priority=cls._resolve_tushare_first_priority(
+                env_name='CHIP_DISTRIBUTION_SOURCE_PRIORITY',
+                default_priority='akshare',
+                label='chip distribution',
+            ),
+            daily_bar_source_priority=cls._resolve_tushare_first_priority(
+                env_name='DAILY_BAR_SOURCE_PRIORITY',
+                default_priority='mootdx',
+                label='daily bar',
             ),
             stock_query_daily_fetch_timeout_seconds=parse_env_float(
                 os.getenv('STOCK_QUERY_DAILY_FETCH_TIMEOUT_SECONDS'),
@@ -1762,6 +1777,18 @@ class Config:
                 field_name='STOCK_QUERY_TEXT_TIMEOUT_SECONDS',
                 minimum=0.0,
             ),
+            stock_query_tushare_lockup_timeout_seconds=parse_env_float(
+                os.getenv('STOCK_QUERY_TUSHARE_LOCKUP_TIMEOUT_SECONDS'),
+                3.0,
+                field_name='STOCK_QUERY_TUSHARE_LOCKUP_TIMEOUT_SECONDS',
+                minimum=0.0,
+            ),
+            stock_query_tushare_peers_timeout_seconds=parse_env_float(
+                os.getenv('STOCK_QUERY_TUSHARE_PEERS_TIMEOUT_SECONDS'),
+                5.0,
+                field_name='STOCK_QUERY_TUSHARE_PEERS_TIMEOUT_SECONDS',
+                minimum=0.0,
+            ),
             stock_query_news_timeout_seconds=parse_env_float(
                 os.getenv('STOCK_QUERY_NEWS_TIMEOUT_SECONDS'),
                 10.0,
@@ -1772,6 +1799,18 @@ class Config:
                 os.getenv('ETF_DAILY_BAR_TIMEOUT_SECONDS'),
                 8.0,
                 field_name='ETF_DAILY_BAR_TIMEOUT_SECONDS',
+                minimum=0.0,
+            ),
+            etf_realtime_quote_timeout_seconds=parse_env_float(
+                os.getenv('ETF_REALTIME_QUOTE_TIMEOUT_SECONDS'),
+                8.0,
+                field_name='ETF_REALTIME_QUOTE_TIMEOUT_SECONDS',
+                minimum=0.0,
+            ),
+            watchlist_realtime_quote_timeout_seconds=parse_env_float(
+                os.getenv('WATCHLIST_REALTIME_QUOTE_TIMEOUT_SECONDS'),
+                8.0,
+                field_name='WATCHLIST_REALTIME_QUOTE_TIMEOUT_SECONDS',
                 minimum=0.0,
             ),
             etf_mootdx_quote_timeout_seconds=parse_env_float(
@@ -1854,9 +1893,10 @@ class Config:
                 field_name='THEME_TENCENT_QUOTE_TIMEOUT',
                 minimum=1.0,
             ),
-            theme_realtime_source_priority=os.getenv(
-                'THEME_REALTIME_SOURCE_PRIORITY',
-                'tencent,akshare_sina,efinance,akshare_em,tushare',
+            theme_realtime_source_priority=cls._resolve_tushare_first_priority(
+                env_name='THEME_REALTIME_SOURCE_PRIORITY',
+                default_priority='tencent,akshare_sina,efinance,akshare_em',
+                label='theme realtime',
             ),
             enable_fundamental_pipeline=os.getenv('ENABLE_FUNDAMENTAL_PIPELINE', 'true').lower() == 'true',
             fundamental_stage_timeout_seconds=parse_env_float(
@@ -2355,30 +2395,69 @@ class Config:
         """
         Resolve realtime source priority with automatic tushare injection.
 
-        When TUSHARE_TOKEN is configured but REALTIME_SOURCE_PRIORITY is not
-        explicitly set, automatically prepend 'tushare' to the default priority
-        so that the paid data source is utilized for realtime quotes as well.
+        When TUSHARE_TOKEN is configured, automatically promote 'tushare' to the
+        front so that the paid data source is utilized for realtime quotes.
         """
-        explicit = os.getenv('REALTIME_SOURCE_PRIORITY')
-        default_priority = 'tencent,akshare_sina,efinance,akshare_em'
+        return cls._resolve_tushare_first_priority(
+            env_name='REALTIME_SOURCE_PRIORITY',
+            default_priority='tencent,akshare_sina,efinance,akshare_em',
+            label='realtime',
+        )
 
-        if explicit:
-            # User explicitly set priority, respect it
-            return explicit
+    @classmethod
+    def _get_tushare_token(cls) -> Optional[str]:
+        """Resolve Tushare token from the canonical env var plus common aliases."""
+        for env_name in ('TUSHARE_TOKEN', 'TUSHARE_API_KEY', 'TUSHARE_KEY'):
+            token = os.getenv(env_name, '').strip()
+            if token:
+                return token
+        return None
 
-        tushare_token = os.getenv('TUSHARE_TOKEN', '').strip()
+    @classmethod
+    def _resolve_tushare_first_priority(
+        cls,
+        *,
+        env_name: str,
+        default_priority: str,
+        label: str,
+    ) -> str:
+        """Promote tushare only for the default order; explicit settings win."""
+        configured = cls._resolve_env_value(env_name)
+        sources = [
+            item.strip()
+            for item in str(configured or "").split(",")
+            if item.strip()
+        ]
+        if sources:
+            return ",".join(sources)
+
+        sources = [
+            item.strip()
+            for item in str(default_priority or "").split(",")
+            if item.strip()
+        ]
+
+        tushare_token = cls._get_tushare_token()
         if tushare_token:
-            # Token configured but no explicit priority override
-            # Prepend tushare so the paid source is tried first
+            deduped = ["tushare"]
+            seen = {"tushare"}
+            for source in sources:
+                normalized = source.lower()
+                if normalized in seen:
+                    continue
+                seen.add(normalized)
+                deduped.append(source)
+            resolved = ",".join(deduped)
             import logging
             logger = logging.getLogger(__name__)
-            resolved = f'tushare,{default_priority}'
             logger.info(
-                f"TUSHARE_TOKEN detected, auto-injecting tushare into realtime priority: {resolved}"
+                "Tushare token detected, promoting tushare to %s priority: %s",
+                label,
+                resolved,
             )
             return resolved
 
-        return default_priority
+        return ",".join(sources)
 
     @classmethod
     def reset_instance(cls) -> None:
