@@ -239,6 +239,9 @@ class WrappedDailyBarProvider:
             "volume_ratio",
         ]
 
+    def standard_columns(self) -> List[str]:
+        return self._standard_columns()
+
     @staticmethod
     def _prepare_daily_frame(df: pd.DataFrame) -> pd.DataFrame:
         if df is None or df.empty:
@@ -264,6 +267,9 @@ class WrappedDailyBarProvider:
         frame["volume_ratio"] = frame["volume_ratio"].replace([float("inf"), float("-inf")], pd.NA)
         frame["volume_ratio"] = frame["volume_ratio"].fillna(1.0).round(2)
         return frame
+
+    def prepare_daily_frame(self, df: pd.DataFrame) -> pd.DataFrame:
+        return self._prepare_daily_frame(df)
 
     @staticmethod
     def _filter_frame(
@@ -487,6 +493,9 @@ class DailyBarResolver:
         if now.time() < MARKET_CLOSE_CUTOFF:
             return self._previous_trading_day(today)
         return self._previous_weekday_if_needed(today)
+
+    def resolve_expected_latest_date(self, target_end_date: date) -> date:
+        return self._resolve_expected_latest_date(target_end_date)
 
     @staticmethod
     def _previous_weekday_if_needed(value: date) -> date:

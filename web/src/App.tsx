@@ -7,6 +7,7 @@ import EtfQueryPage from './pages/EtfQueryPage';
 import InformationWatchPage from './pages/InformationWatchPage';
 import SettingsPage from './pages/SettingsPage';
 import SingleStockQueryPage from './pages/SingleStockQueryPage';
+import StrategyBacktestPage from './pages/StrategyBacktestPage';
 import ThemeStockPickerPage from './pages/ThemeStockPickerPage';
 import ThemeFactorScanPage from './pages/ThemeFactorScanPage';
 import WatchlistPage from './pages/WatchlistPage';
@@ -22,6 +23,7 @@ const App: React.FC = () => {
           <Route path="/theme-picker" element={<ThemeStockPickerPage />} />
           <Route path="/stock-query" element={<SingleStockQueryPage />} />
           <Route path="/etf-query" element={<EtfQueryPage />} />
+          <Route path="/strategy-backtest" element={<StrategyBacktestPage />} />
           <Route path="/deep-analysis" element={<DeepAnalysisPage />} />
           <Route path="/watchlist" element={<WatchlistPage />} />
           <Route path="/settings" element={<SettingsPage />} />

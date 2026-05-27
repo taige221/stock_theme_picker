@@ -10,3 +10,4 @@ build/
 dist/
 *.egg-info/
 .claude/launch.json
+.DS_Store

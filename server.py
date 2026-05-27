@@ -16,6 +16,7 @@ PARENT_DIR = CURRENT_DIR.parent
 if str(PARENT_DIR) not in sys.path:
     sys.path.insert(0, str(PARENT_DIR))
 
+from theme_picker.api.backtest_endpoints import router as backtest_router  # noqa: E402
 from theme_picker.api.endpoints import router as theme_picker_router  # noqa: E402
 from theme_picker.api.market_endpoints import router as market_router  # noqa: E402
 from theme_picker.api.settings_endpoints import router as settings_router  # noqa: E402
@@ -94,6 +95,12 @@ app.include_router(
     settings_router,
     prefix="/api/v1/settings",
     tags=["settings"],
+)
+
+app.include_router(
+    backtest_router,
+    prefix="/api/v1/backtests",
+    tags=["backtests"],
 )
 
 
