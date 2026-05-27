@@ -901,6 +901,14 @@ class StockAlertRuleItemSchema(BaseModel):
     enabled: bool = True
     note: Optional[str] = None
     source_query_id: Optional[str] = None
+    last_evaluated_at: Optional[str] = None
+    last_triggered_at: Optional[str] = None
+    last_scan_status: Optional[str] = None
+    last_scan_reason: Optional[str] = None
+    last_quote_source: Optional[str] = None
+    last_quote_price: Optional[float] = None
+    next_scan_at: Optional[str] = None
+    last_scan_payload: Dict[str, Any] = Field(default_factory=dict)
     created_at: str
     updated_at: str
 

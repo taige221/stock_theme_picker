@@ -230,6 +230,11 @@ class StockAlertRule(Base):
     last_evaluated_at = Column(DateTime, nullable=True, index=True)
     last_triggered_at = Column(DateTime, nullable=True, index=True)
     last_trigger_key = Column(String(128), nullable=True)
+    last_scan_status = Column(String(32), nullable=True)
+    last_scan_reason = Column(Text, nullable=True)
+    last_quote_source = Column(String(64), nullable=True)
+    last_quote_price = Column(Float, nullable=True)
+    last_scan_payload_json = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.now, index=True)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, index=True)
 
@@ -494,6 +499,31 @@ class DatabaseManager:
             table_name="stock_alert_rule",
             column_name="last_trigger_key",
             alter_sql="ALTER TABLE stock_alert_rule ADD COLUMN last_trigger_key VARCHAR(128) NULL",
+        )
+        self._ensure_sqlite_column(
+            table_name="stock_alert_rule",
+            column_name="last_scan_status",
+            alter_sql="ALTER TABLE stock_alert_rule ADD COLUMN last_scan_status VARCHAR(32) NULL",
+        )
+        self._ensure_sqlite_column(
+            table_name="stock_alert_rule",
+            column_name="last_scan_reason",
+            alter_sql="ALTER TABLE stock_alert_rule ADD COLUMN last_scan_reason TEXT NULL",
+        )
+        self._ensure_sqlite_column(
+            table_name="stock_alert_rule",
+            column_name="last_quote_source",
+            alter_sql="ALTER TABLE stock_alert_rule ADD COLUMN last_quote_source VARCHAR(64) NULL",
+        )
+        self._ensure_sqlite_column(
+            table_name="stock_alert_rule",
+            column_name="last_quote_price",
+            alter_sql="ALTER TABLE stock_alert_rule ADD COLUMN last_quote_price FLOAT NULL",
+        )
+        self._ensure_sqlite_column(
+            table_name="stock_alert_rule",
+            column_name="last_scan_payload_json",
+            alter_sql="ALTER TABLE stock_alert_rule ADD COLUMN last_scan_payload_json TEXT NULL",
         )
 
     def _ensure_sqlite_column(self, *, table_name: str, column_name: str, alter_sql: str) -> None:
@@ -1138,6 +1168,11 @@ class DatabaseManager:
         last_evaluated_at: Optional[datetime] = None,
         last_triggered_at: Optional[datetime] = None,
         last_trigger_key: Any = _UNSET,
+        last_scan_status: Any = _UNSET,
+        last_scan_reason: Any = _UNSET,
+        last_quote_source: Any = _UNSET,
+        last_quote_price: Any = _UNSET,
+        last_scan_payload: Any = _UNSET,
     ) -> Optional[StockAlertRule]:
         with self.session_scope() as session:
             record = session.execute(
@@ -1162,6 +1197,16 @@ class DatabaseManager:
                 record.last_triggered_at = last_triggered_at
             if last_trigger_key is not _UNSET:
                 record.last_trigger_key = last_trigger_key
+            if last_scan_status is not _UNSET:
+                record.last_scan_status = last_scan_status
+            if last_scan_reason is not _UNSET:
+                record.last_scan_reason = last_scan_reason
+            if last_quote_source is not _UNSET:
+                record.last_quote_source = last_quote_source
+            if last_quote_price is not _UNSET:
+                record.last_quote_price = last_quote_price
+            if last_scan_payload is not _UNSET:
+                record.last_scan_payload_json = self._safe_json_dumps(last_scan_payload) if last_scan_payload is not None else None
             record.updated_at = datetime.now()
             session.flush()
             return record

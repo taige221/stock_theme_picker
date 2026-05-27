@@ -5,7 +5,8 @@
 ===================================
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta
+import json
 import uuid
 import logging
 
@@ -614,16 +615,40 @@ def _build_stock_deep_analysis_message(record) -> StockDeepAnalysisMessageSchema
 
 
 def _build_stock_alert_rule_item(record) -> StockAlertRuleItemSchema:
+    last_evaluated_at = getattr(record, "last_evaluated_at", None)
+    scan_interval_minutes = max(5, int(getattr(record, "scan_interval_minutes", 5) or 5))
+    next_scan_at = (
+        last_evaluated_at + timedelta(minutes=scan_interval_minutes)
+        if isinstance(last_evaluated_at, datetime)
+        else None
+    )
     return StockAlertRuleItemSchema(
         id=record.id,
         stock_code=record.stock_code,
         stock_name=record.stock_name,
         rule_type=record.rule_type,
         threshold_value=record.threshold_value,
-        scan_interval_minutes=max(5, int(getattr(record, "scan_interval_minutes", 5) or 5)),
+        scan_interval_minutes=scan_interval_minutes,
         enabled=bool(record.enabled),
         note=record.note,
         source_query_id=record.source_query_id,
+        last_evaluated_at=last_evaluated_at.isoformat() if last_evaluated_at else None,
+        last_triggered_at=record.last_triggered_at.isoformat() if record.last_triggered_at else None,
+        last_scan_status=getattr(record, "last_scan_status", None),
+        last_scan_reason=getattr(record, "last_scan_reason", None),
+        last_quote_source=getattr(record, "last_quote_source", None),
+        last_quote_price=getattr(record, "last_quote_price", None),
+        next_scan_at=next_scan_at.isoformat() if next_scan_at else None,
+        last_scan_payload=_safe_json_loads(getattr(record, "last_scan_payload_json", None)) or {},
         created_at=record.created_at.isoformat() if record.created_at else "",
         updated_at=record.updated_at.isoformat() if record.updated_at else "",
     )
+
+
+def _safe_json_loads(value):
+    if not value:
+        return None
+    try:
+        return json.loads(value)
+    except (TypeError, json.JSONDecodeError):
+        return None

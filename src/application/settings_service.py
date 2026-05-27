@@ -308,6 +308,14 @@ SETTING_DEFINITIONS: List[RuntimeSettingDefinition] = [
         placeholder="8",
     ),
     RuntimeSettingDefinition(
+        key="WATCHLIST_REALTIME_QUOTE_TIMEOUT_SECONDS",
+        section_id="stock-query",
+        label="观察池实时行情超时（秒）",
+        input_type="number",
+        description="观察池规则扫描中单股实时行情的最大等待时间；超时后记录原因并继续扫描其它规则。",
+        placeholder="8",
+    ),
+    RuntimeSettingDefinition(
         key="ETF_MOOTDX_QUOTE_TIMEOUT_SECONDS",
         section_id="stock-query",
         label="ETF mootdx 盘口超时（秒）",

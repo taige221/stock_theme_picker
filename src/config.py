@@ -914,6 +914,8 @@ class Config:
     etf_daily_bar_timeout_seconds: float = 8.0
     # ETF 快照中实时行情抓取超时（秒）；超时后降级返回，不阻塞 ETF 主结果
     etf_realtime_quote_timeout_seconds: float = 8.0
+    # 观察池规则扫描中单股实时行情抓取超时（秒）；超时后记录本次失败原因并继续扫描其它股票
+    watchlist_realtime_quote_timeout_seconds: float = 8.0
     # ETF 快照中 mootdx 盘口抓取超时（秒）
     etf_mootdx_quote_timeout_seconds: float = 8.0
     # ETF 快照中重仓股抓取超时（秒）
@@ -1788,6 +1790,12 @@ class Config:
                 os.getenv('ETF_REALTIME_QUOTE_TIMEOUT_SECONDS'),
                 8.0,
                 field_name='ETF_REALTIME_QUOTE_TIMEOUT_SECONDS',
+                minimum=0.0,
+            ),
+            watchlist_realtime_quote_timeout_seconds=parse_env_float(
+                os.getenv('WATCHLIST_REALTIME_QUOTE_TIMEOUT_SECONDS'),
+                8.0,
+                field_name='WATCHLIST_REALTIME_QUOTE_TIMEOUT_SECONDS',
                 minimum=0.0,
             ),
             etf_mootdx_quote_timeout_seconds=parse_env_float(
