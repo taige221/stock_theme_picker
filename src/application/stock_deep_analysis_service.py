@@ -506,7 +506,7 @@ class StockDeepAnalysisService:
         supplement = result.get("stock_context_supplement") or {}
         supplement_blocks = [
             key
-            for key in ("profile", "announcements", "lockup", "concept_attribution")
+            for key in ("profile", "announcements", "lockup", "concept_attribution", "peers")
             if isinstance(supplement, dict) and supplement.get(key)
         ]
 

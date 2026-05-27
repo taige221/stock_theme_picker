@@ -589,6 +589,75 @@ class DataFetcherManager:
         with self._get_fetcher_call_lock(fetcher):
             return method(*args, **kwargs)
 
+    @staticmethod
+    def _fundamental_payload_has_content(payload: Any, data_key: str) -> bool:
+        if not isinstance(payload, dict):
+            return False
+        status = str(payload.get("status") or "").lower()
+        if status == "ok":
+            return True
+        data = payload.get(data_key)
+        return isinstance(data, dict) and DataFetcherManager._has_meaningful_payload(data)
+
+    def _call_fundamental_provider_method(self, method_name: str, stock_code: str, *args, data_key: str, **kwargs):
+        """
+        Prefer Tushare fundamental-capable methods, then fall back to AkShare adapter.
+        """
+        first_payload = None
+        for fetcher in self._get_fetchers_snapshot():
+            if fetcher.name != "TushareFetcher" or not hasattr(fetcher, method_name):
+                continue
+            is_available = getattr(fetcher, "is_available", None)
+            if callable(is_available) and not is_available():
+                continue
+            try:
+                payload = self._call_fetcher_method(fetcher, method_name, stock_code, *args, **kwargs)
+                if first_payload is None:
+                    first_payload = payload
+                if self._fundamental_payload_has_content(payload, data_key):
+                    return payload
+            except Exception as exc:
+                logger.debug("[Fundamental] Tushare %s failed for %s: %s", method_name, stock_code, exc)
+                first_payload = first_payload or {
+                    "status": "failed",
+                    data_key: {},
+                    "source_chain": [],
+                    "errors": [f"tushare:{method_name}:{type(exc).__name__}:{exc}"],
+                }
+            break
+
+        adapter_method = getattr(self._fundamental_adapter, method_name)
+        try:
+            adapter_payload = adapter_method(stock_code, *args, **kwargs)
+            if self._fundamental_payload_has_content(adapter_payload, data_key):
+                return adapter_payload
+            return first_payload or adapter_payload
+        except Exception:
+            if first_payload is not None:
+                return first_payload
+            raise
+
+    def _call_tushare_optional_method(self, method_name: str, stock_code: str, *args, **kwargs) -> Dict[str, Any]:
+        for fetcher in self._get_fetchers_snapshot():
+            if fetcher.name != "TushareFetcher" or not hasattr(fetcher, method_name):
+                continue
+            is_available = getattr(fetcher, "is_available", None)
+            if callable(is_available) and not is_available():
+                return {}
+            try:
+                payload = self._call_fetcher_method(fetcher, method_name, stock_code, *args, **kwargs)
+                return payload if isinstance(payload, dict) else {}
+            except Exception as exc:
+                logger.debug("[Tushare] %s failed for %s: %s", method_name, stock_code, exc)
+                return {}
+        return {}
+
+    def get_tushare_lockup_text(self, stock_code: str, stock_name: Optional[str] = None) -> Dict[str, Any]:
+        return self._call_tushare_optional_method("get_lockup_text", normalize_stock_code(stock_code), stock_name)
+
+    def get_tushare_peer_comparison(self, stock_code: str, top_n: int = 8) -> Dict[str, Any]:
+        return self._call_tushare_optional_method("get_peer_comparison", normalize_stock_code(stock_code), top_n=top_n)
+
     def get_realtime_http_quote(
         self,
         stock_code: str,
@@ -2265,6 +2334,32 @@ class DataFetcherManager:
             "total_mv": getattr(quote_for_valuation, "total_mv", None) if quote_for_valuation else None,
             "circ_mv": getattr(quote_for_valuation, "circ_mv", None) if quote_for_valuation else None,
         }
+        valuation_source_chain = [{"provider": valuation_provider, "result": "partial", "duration_ms": valuation_ms}]
+        valuation_errors = [valuation_err] if valuation_err else []
+        if not is_etf and _market_tag(stock_code) == "cn":
+            valuation_band_budget = min(fetch_timeout, remaining_seconds)
+            if valuation_band_budget > 0:
+                valuation_band_payload, valuation_band_err, valuation_band_ms = self._run_with_retry(
+                    lambda: self._call_tushare_optional_method("get_valuation_band", stock_code),
+                    valuation_band_budget,
+                    "valuation_band",
+                )
+                _consume_budget(valuation_band_ms)
+                if isinstance(valuation_band_payload, dict):
+                    band_data = valuation_band_payload.get("valuation")
+                    if isinstance(band_data, dict) and band_data:
+                        valuation_payload.update({key: value for key, value in band_data.items() if value is not None})
+                        valuation_source_chain.extend(
+                            self._normalize_source_chain(
+                                valuation_band_payload.get("source_chain", []),
+                                "valuation_band",
+                                str(valuation_band_payload.get("status", "partial")),
+                                valuation_band_ms,
+                            )
+                        )
+                    valuation_errors.extend(list(valuation_band_payload.get("errors") or []))
+                if valuation_band_err:
+                    valuation_errors.append(valuation_band_err)
         valuation_status = self._infer_block_status(
             valuation_payload,
             "partial" if quote_for_valuation is not None else "not_supported",
@@ -2275,12 +2370,12 @@ class DataFetcherManager:
             valuation_status,
             valuation_payload,
             self._normalize_source_chain(
-                [{"provider": valuation_provider, "result": valuation_status, "duration_ms": valuation_ms}],
+                valuation_source_chain,
                 valuation_provider,
                 valuation_status,
                 valuation_ms,
             ),
-            [valuation_err] if valuation_err else [],
+            valuation_errors,
         )
 
         if is_etf:
@@ -2437,7 +2532,11 @@ class DataFetcherManager:
             )
 
         payload, err, cost_ms = self._run_with_retry(
-            lambda: self._fundamental_adapter.get_growth_snapshot(stock_code),
+            lambda: self._call_fundamental_provider_method(
+                "get_growth_snapshot",
+                stock_code,
+                data_key="growth",
+            ),
             timeout,
             "growth",
         )
@@ -2485,7 +2584,11 @@ class DataFetcherManager:
             )
 
         payload, err, cost_ms = self._run_with_retry(
-            lambda: self._fundamental_adapter.get_earnings_snapshot(stock_code),
+            lambda: self._call_fundamental_provider_method(
+                "get_earnings_snapshot",
+                stock_code,
+                data_key="earnings",
+            ),
             timeout,
             "earnings",
         )
@@ -2565,7 +2668,11 @@ class DataFetcherManager:
             )
 
         payload, err, cost_ms = self._run_with_retry(
-            lambda: self._fundamental_adapter.get_institution_snapshot(stock_code),
+            lambda: self._call_fundamental_provider_method(
+                "get_institution_snapshot",
+                stock_code,
+                data_key="institution",
+            ),
             timeout,
             "institution",
         )
@@ -2617,7 +2724,11 @@ class DataFetcherManager:
                 ["fundamental stage timeout"],
             )
         payload, err, cost_ms = self._run_with_retry(
-            lambda: self._fundamental_adapter.get_capital_flow(stock_code),
+            lambda: self._call_fundamental_provider_method(
+                "get_capital_flow",
+                stock_code,
+                data_key="stock_flow",
+            ),
             timeout,
             "capital_flow",
         )
@@ -2681,7 +2792,11 @@ class DataFetcherManager:
                 ["fundamental stage timeout"],
             )
         payload, err, cost_ms = self._run_with_retry(
-            lambda: self._fundamental_adapter.get_dragon_tiger_flag(stock_code),
+            lambda: self._call_fundamental_provider_method(
+                "get_dragon_tiger_flag",
+                stock_code,
+                data_key="dragon_tiger",
+            ),
             timeout,
             "dragon_tiger",
         )
@@ -2698,6 +2813,11 @@ class DataFetcherManager:
                 "is_on_list": bool(payload.get("is_on_list", False)),
                 "recent_count": int(payload.get("recent_count", 0)),
                 "latest_date": payload.get("latest_date"),
+                "reason": payload.get("reason"),
+                "net_buy_amount": payload.get("net_buy_amount"),
+                "institution_net_buy": payload.get("institution_net_buy"),
+                "buy_seats": payload.get("buy_seats") if isinstance(payload.get("buy_seats"), list) else [],
+                "sell_seats": payload.get("sell_seats") if isinstance(payload.get("sell_seats"), list) else [],
             },
             self._normalize_source_chain(
                 payload.get("source_chain", []),

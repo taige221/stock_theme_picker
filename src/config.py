@@ -908,6 +908,10 @@ class Config:
     stock_query_chip_timeout_seconds: float = 2.5
     # 单股查询中文本情报补充的最大等待时间（秒）；超时后直接降级，不阻塞主结果
     stock_query_text_timeout_seconds: float = 10.0
+    # 单股查询中 Tushare 解禁补充的最大等待时间（秒）；超时后直接降级
+    stock_query_tushare_lockup_timeout_seconds: float = 3.0
+    # 单股查询中 Tushare 同业补充的最大等待时间（秒）；超时后直接降级
+    stock_query_tushare_peers_timeout_seconds: float = 5.0
     # 单股查询中新闻摘要补充的最大等待时间（秒）；超时后直接降级，不阻塞主结果
     stock_query_news_timeout_seconds: float = 10.0
     # ETF 快照中统一日K抓取超时（秒）；超时后降级返回，不阻塞 ETF 主结果
@@ -988,7 +992,6 @@ class Config:
     
     # Tushare 每分钟最大请求数（免费配额）
     tushare_rate_limit_per_minute: int = 80
-    
     # 重试配置
     max_retries: int = 3
     retry_base_delay: float = 1.0
@@ -1772,6 +1775,18 @@ class Config:
                 os.getenv('STOCK_QUERY_TEXT_TIMEOUT_SECONDS'),
                 10.0,
                 field_name='STOCK_QUERY_TEXT_TIMEOUT_SECONDS',
+                minimum=0.0,
+            ),
+            stock_query_tushare_lockup_timeout_seconds=parse_env_float(
+                os.getenv('STOCK_QUERY_TUSHARE_LOCKUP_TIMEOUT_SECONDS'),
+                3.0,
+                field_name='STOCK_QUERY_TUSHARE_LOCKUP_TIMEOUT_SECONDS',
+                minimum=0.0,
+            ),
+            stock_query_tushare_peers_timeout_seconds=parse_env_float(
+                os.getenv('STOCK_QUERY_TUSHARE_PEERS_TIMEOUT_SECONDS'),
+                5.0,
+                field_name='STOCK_QUERY_TUSHARE_PEERS_TIMEOUT_SECONDS',
                 minimum=0.0,
             ),
             stock_query_news_timeout_seconds=parse_env_float(

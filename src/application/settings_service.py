@@ -287,6 +287,22 @@ SETTING_DEFINITIONS: List[RuntimeSettingDefinition] = [
         placeholder="10",
     ),
     RuntimeSettingDefinition(
+        key="STOCK_QUERY_TUSHARE_LOCKUP_TIMEOUT_SECONDS",
+        section_id="stock-query",
+        label="Tushare 解禁补充超时（秒）",
+        input_type="number",
+        description="单股查询中 share_float 解禁补充的最大等待时间；设为 0 可关闭。",
+        placeholder="3",
+    ),
+    RuntimeSettingDefinition(
+        key="STOCK_QUERY_TUSHARE_PEERS_TIMEOUT_SECONDS",
+        section_id="stock-query",
+        label="Tushare 同业补充超时（秒）",
+        input_type="number",
+        description="单股查询中同业估值/财务补充的最大等待时间；设为 0 可关闭。",
+        placeholder="5",
+    ),
+    RuntimeSettingDefinition(
         key="STOCK_QUERY_NEWS_TIMEOUT_SECONDS",
         section_id="stock-query",
         label="新闻摘要超时（秒）",

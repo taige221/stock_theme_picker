@@ -51,6 +51,15 @@ export interface StockQueryValuationDetails {
   pbRatio?: number | null;
   totalMv?: number | null;
   circMv?: number | null;
+  asOf?: string | null;
+  lookbackDays?: number | null;
+  sampleCount?: number | null;
+  pePercentile?: number | null;
+  pbPercentile?: number | null;
+  peLow?: number | null;
+  peHigh?: number | null;
+  pbLow?: number | null;
+  pbHigh?: number | null;
 }
 
 export interface StockQueryCapitalFlowDetails {
@@ -62,6 +71,8 @@ export interface StockQueryCapitalFlowDetails {
   sectorRankings?: {
     top?: Array<{ name: string; netInflow?: number | null }>;
     bottom?: Array<{ name: string; netInflow?: number | null }>;
+    status?: string;
+    reason?: string;
   };
 }
 
@@ -91,11 +102,38 @@ export interface StockQueryConceptAttribution {
   matchedThemes?: StockQueryThemeAttribution[];
 }
 
+export interface StockQueryPeerItem {
+  stockCode: string;
+  stockName: string;
+  industry?: string | null;
+  price?: number | null;
+  pctChg?: number | null;
+  turnoverRate?: number | null;
+  volumeRatio?: number | null;
+  peRatio?: number | null;
+  pbRatio?: number | null;
+  totalMv?: number | null;
+  circMv?: number | null;
+  revenueYoy?: number | null;
+  netProfitYoy?: number | null;
+  roe?: number | null;
+  grossMargin?: number | null;
+  isTarget?: boolean;
+}
+
+export interface StockQueryPeerComparison {
+  industry?: string | null;
+  source?: string | null;
+  provider?: string | null;
+  items?: StockQueryPeerItem[];
+}
+
 export interface StockQueryContextSupplement {
   profile?: StockQueryTextSupplement | null;
   announcements?: StockQueryTextSupplement | null;
   lockup?: StockQueryTextSupplement | null;
   conceptAttribution?: StockQueryConceptAttribution | null;
+  peers?: StockQueryPeerComparison | null;
 }
 
 export interface StockQueryGrowthDetails {
@@ -112,6 +150,16 @@ export interface StockQueryEarningsDetails {
     netProfitParent?: number | null;
     operatingCashFlow?: number | null;
     roe?: number | null;
+  };
+  balanceSheet?: {
+    reportDate?: string | null;
+    totalAssets?: number | null;
+    totalLiabilities?: number | null;
+    shareholderEquity?: number | null;
+    cashAndEquivalents?: number | null;
+    shortDebt?: number | null;
+    debtToAsset?: number | null;
+    cashToShortDebt?: number | null;
   };
   forecastSummary?: string;
   quickReportSummary?: string;
@@ -190,6 +238,9 @@ export interface StockQueryAnalyzeResponse {
   pbRatio?: number | null;
   totalMv?: number | null;
   circMv?: number | null;
+  change60d?: number | null;
+  high52w?: number | null;
+  low52w?: number | null;
   trendScore?: number | null;
   signal: string;
   pattern?: string | null;

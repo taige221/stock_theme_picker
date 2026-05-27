@@ -498,11 +498,38 @@ class StockQueryConceptAttributionSchema(BaseModel):
     matched_themes: List[StockQueryThemeAttributionSchema] = Field(default_factory=list)
 
 
+class StockQueryPeerItemSchema(BaseModel):
+    stock_code: str
+    stock_name: str
+    industry: Optional[str] = None
+    price: Optional[float] = None
+    pct_chg: Optional[float] = None
+    turnover_rate: Optional[float] = None
+    volume_ratio: Optional[float] = None
+    pe_ratio: Optional[float] = None
+    pb_ratio: Optional[float] = None
+    total_mv: Optional[float] = None
+    circ_mv: Optional[float] = None
+    revenue_yoy: Optional[float] = None
+    net_profit_yoy: Optional[float] = None
+    roe: Optional[float] = None
+    gross_margin: Optional[float] = None
+    is_target: bool = False
+
+
+class StockQueryPeerComparisonSchema(BaseModel):
+    industry: Optional[str] = None
+    source: Optional[str] = None
+    provider: Optional[str] = None
+    items: List[StockQueryPeerItemSchema] = Field(default_factory=list)
+
+
 class StockQueryContextSupplementSchema(BaseModel):
     profile: Optional[StockQueryTextSupplementSchema] = None
     announcements: Optional[StockQueryTextSupplementSchema] = None
     lockup: Optional[StockQueryTextSupplementSchema] = None
     concept_attribution: Optional[StockQueryConceptAttributionSchema] = None
+    peers: Optional[StockQueryPeerComparisonSchema] = None
 
 
 class StockQueryFundamentalBlockSchema(BaseModel):
@@ -555,6 +582,9 @@ class StockQueryAnalyzeResponse(BaseModel):
     pb_ratio: Optional[float] = None
     total_mv: Optional[float] = None
     circ_mv: Optional[float] = None
+    change_60d: Optional[float] = None
+    high_52w: Optional[float] = None
+    low_52w: Optional[float] = None
     trend_score: Optional[float] = None
     signal: str
     pattern: Optional[str] = None
