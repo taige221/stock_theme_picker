@@ -80,6 +80,25 @@ function toMaData(bars: BacktestStockChartBar[], key: 'ma5' | 'ma10' | 'ma20'): 
   });
 }
 
+function toMacdLineData(bars: BacktestStockChartBar[], key: 'macdDif' | 'macdDea'): LineData[] {
+  return bars.flatMap((bar) => {
+    const value = bar[key];
+    if (!bar.tradeDate || !isFiniteNumber(value)) return [];
+    return [{ time: toTime(bar.tradeDate), value }];
+  });
+}
+
+function toMacdHistogramData(bars: BacktestStockChartBar[]): HistogramData[] {
+  return bars.flatMap((bar) => {
+    if (!bar.tradeDate || !isFiniteNumber(bar.macdHist)) return [];
+    return [{
+      time: toTime(bar.tradeDate),
+      value: bar.macdHist,
+      color: bar.macdHist >= 0 ? 'rgba(196,34,28,0.42)' : 'rgba(19,122,61,0.42)',
+    }];
+  });
+}
+
 function toSeriesMarkers(markers: BacktestStockChartMarker[]): SeriesMarker<Time>[] {
   return markers.flatMap((marker) => {
     if (!marker.tradeDate) return [];
@@ -115,6 +134,9 @@ export const BacktestStockKlineChart: React.FC<BacktestStockKlineChartProps> = (
   const ma5SeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
   const ma10SeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
   const ma20SeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
+  const macdDifSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
+  const macdDeaSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
+  const macdHistSeriesRef = useRef<ISeriesApi<'Histogram'> | null>(null);
   const markerPluginRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
 
   const bars = chart?.bars ?? EMPTY_BARS;
@@ -148,6 +170,7 @@ export const BacktestStockKlineChart: React.FC<BacktestStockKlineChartProps> = (
       },
       rightPriceScale: {
         borderColor: dark ? 'rgba(255,255,255,0.10)' : 'rgba(42,37,32,0.12)',
+        scaleMargins: { top: 0.06, bottom: 0.38 },
       },
       timeScale: {
         borderColor: dark ? 'rgba(255,255,255,0.10)' : 'rgba(42,37,32,0.12)',
@@ -174,7 +197,7 @@ export const BacktestStockKlineChart: React.FC<BacktestStockKlineChartProps> = (
       priceScaleId: 'volume',
     });
     volumeSeriesRef.current = volumeSeries;
-    instance.priceScale('volume').applyOptions({ scaleMargins: { top: 0.83, bottom: 0 } });
+    instance.priceScale('volume').applyOptions({ scaleMargins: { top: 0.90, bottom: 0 } });
 
     ma5SeriesRef.current = instance.addSeries(LineSeries, {
       color: '#d28a05',
@@ -194,6 +217,26 @@ export const BacktestStockKlineChart: React.FC<BacktestStockKlineChartProps> = (
       priceLineVisible: false,
       lastValueVisible: false,
     });
+    macdHistSeriesRef.current = instance.addSeries(HistogramSeries, {
+      priceScaleId: 'macd',
+      priceLineVisible: false,
+      lastValueVisible: false,
+    });
+    macdDifSeriesRef.current = instance.addSeries(LineSeries, {
+      color: '#2563eb',
+      lineWidth: 1,
+      priceScaleId: 'macd',
+      priceLineVisible: false,
+      lastValueVisible: false,
+    });
+    macdDeaSeriesRef.current = instance.addSeries(LineSeries, {
+      color: '#f97316',
+      lineWidth: 1,
+      priceScaleId: 'macd',
+      priceLineVisible: false,
+      lastValueVisible: false,
+    });
+    instance.priceScale('macd').applyOptions({ scaleMargins: { top: 0.72, bottom: 0.12 } });
 
     const handleResize = () => {
       if (containerRef.current) {
@@ -219,6 +262,9 @@ export const BacktestStockKlineChart: React.FC<BacktestStockKlineChartProps> = (
     ma5SeriesRef.current?.setData(toMaData(bars, 'ma5'));
     ma10SeriesRef.current?.setData(toMaData(bars, 'ma10'));
     ma20SeriesRef.current?.setData(toMaData(bars, 'ma20'));
+    macdHistSeriesRef.current?.setData(toMacdHistogramData(bars));
+    macdDifSeriesRef.current?.setData(toMacdLineData(bars, 'macdDif'));
+    macdDeaSeriesRef.current?.setData(toMacdLineData(bars, 'macdDea'));
     markerPluginRef.current?.setMarkers(toSeriesMarkers(markers));
     if (candleData.length > 0) {
       chartRef.current?.timeScale().fitContent();
@@ -238,6 +284,9 @@ export const BacktestStockKlineChart: React.FC<BacktestStockKlineChartProps> = (
           <span className="inline-flex items-center gap-1"><span className="h-2 w-4 rounded-sm bg-[#d28a05]" />MA5</span>
           <span className="inline-flex items-center gap-1"><span className="h-2 w-4 rounded-sm bg-[#2364aa]" />MA10</span>
           <span className="inline-flex items-center gap-1"><span className="h-2 w-4 rounded-sm bg-[#6d4c41]" />MA20</span>
+          <span className="inline-flex items-center gap-1"><span className="h-2 w-4 rounded-sm bg-[#2563eb]" />DIF</span>
+          <span className="inline-flex items-center gap-1"><span className="h-2 w-4 rounded-sm bg-[#f97316]" />DEA</span>
+          <span className="inline-flex items-center gap-1"><span className="h-2 w-4 rounded-sm bg-[#c4221c] opacity-50" />MACD</span>
           <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-[#c4221c]" />买 {markerSummary.buys}</span>
           <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-[#137a3d]" />卖 {markerSummary.sells}</span>
         </div>
@@ -263,7 +312,7 @@ export const BacktestStockKlineChart: React.FC<BacktestStockKlineChartProps> = (
             暂无K线缓存
           </div>
         ) : null}
-        <div ref={containerRef} className="h-[420px] w-full" />
+        <div ref={containerRef} className="h-[520px] w-full" />
       </div>
 
       <div className="flex flex-wrap gap-3 text-xs text-secondary-text">

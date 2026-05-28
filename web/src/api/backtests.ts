@@ -233,6 +233,10 @@ export interface BacktestStockChartBar {
   ma5?: number | null;
   ma10?: number | null;
   ma20?: number | null;
+  macdDif?: number | null;
+  macdDea?: number | null;
+  macdHist?: number | null;
+  macdHistSlope3?: number | null;
   dataSource?: string | null;
 }
 

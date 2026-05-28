@@ -48,6 +48,7 @@ class StrategyParams:
     pullback_min_box_height_pct: Optional[float] = None
     breakout_retest_window: int = 5
     pullback_reclaim_pct: float = 0.003
+    pullback_max_break_below_resistance_pct: Optional[float] = None
     pullback_slow_large_reclaim_pct: Optional[float] = None
     pullback_balanced_trend_reclaim_pct: Optional[float] = None
     pullback_high_beta_reclaim_pct: Optional[float] = None
@@ -63,9 +64,44 @@ class StrategyParams:
     min_turnover_rate: float = 2.0
     preferred_turnover_rate_low: float = 3.0
     preferred_turnover_rate_high: float = 12.0
+    max_turnover_rate: float = 0.0
     min_signal_score: float = 0.0
     breakout_min_signal_score: Optional[float] = None
     pullback_min_signal_score: Optional[float] = None
+    score_high_box_height_threshold_pct: float = 0.0
+    score_high_box_height_penalty: float = 0.0
+    score_high_turnover_rate_threshold: float = 0.0
+    score_high_turnover_rate_penalty: float = 0.0
+    score_high_volume_ratio_threshold: float = 0.0
+    score_high_volume_ratio_penalty: float = 0.0
+    enable_macd_score_adjustment: bool = False
+    macd_bullish_bonus: float = 0.0
+    macd_bearish_penalty: float = 0.0
+    breakout_high_volume_macd_weak_penalty: float = 0.0
+    pullback_macd_weak_penalty: float = 0.0
+    enable_macd_divergence_decision: bool = False
+    macd_divergence_lookback_days: int = 20
+    macd_divergence_price_tolerance_pct: float = 0.003
+    breakout_macd_bearish_divergence_min_volume_ratio: float = 0.0
+    breakout_macd_bearish_divergence_penalty: float = 0.0
+    breakout_block_macd_bearish_divergence: bool = False
+    pullback_macd_bullish_divergence_bonus: float = 0.0
+    enable_pullback_rebound_risk_control: bool = False
+    pullback_rebound_recent_gain_days: int = 5
+    pullback_rebound_max_recent_gain_pct: float = 10.0
+    pullback_rebound_max_bias_ma10_pct: float = 10.0
+    pullback_rebound_score_penalty: float = 0.0
+    pullback_rebound_block_entry: bool = False
+    enable_pullback_profit_power_filter: bool = False
+    pullback_profit_power_lookback_days: int = 120
+    pullback_profit_power_min_range_pct: float = 80.0
+    pullback_profit_power_rolling_gain_days: int = 20
+    pullback_profit_power_min_rolling_gain_pct: float = 0.0
+    pullback_profit_power_max_recent_gain_pct: float = 0.0
+    pullback_profit_power_max_ma10_bias_pct: float = 0.0
+    pullback_rebound_profit_power_penalty_multiplier: float = 0.0
+    enable_breakout_trend_hold_extension: bool = False
+    breakout_trend_hold_extension_max_days: int = 25
     box_stack_lift_score_weight: float = 0.0
     box_height_score_weight: float = 0.0
     enable_entry_stall_exit: bool = False
@@ -118,6 +154,11 @@ class StrategyParams:
     pullback_failure_confirm_days: int = 1
     pullback_failure_buffer_pct: float = 0.003
     pullback_failure_max_profit_pct: float = 0.03
+    enable_breakeven_stop: bool = False
+    breakout_enable_breakeven_stop: Optional[bool] = None
+    pullback_enable_breakeven_stop: Optional[bool] = None
+    breakeven_activate_profit_pct: float = 0.03
+    breakeven_exit_threshold_pct: float = 0.005
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)

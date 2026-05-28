@@ -1617,7 +1617,45 @@ class BacktestImportService:
                     continue
                 window_values = [value for value in closes[max(0, idx - window + 1) : idx + 1] if value is not None]
                 bar[key] = round(sum(window_values) / window, 4) if len(window_values) == window else None
+        self._with_macd(bars, closes=closes)
         return bars
+
+    def _with_macd(self, bars: list[dict[str, Any]], *, closes: list[float | None]) -> None:
+        ema12 = self._ema(closes, span=12)
+        ema26 = self._ema(closes, span=26)
+        dif_values: list[float | None] = [
+            (fast - slow) if fast is not None and slow is not None else None
+            for fast, slow in zip(ema12, ema26)
+        ]
+        dea_values = self._ema(dif_values, span=9)
+        hist_values: list[float | None] = [
+            (dif - dea) * 2.0 if dif is not None and dea is not None else None
+            for dif, dea in zip(dif_values, dea_values)
+        ]
+        for idx, bar in enumerate(bars):
+            dif = dif_values[idx] if idx < len(dif_values) else None
+            dea = dea_values[idx] if idx < len(dea_values) else None
+            hist = hist_values[idx] if idx < len(hist_values) else None
+            prior_hist = hist_values[idx - 3] if idx >= 3 else None
+            bar["macd_dif"] = round(dif, 4) if dif is not None else None
+            bar["macd_dea"] = round(dea, 4) if dea is not None else None
+            bar["macd_hist"] = round(hist, 4) if hist is not None else None
+            bar["macd_hist_slope_3"] = (
+                round(hist - prior_hist, 4) if hist is not None and prior_hist is not None else None
+            )
+
+    @staticmethod
+    def _ema(values: list[float | None], *, span: int) -> list[float | None]:
+        alpha = 2.0 / (float(span) + 1.0)
+        current: float | None = None
+        result: list[float | None] = []
+        for value in values:
+            if value is None:
+                result.append(None)
+                continue
+            current = float(value) if current is None else alpha * float(value) + (1.0 - alpha) * current
+            result.append(current)
+        return result
 
     def _trade_markers(self, trades: list[StrategyBacktestTrade]) -> list[dict[str, Any]]:
         markers: list[dict[str, Any]] = []
