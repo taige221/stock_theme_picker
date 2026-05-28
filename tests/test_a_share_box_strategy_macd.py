@@ -9,7 +9,7 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from theme_picker.strategy.a_share_box_strategy import AShareBoxStrategy
+from theme_picker.strategy.a_share_box import AShareBoxStrategy
 from theme_picker.strategy.params import StrategyParams
 
 

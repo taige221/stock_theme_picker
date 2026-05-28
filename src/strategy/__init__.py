@@ -1,10 +1,10 @@
 """Strategy interfaces and concrete implementations for backtesting."""
 
-from theme_picker.strategy.a_share_box_strategy import AShareBoxStrategy
-from theme_picker.strategy.a_share_migrated_crypto import AShareMigratedCryptoStrategy
+from theme_picker.strategy.a_share_box import AShareBoxStrategy
+from theme_picker.strategy.benchmarks import AShareMigratedCryptoStrategy
 from theme_picker.strategy.base import Strategy, StrategySignal
 from theme_picker.strategy.params import StrategyParamValidationError, StrategyParams
-from theme_picker.strategy.stock_signal_strategy import (
+from theme_picker.strategy.stock_signal import (
     StockSignalBacktestStrategy,
     StockSignalBreakoutStrategy,
     StockSignalHoldingStrategy,

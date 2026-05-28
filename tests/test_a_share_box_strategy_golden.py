@@ -6,7 +6,7 @@ from datetime import date, timedelta
 
 import pandas as pd
 
-from theme_picker.strategy.a_share_box_strategy import AShareBoxStrategy
+from theme_picker.strategy.a_share_box import AShareBoxStrategy
 from theme_picker.strategy.params import StrategyParams
 
 

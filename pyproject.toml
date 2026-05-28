@@ -63,6 +63,9 @@ packages = [
   "theme_picker.infrastructure",
   "theme_picker.patch",
   "theme_picker.strategy",
+  "theme_picker.strategy.a_share_box",
+  "theme_picker.strategy.benchmarks",
+  "theme_picker.strategy.stock_signal",
 ]
 
 [tool.setuptools.package-data]
