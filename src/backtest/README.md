@@ -146,9 +146,22 @@ rtk python3 scripts/import_backtest_json.py \
 - `traded_daily`：保存组合每日权益点，以及单股持仓区间/退出锚点权益点；这是默认档，兼顾复盘与 DB 体积。
 - `all_daily`：保存所有股票每日权益点，适合深度诊断，但每个综合池 run 会写入约 24 万条单股权益点。
 
-### 4. 信号分层排序实验
+### 4. 组合级信号调度
 
-用于验证有限资金下“每天只选少数候选”的效果。该脚本不会改变单票策略本体，而是读取已有回测交易，按入场日把 `pullback_bounce` 和 `breakout_long` 分池排序，再按每日配额筛选：
+用于验证有限资金下“每天只选少数候选”的效果。它不会改变单票策略本体，而是读取已有回测交易，按入场日把 `pullback_bounce` 和 `breakout_long` 分池排序，再按每日配额筛选。
+
+核心能力在 `src/backtest/analysis/signal_ranking.py` 和 `src/application/backtest_portfolio_schedule_service.py`。DB run 模式会把调度结果落到：
+
+- `strategy_backtest_portfolio_schedule`：一次组合调度的配置和 summary
+- `strategy_backtest_portfolio_candidate`：每日候选、排序、选中状态和逐笔交易结果
+
+API 入口：
+
+- `POST /api/v1/backtests/runs/{run_id}/portfolio-schedules`
+- `GET /api/v1/backtests/runs/{run_id}/portfolio-schedules`
+- `GET /api/v1/backtests/portfolio-schedules/{schedule_id}`
+
+JSON artifact 研究模式仍然可以直接落 CSV：
 
 ```bash
 rtk python3 scripts/rank_box_signals.py \
@@ -174,7 +187,7 @@ rtk python3 scripts/rank_box_signals.py \
 - `--max-open-positions`：可选并发持仓上限，`0` 表示不限制
 - `--no-fill`：信号配额未用满时不再用其他候选补位
 
-读取已导入 DB 的 run：
+读取已导入 DB 的 run 会同时落库组合调度，并继续输出 CSV/JSON 便于离线检查：
 
 ```bash
 rtk python3 scripts/rank_box_signals.py \
@@ -191,8 +204,9 @@ rtk python3 scripts/rank_box_signals.py \
 
 - `selection_summary.json` / `selection_summary.csv`：分层排序后的交易数、胜率、平均单笔收益、pullback/breakout 选中数
 - `ranked_candidates.csv`：每个候选的每日排名、是否通过 `min_rank_score`、是否被选中、选中来源
+- `saved_portfolio_schedule_id=...`：DB run 模式下保存的组合调度 ID
 
-排序核心在 `src/backtest/signal_ranking.py`，脚本可以读取已有回测 JSON 或已导入 DuckDB 的 DB run，并落 CSV/JSON。`cohort_ev` 是样本内排序诊断，不能直接当成默认实盘规则；`cohort_ev_walk_forward` 只用当天之前已平仓交易来降前视偏差，但仍应作为研究 overlay 验证，而不是默认 live rule。
+`cohort_ev` 是样本内排序诊断，不能直接当成默认实盘规则；`cohort_ev_walk_forward` 只用当天之前已平仓交易来降前视偏差，但仍应作为研究 overlay 验证，而不是默认 live rule。当前这一层仍是“候选交易调度 overlay”，不是完整资金账户级组合回测；资金占用、复利、仓位市值波动适合放到下一阶段组合引擎处理。
 
 ### 5. 风格股票池实验
 

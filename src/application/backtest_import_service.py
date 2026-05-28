@@ -20,6 +20,8 @@ from theme_picker.storage import (
     StockDailyRaw,
     StrategyBacktestEquityPoint,
     StrategyBacktestImportBatch,
+    StrategyBacktestPortfolioCandidate,
+    StrategyBacktestPortfolioSchedule,
     StrategyBacktestRun,
     StrategyBacktestStockPool,
     StrategyBacktestStockPoolMember,
@@ -937,6 +939,21 @@ class BacktestImportService:
             session.bulk_save_objects(rows)
 
     def _delete_run_children(self, session, run_id: str) -> None:
+        schedule_ids = [
+            str(row[0])
+            for row in session.execute(
+                select(StrategyBacktestPortfolioSchedule.schedule_id).where(
+                    StrategyBacktestPortfolioSchedule.run_id == run_id
+                )
+            ).all()
+        ]
+        if schedule_ids:
+            session.execute(
+                delete(StrategyBacktestPortfolioCandidate).where(
+                    StrategyBacktestPortfolioCandidate.schedule_id.in_(schedule_ids)
+                )
+            )
+        session.execute(delete(StrategyBacktestPortfolioSchedule).where(StrategyBacktestPortfolioSchedule.run_id == run_id))
         for model in (
             StrategyBacktestSymbolResult,
             StrategyBacktestTrade,

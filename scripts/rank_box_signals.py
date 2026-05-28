@@ -19,27 +19,33 @@ if str(PARENT_DIR) not in sys.path:
     sys.path.insert(0, str(PARENT_DIR))
 
 try:
+    from theme_picker.application.backtest_portfolio_schedule_service import (
+        BacktestPortfolioScheduleService,
+    )
     from theme_picker.backtest.analysis.signal_ranking import (
         LayeredRankingConfig,
         build_selection_summary,
         candidate_fieldnames,
-        load_db_backtest_runs,
         normalize_trade_candidate,
         rank_trade_candidates,
         summary_fieldnames,
     )
+    from theme_picker.storage import DatabaseManager
 except ModuleNotFoundError:
     if str(ROOT_DIR) not in sys.path:
         sys.path.insert(0, str(ROOT_DIR))
+    from src.application.backtest_portfolio_schedule_service import (  # type: ignore[no-redef]
+        BacktestPortfolioScheduleService,
+    )
     from src.backtest.analysis.signal_ranking import (  # type: ignore[no-redef]
         LayeredRankingConfig,
         build_selection_summary,
         candidate_fieldnames,
-        load_db_backtest_runs,
         normalize_trade_candidate,
         rank_trade_candidates,
         summary_fieldnames,
     )
+    from src.storage import DatabaseManager  # type: ignore[no-redef]
 
 
 def parse_args() -> argparse.Namespace:
@@ -137,21 +143,13 @@ def main() -> int:
             )
         )
 
-    for db_run in load_db_backtest_runs(args.db_run_id, database_path=args.database_path, root_dir=ROOT_DIR):
-        trades = [normalize_trade_candidate(trade, run_name=db_run.run_name) for trade in db_run.trades]
-        ranked_rows = rank_trade_candidates(trades, run_name=db_run.run_name, config=config)
-        all_candidate_rows.extend(ranked_rows)
-        selected_rows = [row for row in ranked_rows if row.get("selected")]
-        summary_rows.append(
-            build_selection_summary(
-                run_name=db_run.run_name,
-                candidate_rows=ranked_rows,
-                selected_rows=selected_rows,
-                config=config,
-                aggregate=db_run.aggregate,
-                missing_result_path_count=0,
-            )
-        )
+    db_candidate_rows, db_summary_rows = _schedule_db_runs(
+        args.db_run_id,
+        database_path=args.database_path,
+        config=config,
+    )
+    all_candidate_rows.extend(db_candidate_rows)
+    summary_rows.extend(db_summary_rows)
 
     _write_csv(output_dir / "ranked_candidates.csv", all_candidate_rows, fieldnames=candidate_fieldnames())
     _write_csv(output_dir / "selection_summary.csv", summary_rows, fieldnames=summary_fieldnames())
@@ -177,6 +175,45 @@ def main() -> int:
     print(f"saved_selection_summary={output_dir / 'selection_summary.csv'}")
     print(f"saved_selection_json={output_dir / 'selection_summary.json'}")
     return 0
+
+
+def _schedule_db_runs(
+    run_ids: list[str],
+    *,
+    database_path: str | None,
+    config: LayeredRankingConfig,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    if not run_ids:
+        return [], []
+
+    db = DatabaseManager(database_path) if database_path else None
+    try:
+        service = BacktestPortfolioScheduleService(db=db)
+        candidate_rows: list[dict[str, Any]] = []
+        summary_rows: list[dict[str, Any]] = []
+        for run_id in run_ids:
+            schedule_payload = service.create_schedule(
+                run_id,
+                config_payload=config.to_dict(),
+                schedule_name="cli_layered_rank",
+                limit=1_000_000,
+            )
+            schedule = schedule_payload.get("schedule") or {}
+            schedule_id = schedule.get("schedule_id")
+            candidates = schedule_payload.get("candidates") or []
+            for row in candidates:
+                if isinstance(row, dict):
+                    row["schedule_id"] = schedule_id
+                    candidate_rows.append(row)
+            summary = dict(schedule_payload.get("summary") or {})
+            summary["schedule_id"] = schedule_id
+            summary["run_id"] = schedule.get("run_id")
+            summary_rows.append(summary)
+            print(f"saved_portfolio_schedule_id={schedule_id}")
+        return candidate_rows, summary_rows
+    finally:
+        if db is not None:
+            db.close()
 
 
 def _resolve_summary_path(path: Path) -> Path:

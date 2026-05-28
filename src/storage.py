@@ -783,6 +783,64 @@ class StrategyBacktestEquityPoint(Base):
     )
 
 
+class StrategyBacktestPortfolioSchedule(Base):
+    __tablename__ = "strategy_backtest_portfolio_schedule"
+
+    id = _id_column("strategy_backtest_portfolio_schedule_id_seq")
+    schedule_id = Column(String(64), nullable=False, unique=True, index=True)
+    run_id = Column(String(64), nullable=False, index=True)
+    schedule_name = Column(String(160), nullable=True)
+    rank_mode = Column(String(64), nullable=False, index=True)
+    status = Column(String(24), nullable=False, default="finished", index=True)
+    candidate_count = Column(Integer, nullable=True)
+    selected_count = Column(Integer, nullable=True)
+    first_entry_date = Column(Date, nullable=True, index=True)
+    last_entry_date = Column(Date, nullable=True, index=True)
+    config_payload = Column(Text, nullable=True)
+    summary_payload = Column(Text, nullable=True)
+    raw_payload = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.now, index=True)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, index=True)
+
+    __table_args__ = (
+        Index("ix_strategy_backtest_portfolio_schedule_run_created", "run_id", "created_at"),
+        Index("ix_strategy_backtest_portfolio_schedule_run_rank", "run_id", "rank_mode"),
+    )
+
+
+class StrategyBacktestPortfolioCandidate(Base):
+    __tablename__ = "strategy_backtest_portfolio_candidate"
+
+    id = _id_column("strategy_backtest_portfolio_candidate_id_seq")
+    candidate_id = Column(String(128), nullable=False, unique=True, index=True)
+    schedule_id = Column(String(64), nullable=False, index=True)
+    run_id = Column(String(64), nullable=False, index=True)
+    entry_date = Column(Date, nullable=False, index=True)
+    stock_code = Column(String(16), nullable=False, index=True)
+    stock_name = Column(String(64), nullable=True)
+    signal_type = Column(String(96), nullable=True, index=True)
+    rank_score = Column(Float, nullable=True)
+    daily_candidate_rank = Column(Integer, nullable=True)
+    selected = Column(Integer, nullable=False, default=0)
+    selected_order = Column(Integer, nullable=True)
+    selected_layer = Column(String(64), nullable=True, index=True)
+    return_pct = Column(Float, nullable=True)
+    net_pnl = Column(Float, nullable=True)
+    exit_date = Column(Date, nullable=True)
+    exit_reason = Column(String(96), nullable=True)
+    trade_id = Column(String(96), nullable=True, index=True)
+    metadata_payload = Column(Text, nullable=True)
+    raw_payload = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.now, index=True)
+
+    __table_args__ = (
+        UniqueConstraint("schedule_id", "entry_date", "stock_code", "signal_type", name="uix_strategy_backtest_portfolio_candidate"),
+        Index("ix_strategy_backtest_portfolio_candidate_day_rank", "schedule_id", "entry_date", "daily_candidate_rank"),
+        Index("ix_strategy_backtest_portfolio_candidate_selected", "schedule_id", "selected", "entry_date"),
+        Index("ix_strategy_backtest_portfolio_candidate_run_entry", "run_id", "entry_date"),
+    )
+
+
 class StrategyBacktestStockPool(Base):
     __tablename__ = "strategy_backtest_stock_pool"
 

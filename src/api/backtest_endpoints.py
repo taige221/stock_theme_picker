@@ -11,6 +11,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from theme_picker.application.backtest_execution_service import BacktestExecutionService
 from theme_picker.application.backtest_import_service import BacktestImportService
+from theme_picker.application.backtest_portfolio_schedule_service import BacktestPortfolioScheduleService
 
 router = APIRouter()
 T = TypeVar("T")
@@ -73,12 +74,34 @@ class BacktestExecuteRequest(BaseModel):
     )
 
 
+class BacktestPortfolioScheduleRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, str_strip_whitespace=True)
+
+    schedule_name: Optional[str] = Field(default=None, alias="scheduleName", max_length=160)
+    rank_mode: Literal["signal_score", "cohort_ev", "cohort_ev_walk_forward"] = Field(
+        default="signal_score",
+        alias="rankMode",
+    )
+    max_per_day: int = Field(default=3, alias="maxPerDay", ge=1, le=20)
+    pullback_quota: int = Field(default=2, alias="pullbackQuota", ge=0, le=20)
+    breakout_quota: int = Field(default=1, alias="breakoutQuota", ge=0, le=20)
+    max_open_positions: int = Field(default=0, alias="maxOpenPositions", ge=0, le=200)
+    min_cohort_trades: int = Field(default=8, alias="minCohortTrades", ge=1, le=1000)
+    min_rank_score: Optional[float] = Field(default=None, alias="minRankScore")
+    fill_unused_slots: bool = Field(default=True, alias="fillUnusedSlots")
+    candidate_limit: int = Field(default=500, alias="candidateLimit", ge=1, le=5000)
+
+
 def _service() -> BacktestImportService:
     return BacktestImportService()
 
 
 def _execution_service() -> BacktestExecutionService:
     return BacktestExecutionService()
+
+
+def _portfolio_schedule_service() -> BacktestPortfolioScheduleService:
+    return BacktestPortfolioScheduleService()
 
 
 def _run_service(action: Callable[[BacktestImportService], T]) -> T:
@@ -102,6 +125,19 @@ def _get_run_or_404(service: BacktestImportService, run_id: str) -> dict:
             detail={"message": "backtest run not found", "run_id": run_id},
         )
     return result
+
+
+def _run_schedule_service(action: Callable[[BacktestPortfolioScheduleService], T]) -> T:
+    try:
+        return action(_portfolio_schedule_service())
+    except HTTPException:
+        raise
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail={"message": str(exc)}) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail={"message": str(exc)}) from exc
+    except SQLAlchemyError as exc:
+        raise HTTPException(status_code=500, detail={"message": "portfolio schedule storage query failed"}) from exc
 
 
 @router.get("/presets")
@@ -295,6 +331,38 @@ def list_backtest_trades(
         return service.list_trades(run_id, stock_code=effective_stock_code, limit=limit)
 
     return _run_service(action)
+
+
+@router.post("/runs/{run_id}/portfolio-schedules")
+def create_backtest_portfolio_schedule(run_id: str, request: BacktestPortfolioScheduleRequest) -> dict:
+    payload = request.model_dump(by_alias=False)
+    candidate_limit = int(payload.pop("candidate_limit"))
+    schedule_name = payload.pop("schedule_name")
+    return _run_schedule_service(
+        lambda service: service.create_schedule(
+            run_id,
+            config_payload=payload,
+            schedule_name=schedule_name,
+            limit=candidate_limit,
+        )
+    )
+
+
+@router.get("/runs/{run_id}/portfolio-schedules")
+def list_backtest_portfolio_schedules(
+    run_id: str,
+    limit: int = Query(default=50, ge=1, le=200),
+) -> dict:
+    return _run_schedule_service(lambda service: service.list_schedules(run_id, limit=limit))
+
+
+@router.get("/portfolio-schedules/{schedule_id}")
+def get_backtest_portfolio_schedule(
+    schedule_id: str,
+    limit: int = Query(default=500, ge=1, le=5000),
+    offset: int = Query(default=0, ge=0),
+) -> dict:
+    return _run_schedule_service(lambda service: service.get_schedule(schedule_id, limit=limit, offset=offset))
 
 
 @router.post("/imports")
