@@ -20,11 +20,11 @@ if str(PARENT_DIR) not in sys.path:
     sys.path.insert(0, str(PARENT_DIR))
 
 try:
-    from theme_picker.backtest.signal_ranking import load_db_backtest_runs
+    from theme_picker.backtest.analysis.signal_ranking import load_db_backtest_runs
 except ModuleNotFoundError:
     if str(ROOT_DIR) not in sys.path:
         sys.path.insert(0, str(ROOT_DIR))
-    from src.backtest.signal_ranking import load_db_backtest_runs  # type: ignore[no-redef]
+    from src.backtest.analysis.signal_ranking import load_db_backtest_runs  # type: ignore[no-redef]
 
 
 GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (

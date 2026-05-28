@@ -3,7 +3,7 @@
 from theme_picker.strategy.a_share_box_strategy import AShareBoxStrategy
 from theme_picker.strategy.a_share_migrated_crypto import AShareMigratedCryptoStrategy
 from theme_picker.strategy.base import Strategy, StrategySignal
-from theme_picker.strategy.params import StrategyParams
+from theme_picker.strategy.params import StrategyParamValidationError, StrategyParams
 from theme_picker.strategy.stock_signal_strategy import (
     StockSignalBacktestStrategy,
     StockSignalBreakoutStrategy,
@@ -85,6 +85,7 @@ __all__ = [
     "StockSignalPullbackStrategy",
     "StockSignalTrendFollowStrategy",
     "Strategy",
+    "StrategyParamValidationError",
     "StrategyParams",
     "StrategySignal",
     "STRATEGY_METADATA",

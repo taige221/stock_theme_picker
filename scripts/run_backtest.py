@@ -16,9 +16,9 @@ PARENT_DIR = ROOT_DIR.parent
 if str(PARENT_DIR) not in sys.path:
     sys.path.insert(0, str(PARENT_DIR))
 
-from theme_picker.backtest.data_feed import DailyBarDataFeed
-from theme_picker.backtest.engine import BacktestEngine
-from theme_picker.backtest.models import BacktestConfig
+from theme_picker.backtest.core.engine import BacktestEngine
+from theme_picker.backtest.core.models import BacktestConfig
+from theme_picker.backtest.data.data_feed import DailyBarDataFeed
 from theme_picker.strategy import STRATEGY_REGISTRY, StrategyParams, create_strategy
 
 

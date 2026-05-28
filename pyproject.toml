@@ -50,6 +50,12 @@ packages = [
   "theme_picker.api",
   "theme_picker.application",
   "theme_picker.backtest",
+  "theme_picker.backtest.analysis",
+  "theme_picker.backtest.baselines",
+  "theme_picker.backtest.core",
+  "theme_picker.backtest.data",
+  "theme_picker.backtest.persistence",
+  "theme_picker.backtest.runner",
   "theme_picker.core",
   "theme_picker.data",
   "theme_picker.data_provider",
@@ -61,3 +67,4 @@ packages = [
 
 [tool.setuptools.package-data]
 "theme_picker.data" = ["*.json"]
+"theme_picker.backtest.baselines" = ["*.json"]

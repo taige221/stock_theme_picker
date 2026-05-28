@@ -19,7 +19,7 @@ if str(PARENT_DIR) not in sys.path:
     sys.path.insert(0, str(PARENT_DIR))
 
 try:
-    from theme_picker.backtest.signal_ranking import (
+    from theme_picker.backtest.analysis.signal_ranking import (
         LayeredRankingConfig,
         build_selection_summary,
         candidate_fieldnames,
@@ -31,7 +31,7 @@ try:
 except ModuleNotFoundError:
     if str(ROOT_DIR) not in sys.path:
         sys.path.insert(0, str(ROOT_DIR))
-    from src.backtest.signal_ranking import (  # type: ignore[no-redef]
+    from src.backtest.analysis.signal_ranking import (  # type: ignore[no-redef]
         LayeredRankingConfig,
         build_selection_summary,
         candidate_fieldnames,

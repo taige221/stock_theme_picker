@@ -1,6 +1,8 @@
-"""Backtest package facade."""
+# -*- coding: utf-8 -*-
+"""Core backtest execution, models, and metrics."""
 
 from theme_picker.backtest.core.engine import BacktestEngine
+from theme_picker.backtest.core.metrics import calculate_metrics
 from theme_picker.backtest.core.models import BacktestConfig, BacktestResult, EquityPoint, Position, Trade
 
 __all__ = [
@@ -10,4 +12,5 @@ __all__ = [
     "EquityPoint",
     "Position",
     "Trade",
+    "calculate_metrics",
 ]

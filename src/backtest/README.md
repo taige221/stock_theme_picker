@@ -1,5 +1,46 @@
 ## 回测命令
 
+## 目录结构
+
+回测后端能力集中在 `src/backtest/`，按职责分层：
+
+```text
+src/backtest/
+  core/         # engine / models / metrics，回测执行内核
+  data/         # 日线数据读取适配
+  analysis/     # 回测后诊断、信号分层排序
+  baselines/    # 冻结 baseline 参数
+  runner/       # 后续承接单票/批量 runner 编排
+  persistence/  # 后续承接导入、查询、图表、预设持久化
+```
+
+旧导入路径仍保留兼容包装，例如 `theme_picker.backtest.engine` 和
+`theme_picker.backtest.models` 仍可用；新代码优先使用
+`theme_picker.backtest.core.*`、`theme_picker.backtest.data.*` 和
+`theme_picker.backtest.analysis.*`。
+
+### 0. P0 冻结基线
+
+`a_share_box` 的 P0 baseline 参数固定在：
+
+```text
+src/backtest/baselines/a_share_box_p0_baseline.json
+```
+
+后续策略重构或参数实验，默认先和这份 baseline 同口径比较。建议命令：
+
+```bash
+rtk uv run --extra dev python scripts/run_backtest_batch.py \
+  --stock-codes data/backtests/nextbar_v64_all_stock_codes.json \
+  --start-date 2020-01-01 \
+  --end-date 2026-05-21 \
+  --strategy a_share_box \
+  --price-adjustment qfq \
+  --trading-constraints daily_limits \
+  --params-file src/backtest/baselines/a_share_box_p0_baseline.json \
+  --output-dir data/backtests/p0_a_share_box_baseline
+```
+
 ### 1. 单票回测
 
 最小命令：

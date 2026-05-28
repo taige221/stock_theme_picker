@@ -3,8 +3,12 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, fields
 from typing import Any, Dict, Optional
+
+
+class StrategyParamValidationError(ValueError):
+    """Raised when a strategy parameter payload is malformed."""
 
 
 @dataclass(slots=True)
@@ -164,8 +168,67 @@ class StrategyParams:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, payload: Dict[str, Any] | None) -> "StrategyParams":
-        data = dict(payload or {})
-        allowed = {field_name for field_name in cls.__dataclass_fields__}
+    def from_dict(cls, payload: Dict[str, Any] | None, *, strict: bool = True) -> "StrategyParams":
+        if payload is None:
+            params = cls()
+            params.validate()
+            return params
+        if not isinstance(payload, dict):
+            raise StrategyParamValidationError("StrategyParams payload must be a JSON object")
+
+        data = dict(payload)
+        allowed = {field.name for field in fields(cls)}
+        unknown = sorted(key for key in data if key not in allowed)
+        if unknown and strict:
+            joined = ", ".join(unknown)
+            raise StrategyParamValidationError(f"Unknown StrategyParams field(s): {joined}")
+
         normalized = {key: value for key, value in data.items() if key in allowed}
-        return cls(**normalized)
+        params = cls(**normalized)
+        params.validate()
+        return params
+
+    def validate(self) -> None:
+        for field in fields(self):
+            value = getattr(self, field.name)
+            if value is None or isinstance(value, bool):
+                continue
+            if isinstance(value, (int, float)) and value < 0:
+                raise StrategyParamValidationError(f"{field.name} must be non-negative")
+
+        self._require_positive("box_lookback_days")
+        self._require_positive("breakout_lookback_days")
+        self._require_positive("max_holding_days")
+        self._require_positive("signal_number_lookback_days")
+        self._require_positive("signal_number_event_cooldown_days")
+        self._require_positive("pullback_profit_power_lookback_days")
+        self._require_positive("pullback_profit_power_rolling_gain_days")
+        self._require_positive("pullback_rebound_recent_gain_days")
+        self._require_positive("breakout_trend_hold_extension_max_days")
+        self._require_positive("entry_stall_days")
+        self._require_positive("ma10_confirm_days")
+        self._require_positive("pullback_failure_confirm_days")
+        self._require_positive("symbol_loss_cooldown_losses")
+        self._require_positive("symbol_loss_cooldown_days")
+        self._require_optional_positive("breakout_max_holding_days")
+        self._require_optional_positive("pullback_max_holding_days")
+        self._require_optional_positive("breakout_entry_stall_days")
+        self._require_optional_positive("pullback_entry_stall_days")
+        self._require_optional_positive("pullback_slow_large_entry_stall_days")
+        self._require_optional_positive("pullback_balanced_trend_entry_stall_days")
+        self._require_optional_positive("pullback_high_beta_entry_stall_days")
+        self._require_optional_positive("breakout_ma10_confirm_days")
+        self._require_optional_positive("pullback_ma10_confirm_days")
+
+        if not 0 < float(self.position_size_pct) <= 1:
+            raise StrategyParamValidationError("position_size_pct must be > 0 and <= 1")
+
+    def _require_positive(self, name: str) -> None:
+        value = getattr(self, name)
+        if value <= 0:
+            raise StrategyParamValidationError(f"{name} must be positive")
+
+    def _require_optional_positive(self, name: str) -> None:
+        value = getattr(self, name)
+        if value is not None and value <= 0:
+            raise StrategyParamValidationError(f"{name} must be positive when set")

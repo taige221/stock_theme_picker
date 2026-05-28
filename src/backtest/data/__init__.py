@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Compatibility wrapper for the relocated daily-bar data feed."""
+"""Backtest data loading adapters."""
 
 from theme_picker.backtest.data.data_feed import DailyBarDataFeed
 

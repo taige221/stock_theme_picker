@@ -6,6 +6,8 @@ __pycache__/
 plans/
 logs/
 data/
+!src/backtest/data/
+!src/backtest/data/*.py
 build/
 dist/
 *.egg-info/
