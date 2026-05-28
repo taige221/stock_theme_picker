@@ -14,6 +14,9 @@ class BacktestConfig:
     commission_bps: float = 10.0
     slippage_bps: float = 10.0
     lot_size: int = 100
+    min_commission: float = 5.0
+    stamp_tax_bps: float = 5.0
+    transfer_fee_bps: float = 0.1
     price_adjustment: str = "raw"
     trading_constraint_mode: str = "legacy_pct"
     allow_limit_up_entry: bool = False
@@ -32,6 +35,12 @@ class Position:
     shares: int
     highest_price_seen: float
     lowest_price_seen: float
+    entry_execution_price: float | None = None
+    entry_cost: float | None = None
+    entry_commission: float | None = None
+    entry_stamp_tax: float | None = None
+    entry_transfer_fee: float | None = None
+    entry_slippage: float | None = None
     entry_signal_reason: str = ""
     entry_signal_score: float | None = None
     entry_signal_metadata: Dict[str, Any] = field(default_factory=dict)
@@ -55,6 +64,17 @@ class Trade:
     return_pct: float
     holding_days: int
     exit_reason: str
+    entry_cost: float = 0.0
+    exit_cost: float = 0.0
+    total_cost: float = 0.0
+    entry_commission: float = 0.0
+    exit_commission: float = 0.0
+    entry_stamp_tax: float = 0.0
+    exit_stamp_tax: float = 0.0
+    entry_transfer_fee: float = 0.0
+    exit_transfer_fee: float = 0.0
+    entry_slippage: float = 0.0
+    exit_slippage: float = 0.0
     entry_signal_reason: str = ""
     entry_signal_score: float | None = None
     entry_signal_metadata: Dict[str, Any] = field(default_factory=dict)

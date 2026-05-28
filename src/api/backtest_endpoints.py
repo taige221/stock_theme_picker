@@ -61,6 +61,7 @@ class BacktestExecuteRequest(BaseModel):
     start_date: str = Field(..., alias="startDate", min_length=10, max_length=10)
     end_date: str = Field(..., alias="endDate", min_length=10, max_length=10)
     params: dict[str, Any] = Field(default_factory=dict)
+    config: dict[str, Any] = Field(default_factory=dict)
     price_adjustment: str = Field(default="qfq", alias="priceAdjustment")
     trading_constraints: str = Field(default="daily_limits", alias="tradingConstraints")
     stock_pool_path: Optional[str] = Field(default=None, alias="stockPoolPath")

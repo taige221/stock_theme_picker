@@ -43,6 +43,76 @@ class StallProfile:
     entry_stall_min_return_pct: float
 
 
+@dataclass(frozen=True)
+class BoxSignalContext:
+    working: pd.DataFrame
+    latest: pd.Series
+    current_box: BoxSnapshot
+    previous_box: BoxSnapshot
+    pre_previous_box: Optional[BoxSnapshot]
+    trend: TrendLabel
+    previous_trend: Optional[TrendLabel]
+    close_price: Optional[float]
+    low_price: Optional[float]
+    ma10: Optional[float]
+    pct_chg: float
+    volume_ratio: float
+    turnover_rate: float
+    turnover_rate_median_20: Optional[float]
+    atr_pct_20: Optional[float]
+    style_bucket: Optional[str]
+    open_price: Optional[float]
+    previous_close: Optional[float]
+    macd_dif: Optional[float]
+    macd_dea: Optional[float]
+    macd_hist: Optional[float]
+    macd_hist_slope_3: Optional[float]
+    macd_dif_above_dea: bool
+    macd_above_zero: bool
+    macd_hist_rising_3: bool
+    macd_state: Optional[str]
+    effective_min_turnover_rate: float
+    effective_preferred_turnover_rate_low: float
+    effective_preferred_turnover_rate_high: float
+    breakout_min_breakout_pct: float
+    breakout_min_volume_ratio: float
+    breakout_min_body_pct: float
+    breakout_min_close_above_resistance_pct: float
+    breakout_max_upper_shadow_ratio: float
+    breakout_min_box_touches: int
+    breakout_max_extension_pct: float
+    breakout_max_bias_ma10_pct: float
+    breakout_max_box_height_pct: float
+    breakout_avoid_box_height_low_pct: float
+    breakout_avoid_box_height_high_pct: float
+    breakout_min_stack_lift_pct: float
+    pullback_min_volume_ratio: float
+    pullback_min_box_touches: int
+    pullback_reclaim_pct: float
+    pullback_max_break_below_resistance_pct: float
+    pullback_max_bias_ma10_pct: float
+    pullback_min_box_height_pct: float
+    breakout_min_signal_score: float
+    pullback_min_signal_score: float
+    exit_profile: ExitProfile
+    stall_profile: StallProfile
+    ma10_bias_pct: Optional[float]
+    box_height_pct: Optional[float]
+    box_stack_lift_pct: Optional[float]
+    recovering_from_downtrend: bool
+    pullback_rebound_recent_gain_pct: Optional[float]
+    pullback_profit_power: dict[str, object]
+    pullback_rebound_risk: dict[str, object]
+    base_metadata: dict[str, object]
+
+
+@dataclass(frozen=True)
+class BoxRiskPlan:
+    stop_price: float
+    target_price: float
+    rr_ratio: Optional[float]
+
+
 class AShareBoxStrategy(Strategy):
     """Long-only A-share box strategy.
 
@@ -69,8 +139,10 @@ class AShareBoxStrategy(Strategy):
         entry_signal_metadata: Optional[dict] = None,
         position_highest_price_seen: Optional[float] = None,
     ) -> StrategySignal:
-        min_required = max(40, int(params.box_lookback_days) * 2)
-        available_rows = (int(current_index) + 1) if current_index is not None else len(history)
+        min_required = self._min_required_rows(params)
+        available_rows = 0 if history is None else (
+            (int(current_index) + 1) if current_index is not None else len(history)
+        )
         if history is None or history.empty or available_rows < min_required:
             return StrategySignal(
                 action="hold",
@@ -78,6 +150,57 @@ class AShareBoxStrategy(Strategy):
                 metadata={"price_adjustment": price_adjustment, "strategy_name": self.name},
             )
 
+        working = self._prepare_working_frame(history, current_index=current_index, params=params)
+        context = self._build_signal_context(
+            working=working,
+            params=params,
+            price_adjustment=price_adjustment,
+            entry_signal_reason=entry_signal_reason,
+        )
+
+        if self._missing_price_context(context):
+            return StrategySignal(action="hold", reason="missing_price_context", metadata=context.base_metadata)
+
+        risk_plan = self._build_risk_plan(context, params)
+
+        if has_position and entry_price:
+            return self._generate_exit_signal(
+                context=context,
+                risk_plan=risk_plan,
+                params=params,
+                entry_price=entry_price,
+                holding_days=holding_days,
+                entry_signal_reason=entry_signal_reason,
+                entry_signal_metadata=entry_signal_metadata,
+                position_highest_price_seen=position_highest_price_seen,
+            )
+
+        entry_block_signal = self._check_entry_preconditions(context, params)
+        if entry_block_signal is not None:
+            return entry_block_signal
+
+        breakout_signal = self._generate_breakout_signal(context=context, risk_plan=risk_plan, params=params)
+        if breakout_signal is not None:
+            return breakout_signal
+
+        pullback_signal = self._generate_pullback_signal(context=context, risk_plan=risk_plan, params=params)
+        if pullback_signal is not None:
+            return pullback_signal
+
+        return StrategySignal(action="hold", reason="entry_not_ready", metadata=context.base_metadata)
+
+    @staticmethod
+    def _min_required_rows(params: StrategyParams) -> int:
+        return max(40, int(params.box_lookback_days) * 2)
+
+    def _prepare_working_frame(
+        self,
+        history: pd.DataFrame,
+        *,
+        current_index: Optional[int],
+        params: StrategyParams,
+    ) -> pd.DataFrame:
+        min_required = self._min_required_rows(params)
         slice_lookback = max(
             min_required,
             int(params.signal_number_lookback_days),
@@ -92,7 +215,16 @@ class AShareBoxStrategy(Strategy):
             start_index = max(0, int(current_index) - slice_lookback + 1)
             working = history.iloc[start_index : int(current_index) + 1].copy().reset_index(drop=True)
         self._ensure_indicators(working)
+        return working
 
+    def _build_signal_context(
+        self,
+        *,
+        working: pd.DataFrame,
+        params: StrategyParams,
+        price_adjustment: str,
+        entry_signal_reason: Optional[str],
+    ) -> BoxSignalContext:
         latest = working.iloc[-1]
         current_box = self._build_box_snapshot(working.iloc[-int(params.box_lookback_days):-1], params)
         previous_slice = working.iloc[-int(params.box_lookback_days) * 2:-int(params.box_lookback_days)]
@@ -328,453 +460,570 @@ class AShareBoxStrategy(Strategy):
             "effective_breakeven_exit_threshold_pct": float(params.breakeven_exit_threshold_pct),
         }
 
-        if close_price is None or low_price is None or ma10 is None or previous_close is None:
-            return StrategySignal(action="hold", reason="missing_price_context", metadata=base_metadata)
+        return BoxSignalContext(
+            working=working,
+            latest=latest,
+            current_box=current_box,
+            previous_box=previous_box,
+            pre_previous_box=pre_previous_box,
+            trend=trend,
+            previous_trend=previous_trend,
+            close_price=close_price,
+            low_price=low_price,
+            ma10=ma10,
+            pct_chg=pct_chg,
+            volume_ratio=volume_ratio,
+            turnover_rate=turnover_rate,
+            turnover_rate_median_20=turnover_rate_median_20,
+            atr_pct_20=atr_pct_20,
+            style_bucket=style_bucket,
+            open_price=open_price,
+            previous_close=previous_close,
+            macd_dif=macd_dif,
+            macd_dea=macd_dea,
+            macd_hist=macd_hist,
+            macd_hist_slope_3=macd_hist_slope_3,
+            macd_dif_above_dea=macd_dif_above_dea,
+            macd_above_zero=macd_above_zero,
+            macd_hist_rising_3=macd_hist_rising_3,
+            macd_state=macd_state,
+            effective_min_turnover_rate=effective_min_turnover_rate,
+            effective_preferred_turnover_rate_low=effective_preferred_turnover_rate_low,
+            effective_preferred_turnover_rate_high=effective_preferred_turnover_rate_high,
+            breakout_min_breakout_pct=breakout_min_breakout_pct,
+            breakout_min_volume_ratio=breakout_min_volume_ratio,
+            breakout_min_body_pct=breakout_min_body_pct,
+            breakout_min_close_above_resistance_pct=breakout_min_close_above_resistance_pct,
+            breakout_max_upper_shadow_ratio=breakout_max_upper_shadow_ratio,
+            breakout_min_box_touches=breakout_min_box_touches,
+            breakout_max_extension_pct=breakout_max_extension_pct,
+            breakout_max_bias_ma10_pct=breakout_max_bias_ma10_pct,
+            breakout_max_box_height_pct=breakout_max_box_height_pct,
+            breakout_avoid_box_height_low_pct=breakout_avoid_box_height_low_pct,
+            breakout_avoid_box_height_high_pct=breakout_avoid_box_height_high_pct,
+            breakout_min_stack_lift_pct=breakout_min_stack_lift_pct,
+            pullback_min_volume_ratio=pullback_min_volume_ratio,
+            pullback_min_box_touches=pullback_min_box_touches,
+            pullback_reclaim_pct=pullback_reclaim_pct,
+            pullback_max_break_below_resistance_pct=pullback_max_break_below_resistance_pct,
+            pullback_max_bias_ma10_pct=pullback_max_bias_ma10_pct,
+            pullback_min_box_height_pct=pullback_min_box_height_pct,
+            breakout_min_signal_score=breakout_min_signal_score,
+            pullback_min_signal_score=pullback_min_signal_score,
+            exit_profile=exit_profile,
+            stall_profile=stall_profile,
+            ma10_bias_pct=ma10_bias_pct,
+            box_height_pct=box_height_pct,
+            box_stack_lift_pct=box_stack_lift_pct,
+            recovering_from_downtrend=recovering_from_downtrend,
+            pullback_rebound_recent_gain_pct=pullback_rebound_recent_gain_pct,
+            pullback_profit_power=pullback_profit_power,
+            pullback_rebound_risk=pullback_rebound_risk,
+            base_metadata=base_metadata,
+        )
 
-        stop_price = current_box.support * (1 - float(params.stop_buffer_pct))
+    @staticmethod
+    def _missing_price_context(context: BoxSignalContext) -> bool:
+        return (
+            context.close_price is None
+            or context.low_price is None
+            or context.ma10 is None
+            or context.previous_close is None
+        )
+
+    @staticmethod
+    def _build_risk_plan(context: BoxSignalContext, params: StrategyParams) -> BoxRiskPlan:
+        close_price = float(context.close_price)
+        stop_price = context.current_box.support * (1 - float(params.stop_buffer_pct))
         risk_per_share = max(0.0, close_price - stop_price)
-        target_price = close_price + max(current_box.height, risk_per_share * float(params.rr_min))
+        target_price = close_price + max(context.current_box.height, risk_per_share * float(params.rr_min))
         rr_ratio = (target_price - close_price) / risk_per_share if risk_per_share > 0 else None
+        return BoxRiskPlan(stop_price=stop_price, target_price=target_price, rr_ratio=rr_ratio)
 
-        if has_position and entry_price:
-            pnl_pct = (close_price - entry_price) / entry_price
-            breakout_trend_hold_extension = self._detect_breakout_trend_hold_extension(
-                entry_signal_reason=entry_signal_reason,
-                close_price=close_price,
-                ma10=ma10,
-                macd_state=macd_state,
-                holding_days=holding_days,
-                params=params,
+    def _generate_exit_signal(
+        self,
+        *,
+        context: BoxSignalContext,
+        risk_plan: BoxRiskPlan,
+        params: StrategyParams,
+        entry_price: float,
+        holding_days: int,
+        entry_signal_reason: Optional[str],
+        entry_signal_metadata: Optional[dict],
+        position_highest_price_seen: Optional[float],
+    ) -> StrategySignal:
+        close_price = float(context.close_price)
+        ma10 = float(context.ma10)
+        pnl_pct = (close_price - entry_price) / entry_price
+        breakout_trend_hold_extension = self._detect_breakout_trend_hold_extension(
+            entry_signal_reason=entry_signal_reason,
+            close_price=close_price,
+            ma10=ma10,
+            macd_state=context.macd_state,
+            holding_days=holding_days,
+            params=params,
+        )
+        exit_metadata = {
+            **context.base_metadata,
+            **breakout_trend_hold_extension,
+        }
+        breakeven_signal = self._detect_breakeven_stop(
+            entry_signal_reason=entry_signal_reason,
+            entry_price=entry_price,
+            close_price=close_price,
+            position_highest_price_seen=position_highest_price_seen,
+            params=params,
+        )
+        if breakeven_signal:
+            return StrategySignal(
+                action="sell",
+                reason="breakeven_stop",
+                score=pnl_pct,
+                metadata={
+                    **exit_metadata,
+                    **breakeven_signal,
+                },
             )
-            exit_metadata = {
-                **base_metadata,
-                **breakout_trend_hold_extension,
-            }
-            breakeven_signal = self._detect_breakeven_stop(
-                entry_signal_reason=entry_signal_reason,
-                entry_price=entry_price,
-                close_price=close_price,
-                position_highest_price_seen=position_highest_price_seen,
-                params=params,
-            )
-            if breakeven_signal:
+        if pnl_pct <= -abs(context.exit_profile.stop_loss_pct):
+            return StrategySignal(action="sell", reason="stop_loss_hit", score=pnl_pct, metadata=exit_metadata)
+        if pnl_pct >= abs(context.exit_profile.take_profit_pct):
+            if not bool(breakout_trend_hold_extension.get("breakout_trend_hold_extension_active")):
+                return StrategySignal(action="sell", reason="take_profit_hit", score=pnl_pct, metadata=exit_metadata)
+        if bool(context.stall_profile.enable_entry_stall_exit):
+            stall_days = max(1, int(context.stall_profile.entry_stall_days))
+            stall_min_return_pct = float(context.stall_profile.entry_stall_min_return_pct)
+            if holding_days >= stall_days and pnl_pct < stall_min_return_pct:
                 return StrategySignal(
                     action="sell",
-                    reason="breakeven_stop",
+                    reason="entry_stall_exit",
                     score=pnl_pct,
                     metadata={
                         **exit_metadata,
-                        **breakeven_signal,
+                        "stall_days": stall_days,
+                        "stall_min_return_pct": stall_min_return_pct,
                     },
                 )
-            if pnl_pct <= -abs(exit_profile.stop_loss_pct):
-                return StrategySignal(action="sell", reason="stop_loss_hit", score=pnl_pct, metadata=exit_metadata)
-            if pnl_pct >= abs(exit_profile.take_profit_pct):
-                if not bool(breakout_trend_hold_extension.get("breakout_trend_hold_extension_active")):
-                    return StrategySignal(action="sell", reason="take_profit_hit", score=pnl_pct, metadata=exit_metadata)
-            if bool(stall_profile.enable_entry_stall_exit):
-                stall_days = max(1, int(stall_profile.entry_stall_days))
-                stall_min_return_pct = float(stall_profile.entry_stall_min_return_pct)
-                if holding_days >= stall_days and pnl_pct < stall_min_return_pct:
-                    return StrategySignal(
-                        action="sell",
-                        reason="entry_stall_exit",
-                        score=pnl_pct,
-                        metadata={
-                            **exit_metadata,
-                            "stall_days": stall_days,
-                            "stall_min_return_pct": stall_min_return_pct,
-                        },
-                    )
-            pullback_failure_signal = self._detect_pullback_failure_exit(
-                working=working,
-                params=params,
-                entry_signal_reason=entry_signal_reason,
-                entry_signal_metadata=entry_signal_metadata,
-                current_box=current_box,
-                close_price=close_price,
-                pnl_pct=pnl_pct,
-                holding_days=holding_days,
+        pullback_failure_signal = self._detect_pullback_failure_exit(
+            working=context.working,
+            params=params,
+            entry_signal_reason=entry_signal_reason,
+            entry_signal_metadata=entry_signal_metadata,
+            current_box=context.current_box,
+            close_price=close_price,
+            pnl_pct=pnl_pct,
+            holding_days=holding_days,
+        )
+        if pullback_failure_signal:
+            return StrategySignal(
+                action="sell",
+                reason="pullback_failure_exit",
+                score=pnl_pct,
+                metadata={
+                    **exit_metadata,
+                    **pullback_failure_signal,
+                },
             )
-            if pullback_failure_signal:
+        if bool(context.exit_profile.enable_trailing_stop) and position_highest_price_seen and entry_price > 0:
+            activate_profit_pct = float(context.exit_profile.trailing_stop_activate_profit_pct)
+            trailing_drawdown_pct = float(context.exit_profile.trailing_stop_drawdown_pct)
+            peak_profit_pct = (float(position_highest_price_seen) - entry_price) / entry_price
+            trailing_drawdown_from_peak = (
+                (float(position_highest_price_seen) - close_price) / float(position_highest_price_seen)
+                if float(position_highest_price_seen) > 0
+                else 0.0
+            )
+            if peak_profit_pct >= activate_profit_pct and trailing_drawdown_from_peak >= trailing_drawdown_pct:
                 return StrategySignal(
                     action="sell",
-                    reason="pullback_failure_exit",
+                    reason="trailing_stop_hit",
                     score=pnl_pct,
                     metadata={
                         **exit_metadata,
-                        **pullback_failure_signal,
+                        "position_highest_price_seen": round(float(position_highest_price_seen), 4),
+                        "peak_profit_pct": round(peak_profit_pct, 4),
+                        "trailing_drawdown_from_peak": round(trailing_drawdown_from_peak, 4),
+                        "trailing_stop_activate_profit_pct": activate_profit_pct,
+                        "trailing_stop_drawdown_pct": trailing_drawdown_pct,
                     },
                 )
-            if bool(exit_profile.enable_trailing_stop) and position_highest_price_seen and entry_price > 0:
-                activate_profit_pct = float(exit_profile.trailing_stop_activate_profit_pct)
-                trailing_drawdown_pct = float(exit_profile.trailing_stop_drawdown_pct)
-                peak_profit_pct = (float(position_highest_price_seen) - entry_price) / entry_price
-                trailing_drawdown_from_peak = (
-                    (float(position_highest_price_seen) - close_price) / float(position_highest_price_seen)
-                    if float(position_highest_price_seen) > 0
-                    else 0.0
-                )
-                if peak_profit_pct >= activate_profit_pct and trailing_drawdown_from_peak >= trailing_drawdown_pct:
-                    return StrategySignal(
-                        action="sell",
-                        reason="trailing_stop_hit",
-                        score=pnl_pct,
-                        metadata={
-                            **exit_metadata,
-                            "position_highest_price_seen": round(float(position_highest_price_seen), 4),
-                            "peak_profit_pct": round(peak_profit_pct, 4),
-                            "trailing_drawdown_from_peak": round(trailing_drawdown_from_peak, 4),
-                            "trailing_stop_activate_profit_pct": activate_profit_pct,
-                            "trailing_stop_drawdown_pct": trailing_drawdown_pct,
-                        },
-                    )
-            if bool(breakout_trend_hold_extension.get("breakout_trend_hold_extension_limit_hit")):
+        if bool(breakout_trend_hold_extension.get("breakout_trend_hold_extension_limit_hit")):
+            return StrategySignal(
+                action="sell",
+                reason="breakout_trend_extension_max_days_reached",
+                score=pnl_pct,
+                metadata=exit_metadata,
+            )
+        if holding_days >= int(context.exit_profile.max_holding_days):
+            if not bool(breakout_trend_hold_extension.get("breakout_trend_hold_extension_active")):
                 return StrategySignal(
                     action="sell",
-                    reason="breakout_trend_extension_max_days_reached",
+                    reason="max_holding_days_reached",
                     score=pnl_pct,
                     metadata=exit_metadata,
                 )
-            if holding_days >= int(exit_profile.max_holding_days):
-                if not bool(breakout_trend_hold_extension.get("breakout_trend_hold_extension_active")):
+        if close_price < risk_plan.stop_price:
+            return StrategySignal(action="sell", reason="box_support_failed", score=pnl_pct, metadata=exit_metadata)
+        if bool(context.exit_profile.enable_ma10_confirm_exit):
+            ma10_confirm_days = max(1, int(context.exit_profile.ma10_confirm_days))
+            confirm_window = context.working.tail(ma10_confirm_days)
+            if len(confirm_window) >= ma10_confirm_days:
+                close_window = pd.to_numeric(confirm_window["close"], errors="coerce")
+                ma10_window = pd.to_numeric(confirm_window["ma10"], errors="coerce")
+                below_ma10_confirmed = bool(((close_window < ma10_window).fillna(False)).all())
+                if below_ma10_confirmed:
                     return StrategySignal(
                         action="sell",
-                        reason="max_holding_days_reached",
+                        reason="close_below_ma10_confirmed",
                         score=pnl_pct,
-                        metadata=exit_metadata,
+                        metadata={
+                            **exit_metadata,
+                            "ma10_confirm_days": ma10_confirm_days,
+                        },
                     )
-            if close_price < stop_price:
-                return StrategySignal(action="sell", reason="box_support_failed", score=pnl_pct, metadata=exit_metadata)
-            if bool(exit_profile.enable_ma10_confirm_exit):
-                ma10_confirm_days = max(1, int(exit_profile.ma10_confirm_days))
-                confirm_window = working.tail(ma10_confirm_days)
-                if len(confirm_window) >= ma10_confirm_days:
-                    close_window = pd.to_numeric(confirm_window["close"], errors="coerce")
-                    ma10_window = pd.to_numeric(confirm_window["ma10"], errors="coerce")
-                    below_ma10_confirmed = bool(((close_window < ma10_window).fillna(False)).all())
-                    if below_ma10_confirmed:
-                        return StrategySignal(
-                            action="sell",
-                            reason="close_below_ma10_confirmed",
-                            score=pnl_pct,
-                            metadata={
-                                **exit_metadata,
-                                "ma10_confirm_days": ma10_confirm_days,
-                            },
-                        )
-            elif close_price < ma10:
-                return StrategySignal(action="sell", reason="close_below_ma10", score=pnl_pct, metadata=exit_metadata)
-            return StrategySignal(action="hold", reason="holding", metadata=exit_metadata)
+        elif close_price < ma10:
+            return StrategySignal(action="sell", reason="close_below_ma10", score=pnl_pct, metadata=exit_metadata)
+        return StrategySignal(action="hold", reason="holding", metadata=exit_metadata)
 
-        if bool(params.require_uptrend_for_entry) and trend != "uptrend":
-            return StrategySignal(action="hold", reason="trend_not_up", metadata=base_metadata)
+    def _check_entry_preconditions(
+        self,
+        context: BoxSignalContext,
+        params: StrategyParams,
+    ) -> Optional[StrategySignal]:
+        if bool(params.require_uptrend_for_entry) and context.trend != "uptrend":
+            return StrategySignal(action="hold", reason="trend_not_up", metadata=context.base_metadata)
+        if context.turnover_rate < context.effective_min_turnover_rate:
+            return StrategySignal(action="hold", reason="turnover_rate_too_low", metadata=context.base_metadata)
+        if self._turnover_rate_too_high(
+            turnover_rate=context.turnover_rate,
+            max_turnover_rate=float(params.max_turnover_rate),
+        ):
+            return StrategySignal(action="hold", reason="turnover_rate_too_high", metadata=context.base_metadata)
+        return None
 
-        if turnover_rate < effective_min_turnover_rate:
-            return StrategySignal(action="hold", reason="turnover_rate_too_low", metadata=base_metadata)
-        if self._turnover_rate_too_high(turnover_rate=turnover_rate, max_turnover_rate=float(params.max_turnover_rate)):
-            return StrategySignal(action="hold", reason="turnover_rate_too_high", metadata=base_metadata)
-
+    def _generate_breakout_signal(
+        self,
+        *,
+        context: BoxSignalContext,
+        risk_plan: BoxRiskPlan,
+        params: StrategyParams,
+    ) -> Optional[StrategySignal]:
+        close_price = float(context.close_price)
+        low_price = float(context.low_price)
         breakout_confirmed = (
-            previous_close <= current_box.resistance
-            and close_price > current_box.resistance
-            and pct_chg >= breakout_min_breakout_pct
-            and volume_ratio >= breakout_min_volume_ratio
+            float(context.previous_close) <= context.current_box.resistance
+            and close_price > context.current_box.resistance
+            and context.pct_chg >= context.breakout_min_breakout_pct
+            and context.volume_ratio >= context.breakout_min_volume_ratio
             and self._passes_breakout_body_filter(
-                open_price=open_price,
+                open_price=context.open_price,
                 close_price=close_price,
-                breakout_min_body_pct=breakout_min_body_pct,
+                breakout_min_body_pct=context.breakout_min_body_pct,
             )
             and self._passes_breakout_close_filter(
                 close_price=close_price,
-                resistance=current_box.resistance,
-                breakout_min_close_above_resistance_pct=breakout_min_close_above_resistance_pct,
+                resistance=context.current_box.resistance,
+                breakout_min_close_above_resistance_pct=context.breakout_min_close_above_resistance_pct,
             )
             and self._passes_breakout_upper_shadow_filter(
-                high_price=self._to_float(latest.get("high")),
+                high_price=self._to_float(context.latest.get("high")),
                 low_price=low_price,
                 close_price=close_price,
-                breakout_max_upper_shadow_ratio=breakout_max_upper_shadow_ratio,
+                breakout_max_upper_shadow_ratio=context.breakout_max_upper_shadow_ratio,
             )
-            and current_box.resistance_touches >= breakout_min_box_touches
-            and ((close_price - current_box.resistance) / current_box.resistance) <= breakout_max_extension_pct
+            and context.current_box.resistance_touches >= context.breakout_min_box_touches
+            and ((close_price - context.current_box.resistance) / context.current_box.resistance)
+            <= context.breakout_max_extension_pct
             and self._passes_max_box_height_filter(
-                box_height_pct=box_height_pct,
-                max_box_height_pct=breakout_max_box_height_pct,
+                box_height_pct=context.box_height_pct,
+                max_box_height_pct=context.breakout_max_box_height_pct,
             )
             and self._passes_avoid_box_height_range_filter(
-                box_height_pct=box_height_pct,
-                low_pct=breakout_avoid_box_height_low_pct,
-                high_pct=breakout_avoid_box_height_high_pct,
+                box_height_pct=context.box_height_pct,
+                low_pct=context.breakout_avoid_box_height_low_pct,
+                high_pct=context.breakout_avoid_box_height_high_pct,
             )
             and self._passes_min_stack_lift_filter(
-                box_stack_lift_pct=box_stack_lift_pct,
-                min_stack_lift_pct=breakout_min_stack_lift_pct,
+                box_stack_lift_pct=context.box_stack_lift_pct,
+                min_stack_lift_pct=context.breakout_min_stack_lift_pct,
             )
             and self._passes_ma10_bias_filter(
-                ma10_bias_pct=ma10_bias_pct,
-                max_bias_ma10_pct=breakout_max_bias_ma10_pct,
+                ma10_bias_pct=context.ma10_bias_pct,
+                max_bias_ma10_pct=context.breakout_max_bias_ma10_pct,
             )
-            and not (bool(params.block_breakout_after_downtrend) and recovering_from_downtrend)
+            and not (bool(params.block_breakout_after_downtrend) and context.recovering_from_downtrend)
         )
-        if breakout_confirmed:
-            breakout_extension_pct = (close_price - current_box.resistance) / current_box.resistance
-            breakout_body_pct = self._calculate_breakout_body_pct(open_price=open_price, close_price=close_price)
-            breakout_close_above_resistance_pct = self._calculate_breakout_close_above_resistance_pct(
-                close_price=close_price,
-                resistance=current_box.resistance,
-            )
-            breakout_upper_shadow_ratio = self._calculate_breakout_upper_shadow_ratio(
-                high_price=self._to_float(latest.get("high")),
-                low_price=low_price,
-                close_price=close_price,
-            )
-            signal_number, breakout_cluster_count = self._estimate_signal_number(
-                working,
-                params=params,
-                signal_type="breakout_long",
-            )
-            quality_score = self._score_breakout_signal(
-                trend=trend,
-                current_box=current_box,
-                volume_ratio=volume_ratio,
-                turnover_rate=turnover_rate,
-                effective_min_turnover_rate=effective_min_turnover_rate,
-                preferred_turnover_rate_low=effective_preferred_turnover_rate_low,
-                preferred_turnover_rate_high=effective_preferred_turnover_rate_high,
-                extension_pct=breakout_extension_pct,
-                breakout_body_pct=breakout_body_pct,
-                breakout_close_above_resistance_pct=breakout_close_above_resistance_pct,
-                breakout_upper_shadow_ratio=breakout_upper_shadow_ratio,
-                box_height_pct=box_height_pct,
-                box_stack_lift_pct=box_stack_lift_pct,
-                style_bucket=style_bucket,
-                rr_ratio=rr_ratio,
-                signal_number=signal_number,
-                params=params,
-                breakout_min_volume_ratio=breakout_min_volume_ratio,
-                breakout_min_box_touches=breakout_min_box_touches,
-                breakout_max_extension_pct=breakout_max_extension_pct,
-            )
-            macd_score_adjustment = self._calculate_macd_score_adjustment(
-                signal_type="breakout_long",
-                volume_ratio=volume_ratio,
-                macd_dif=macd_dif,
-                macd_dea=macd_dea,
-                macd_hist=macd_hist,
-                macd_hist_slope_3=macd_hist_slope_3,
-                params=params,
-            )
-            macd_divergence = self._detect_macd_divergence(
-                working=working,
-                signal_type="breakout_long",
-                volume_ratio=volume_ratio,
-                params=params,
-            )
-            macd_divergence_score_adjustment = self._calculate_macd_divergence_score_adjustment(
-                signal_type="breakout_long",
-                divergence=macd_divergence,
-                params=params,
-            )
-            quality_score = self._apply_score_adjustment(quality_score, macd_score_adjustment)
-            quality_score = self._apply_score_adjustment(quality_score, macd_divergence_score_adjustment)
-            if (
-                bool(params.enable_macd_divergence_decision)
-                and bool(params.breakout_block_macd_bearish_divergence)
-                and bool(macd_divergence.get("breakout_macd_bearish_divergence"))
-            ):
-                return StrategySignal(
-                    action="hold",
-                    reason="breakout_macd_bearish_divergence",
-                    score=quality_score,
-                    metadata={
-                        **base_metadata,
-                        "signal_type": "breakout_long",
-                        "quality_score": quality_score,
-                        "macd_score_adjustment": macd_score_adjustment,
-                        "macd_divergence_score_adjustment": macd_divergence_score_adjustment,
-                        **macd_divergence,
-                    },
-                )
-            if quality_score < breakout_min_signal_score:
-                return StrategySignal(
-                    action="hold",
-                    reason="breakout_score_too_low",
-                    score=quality_score,
-                    metadata={
-                        **base_metadata,
-                        "signal_type": "breakout_long",
-                        "quality_score": quality_score,
-                        "macd_score_adjustment": macd_score_adjustment,
-                        "macd_divergence_score_adjustment": macd_divergence_score_adjustment,
-                        **macd_divergence,
-                    },
-                )
+        if not breakout_confirmed:
+            return None
+
+        breakout_extension_pct = (close_price - context.current_box.resistance) / context.current_box.resistance
+        breakout_body_pct = self._calculate_breakout_body_pct(
+            open_price=context.open_price,
+            close_price=close_price,
+        )
+        breakout_close_above_resistance_pct = self._calculate_breakout_close_above_resistance_pct(
+            close_price=close_price,
+            resistance=context.current_box.resistance,
+        )
+        breakout_upper_shadow_ratio = self._calculate_breakout_upper_shadow_ratio(
+            high_price=self._to_float(context.latest.get("high")),
+            low_price=low_price,
+            close_price=close_price,
+        )
+        signal_number, breakout_cluster_count = self._estimate_signal_number(
+            context.working,
+            params=params,
+            signal_type="breakout_long",
+        )
+        quality_score = self._score_breakout_signal(
+            trend=context.trend,
+            current_box=context.current_box,
+            volume_ratio=context.volume_ratio,
+            turnover_rate=context.turnover_rate,
+            effective_min_turnover_rate=context.effective_min_turnover_rate,
+            preferred_turnover_rate_low=context.effective_preferred_turnover_rate_low,
+            preferred_turnover_rate_high=context.effective_preferred_turnover_rate_high,
+            extension_pct=breakout_extension_pct,
+            breakout_body_pct=breakout_body_pct,
+            breakout_close_above_resistance_pct=breakout_close_above_resistance_pct,
+            breakout_upper_shadow_ratio=breakout_upper_shadow_ratio,
+            box_height_pct=context.box_height_pct,
+            box_stack_lift_pct=context.box_stack_lift_pct,
+            style_bucket=context.style_bucket,
+            rr_ratio=risk_plan.rr_ratio,
+            signal_number=signal_number,
+            params=params,
+            breakout_min_volume_ratio=context.breakout_min_volume_ratio,
+            breakout_min_box_touches=context.breakout_min_box_touches,
+            breakout_max_extension_pct=context.breakout_max_extension_pct,
+        )
+        macd_score_adjustment = self._calculate_macd_score_adjustment(
+            signal_type="breakout_long",
+            volume_ratio=context.volume_ratio,
+            macd_dif=context.macd_dif,
+            macd_dea=context.macd_dea,
+            macd_hist=context.macd_hist,
+            macd_hist_slope_3=context.macd_hist_slope_3,
+            params=params,
+        )
+        macd_divergence = self._detect_macd_divergence(
+            working=context.working,
+            signal_type="breakout_long",
+            volume_ratio=context.volume_ratio,
+            params=params,
+        )
+        macd_divergence_score_adjustment = self._calculate_macd_divergence_score_adjustment(
+            signal_type="breakout_long",
+            divergence=macd_divergence,
+            params=params,
+        )
+        quality_score = self._apply_score_adjustment(quality_score, macd_score_adjustment)
+        quality_score = self._apply_score_adjustment(quality_score, macd_divergence_score_adjustment)
+        if (
+            bool(params.enable_macd_divergence_decision)
+            and bool(params.breakout_block_macd_bearish_divergence)
+            and bool(macd_divergence.get("breakout_macd_bearish_divergence"))
+        ):
             return StrategySignal(
-                action="buy",
-                reason="breakout_long",
+                action="hold",
+                reason="breakout_macd_bearish_divergence",
                 score=quality_score,
                 metadata={
-                    **base_metadata,
+                    **context.base_metadata,
                     "signal_type": "breakout_long",
-                    "signal_number": signal_number,
-                    "breakout_cluster_count": breakout_cluster_count,
-                    "signal_number_rule": "count breakout clusters inside lookback window",
-                    "signal_number_lookback_days": int(params.signal_number_lookback_days),
-                    "signal_number_event_cooldown_days": int(params.signal_number_event_cooldown_days),
                     "quality_score": quality_score,
                     "macd_score_adjustment": macd_score_adjustment,
                     "macd_divergence_score_adjustment": macd_divergence_score_adjustment,
-                    "rr_ratio": round(rr_ratio, 4) if rr_ratio is not None else None,
-                    "entry_price_hint": close_price,
-                    "stop_price_hint": round(stop_price, 4),
-                    "target_price_hint": round(target_price, 4),
                     **macd_divergence,
-                    "breakout_extension_pct": round(breakout_extension_pct, 4),
-                    "breakout_body_pct": (
-                        round(breakout_body_pct, 4) if breakout_body_pct is not None else None
-                    ),
-                    "breakout_close_above_resistance_pct": round(breakout_close_above_resistance_pct, 4),
-                    "breakout_upper_shadow_ratio": (
-                        round(breakout_upper_shadow_ratio, 4)
-                        if breakout_upper_shadow_ratio is not None
-                        else None
-                    ),
                 },
             )
-
-        pullback_signal = None
-        if self._passes_ma10_bias_filter(
-            ma10_bias_pct=ma10_bias_pct,
-            max_bias_ma10_pct=pullback_max_bias_ma10_pct,
-        ) and self._passes_min_box_height_filter(
-            box_height_pct=box_height_pct,
-            min_box_height_pct=pullback_min_box_height_pct,
-        ):
-            pullback_signal = self._detect_pullback_bounce(
-                working=working,
-                params=params,
-                current_box=current_box,
-                close_price=close_price,
-                low_price=low_price,
-                open_price=open_price,
-                volume_ratio=volume_ratio,
-                pullback_min_volume_ratio=pullback_min_volume_ratio,
-                pullback_min_box_touches=pullback_min_box_touches,
-                pullback_reclaim_pct=pullback_reclaim_pct,
-                pullback_max_break_below_resistance_pct=pullback_max_break_below_resistance_pct,
-            )
-        if pullback_signal:
-            signal_number, breakout_cluster_count = self._estimate_signal_number(
-                working,
-                params=params,
-                signal_type="pullback_bounce",
-            )
-            quality_score = self._score_pullback_signal(
-                trend=trend,
-                current_box=current_box,
-                volume_ratio=volume_ratio,
-                turnover_rate=turnover_rate,
-                effective_min_turnover_rate=effective_min_turnover_rate,
-                preferred_turnover_rate_low=effective_preferred_turnover_rate_low,
-                preferred_turnover_rate_high=effective_preferred_turnover_rate_high,
-                style_bucket=style_bucket,
-                pullback_low_vs_resistance_pct=float(pullback_signal["pullback_low_vs_resistance_pct"]),
-                pullback_close_above_resistance_pct=float(pullback_signal["pullback_close_above_resistance_pct"]),
-                box_height_pct=box_height_pct,
-                box_stack_lift_pct=box_stack_lift_pct,
-                rr_ratio=rr_ratio,
-                signal_number=signal_number,
-                params=params,
-                pullback_min_volume_ratio=pullback_min_volume_ratio,
-                pullback_min_box_touches=pullback_min_box_touches,
-            )
-            macd_score_adjustment = self._calculate_macd_score_adjustment(
-                signal_type="pullback_bounce",
-                volume_ratio=volume_ratio,
-                macd_dif=macd_dif,
-                macd_dea=macd_dea,
-                macd_hist=macd_hist,
-                macd_hist_slope_3=macd_hist_slope_3,
-                params=params,
-            )
-            macd_divergence = self._detect_macd_divergence(
-                working=working,
-                signal_type="pullback_bounce",
-                volume_ratio=volume_ratio,
-                params=params,
-            )
-            macd_divergence_score_adjustment = self._calculate_macd_divergence_score_adjustment(
-                signal_type="pullback_bounce",
-                divergence=macd_divergence,
-                params=params,
-            )
-            pullback_rebound_score_adjustment = self._calculate_pullback_rebound_score_adjustment(
-                rebound_risk=pullback_rebound_risk,
-                profit_power=pullback_profit_power,
-                params=params,
-            )
-            quality_score = self._apply_score_adjustment(quality_score, macd_score_adjustment)
-            quality_score = self._apply_score_adjustment(quality_score, macd_divergence_score_adjustment)
-            quality_score = self._apply_score_adjustment(quality_score, pullback_rebound_score_adjustment)
-            if bool(pullback_rebound_risk.get("pullback_rebound_blocked")):
-                return StrategySignal(
-                    action="hold",
-                    reason="pullback_rebound_risk_delayed",
-                    score=quality_score,
-                    metadata={
-                        **base_metadata,
-                        "signal_type": "pullback_bounce",
-                        "quality_score": quality_score,
-                        "macd_score_adjustment": macd_score_adjustment,
-                        "macd_divergence_score_adjustment": macd_divergence_score_adjustment,
-                        "pullback_rebound_score_adjustment": pullback_rebound_score_adjustment,
-                        **macd_divergence,
-                        **pullback_signal,
-                    },
-                )
-            if quality_score < pullback_min_signal_score:
-                return StrategySignal(
-                    action="hold",
-                    reason="pullback_score_too_low",
-                    score=quality_score,
-                    metadata={
-                        **base_metadata,
-                        "signal_type": "pullback_bounce",
-                        "quality_score": quality_score,
-                        "macd_score_adjustment": macd_score_adjustment,
-                        "macd_divergence_score_adjustment": macd_divergence_score_adjustment,
-                        "pullback_rebound_score_adjustment": pullback_rebound_score_adjustment,
-                        **macd_divergence,
-                        **pullback_signal,
-                    },
-                )
+        if quality_score < context.breakout_min_signal_score:
             return StrategySignal(
-                action="buy",
-                reason="pullback_bounce",
+                action="hold",
+                reason="breakout_score_too_low",
                 score=quality_score,
                 metadata={
-                    **base_metadata,
+                    **context.base_metadata,
+                    "signal_type": "breakout_long",
+                    "quality_score": quality_score,
+                    "macd_score_adjustment": macd_score_adjustment,
+                    "macd_divergence_score_adjustment": macd_divergence_score_adjustment,
+                    **macd_divergence,
+                },
+            )
+        return StrategySignal(
+            action="buy",
+            reason="breakout_long",
+            score=quality_score,
+            metadata={
+                **context.base_metadata,
+                "signal_type": "breakout_long",
+                "signal_number": signal_number,
+                "breakout_cluster_count": breakout_cluster_count,
+                "signal_number_rule": "count breakout clusters inside lookback window",
+                "signal_number_lookback_days": int(params.signal_number_lookback_days),
+                "signal_number_event_cooldown_days": int(params.signal_number_event_cooldown_days),
+                "quality_score": quality_score,
+                "macd_score_adjustment": macd_score_adjustment,
+                "macd_divergence_score_adjustment": macd_divergence_score_adjustment,
+                "rr_ratio": round(risk_plan.rr_ratio, 4) if risk_plan.rr_ratio is not None else None,
+                "entry_price_hint": close_price,
+                "stop_price_hint": round(risk_plan.stop_price, 4),
+                "target_price_hint": round(risk_plan.target_price, 4),
+                **macd_divergence,
+                "breakout_extension_pct": round(breakout_extension_pct, 4),
+                "breakout_body_pct": (
+                    round(breakout_body_pct, 4) if breakout_body_pct is not None else None
+                ),
+                "breakout_close_above_resistance_pct": round(breakout_close_above_resistance_pct, 4),
+                "breakout_upper_shadow_ratio": (
+                    round(breakout_upper_shadow_ratio, 4)
+                    if breakout_upper_shadow_ratio is not None
+                    else None
+                ),
+            },
+        )
+
+    def _generate_pullback_signal(
+        self,
+        *,
+        context: BoxSignalContext,
+        risk_plan: BoxRiskPlan,
+        params: StrategyParams,
+    ) -> Optional[StrategySignal]:
+        close_price = float(context.close_price)
+        low_price = float(context.low_price)
+        pullback_signal = None
+        if self._passes_ma10_bias_filter(
+            ma10_bias_pct=context.ma10_bias_pct,
+            max_bias_ma10_pct=context.pullback_max_bias_ma10_pct,
+        ) and self._passes_min_box_height_filter(
+            box_height_pct=context.box_height_pct,
+            min_box_height_pct=context.pullback_min_box_height_pct,
+        ):
+            pullback_signal = self._detect_pullback_bounce(
+                working=context.working,
+                params=params,
+                current_box=context.current_box,
+                close_price=close_price,
+                low_price=low_price,
+                open_price=context.open_price,
+                volume_ratio=context.volume_ratio,
+                pullback_min_volume_ratio=context.pullback_min_volume_ratio,
+                pullback_min_box_touches=context.pullback_min_box_touches,
+                pullback_reclaim_pct=context.pullback_reclaim_pct,
+                pullback_max_break_below_resistance_pct=context.pullback_max_break_below_resistance_pct,
+            )
+        if not pullback_signal:
+            return None
+
+        signal_number, breakout_cluster_count = self._estimate_signal_number(
+            context.working,
+            params=params,
+            signal_type="pullback_bounce",
+        )
+        quality_score = self._score_pullback_signal(
+            trend=context.trend,
+            current_box=context.current_box,
+            volume_ratio=context.volume_ratio,
+            turnover_rate=context.turnover_rate,
+            effective_min_turnover_rate=context.effective_min_turnover_rate,
+            preferred_turnover_rate_low=context.effective_preferred_turnover_rate_low,
+            preferred_turnover_rate_high=context.effective_preferred_turnover_rate_high,
+            style_bucket=context.style_bucket,
+            pullback_low_vs_resistance_pct=float(pullback_signal["pullback_low_vs_resistance_pct"]),
+            pullback_close_above_resistance_pct=float(pullback_signal["pullback_close_above_resistance_pct"]),
+            box_height_pct=context.box_height_pct,
+            box_stack_lift_pct=context.box_stack_lift_pct,
+            rr_ratio=risk_plan.rr_ratio,
+            signal_number=signal_number,
+            params=params,
+            pullback_min_volume_ratio=context.pullback_min_volume_ratio,
+            pullback_min_box_touches=context.pullback_min_box_touches,
+        )
+        macd_score_adjustment = self._calculate_macd_score_adjustment(
+            signal_type="pullback_bounce",
+            volume_ratio=context.volume_ratio,
+            macd_dif=context.macd_dif,
+            macd_dea=context.macd_dea,
+            macd_hist=context.macd_hist,
+            macd_hist_slope_3=context.macd_hist_slope_3,
+            params=params,
+        )
+        macd_divergence = self._detect_macd_divergence(
+            working=context.working,
+            signal_type="pullback_bounce",
+            volume_ratio=context.volume_ratio,
+            params=params,
+        )
+        macd_divergence_score_adjustment = self._calculate_macd_divergence_score_adjustment(
+            signal_type="pullback_bounce",
+            divergence=macd_divergence,
+            params=params,
+        )
+        pullback_rebound_score_adjustment = self._calculate_pullback_rebound_score_adjustment(
+            rebound_risk=context.pullback_rebound_risk,
+            profit_power=context.pullback_profit_power,
+            params=params,
+        )
+        quality_score = self._apply_score_adjustment(quality_score, macd_score_adjustment)
+        quality_score = self._apply_score_adjustment(quality_score, macd_divergence_score_adjustment)
+        quality_score = self._apply_score_adjustment(quality_score, pullback_rebound_score_adjustment)
+        if bool(context.pullback_rebound_risk.get("pullback_rebound_blocked")):
+            return StrategySignal(
+                action="hold",
+                reason="pullback_rebound_risk_delayed",
+                score=quality_score,
+                metadata={
+                    **context.base_metadata,
                     "signal_type": "pullback_bounce",
-                    "signal_number": signal_number,
-                    "breakout_cluster_count": breakout_cluster_count,
-                    "signal_number_rule": "pullback is treated as at least the next signal after breakout cluster count",
-                    "signal_number_lookback_days": int(params.signal_number_lookback_days),
-                    "signal_number_event_cooldown_days": int(params.signal_number_event_cooldown_days),
                     "quality_score": quality_score,
                     "macd_score_adjustment": macd_score_adjustment,
                     "macd_divergence_score_adjustment": macd_divergence_score_adjustment,
                     "pullback_rebound_score_adjustment": pullback_rebound_score_adjustment,
-                    "rr_ratio": round(rr_ratio, 4) if rr_ratio is not None else None,
-                    "entry_price_hint": close_price,
-                    "stop_price_hint": round(stop_price, 4),
-                    "target_price_hint": round(target_price, 4),
                     **macd_divergence,
                     **pullback_signal,
                 },
             )
-
-        return StrategySignal(action="hold", reason="entry_not_ready", metadata=base_metadata)
+        if quality_score < context.pullback_min_signal_score:
+            return StrategySignal(
+                action="hold",
+                reason="pullback_score_too_low",
+                score=quality_score,
+                metadata={
+                    **context.base_metadata,
+                    "signal_type": "pullback_bounce",
+                    "quality_score": quality_score,
+                    "macd_score_adjustment": macd_score_adjustment,
+                    "macd_divergence_score_adjustment": macd_divergence_score_adjustment,
+                    "pullback_rebound_score_adjustment": pullback_rebound_score_adjustment,
+                    **macd_divergence,
+                    **pullback_signal,
+                },
+            )
+        return StrategySignal(
+            action="buy",
+            reason="pullback_bounce",
+            score=quality_score,
+            metadata={
+                **context.base_metadata,
+                "signal_type": "pullback_bounce",
+                "signal_number": signal_number,
+                "breakout_cluster_count": breakout_cluster_count,
+                "signal_number_rule": "pullback is treated as at least the next signal after breakout cluster count",
+                "signal_number_lookback_days": int(params.signal_number_lookback_days),
+                "signal_number_event_cooldown_days": int(params.signal_number_event_cooldown_days),
+                "quality_score": quality_score,
+                "macd_score_adjustment": macd_score_adjustment,
+                "macd_divergence_score_adjustment": macd_divergence_score_adjustment,
+                "pullback_rebound_score_adjustment": pullback_rebound_score_adjustment,
+                "rr_ratio": round(risk_plan.rr_ratio, 4) if risk_plan.rr_ratio is not None else None,
+                "entry_price_hint": close_price,
+                "stop_price_hint": round(risk_plan.stop_price, 4),
+                "target_price_hint": round(risk_plan.target_price, 4),
+                **macd_divergence,
+                **pullback_signal,
+            },
+        )
 
     def _detect_pullback_bounce(
         self,

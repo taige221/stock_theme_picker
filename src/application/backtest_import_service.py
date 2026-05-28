@@ -879,7 +879,8 @@ class BacktestImportService:
             "average_holding_days": derived.get("average_holding_days"),
             "params_payload": self._dumps(summary.get("params") or {}),
             "config_payload": self._dumps(
-                {
+                summary.get("config")
+                or {
                     "price_adjustment": summary.get("price_adjustment"),
                     "trading_constraints": summary.get("trading_constraints"),
                 }
@@ -1492,7 +1493,20 @@ class BacktestImportService:
         payloads = [value for value in (config, raw_summary) if isinstance(value, dict)]
         costs: dict[str, Any] = {}
         for payload in payloads:
-            for key in ("costs", "commission", "commission_rate", "stamp_tax_rate", "slippage_pct"):
+            for key in (
+                "costs",
+                "commission",
+                "commission_rate",
+                "commission_bps",
+                "min_commission",
+                "stamp_tax_rate",
+                "stamp_tax_bps",
+                "slippage_rate",
+                "slippage_pct",
+                "slippage_bps",
+                "transfer_fee_rate",
+                "transfer_fee_bps",
+            ):
                 if key in payload and payload.get(key) is not None:
                     costs[key] = payload.get(key)
         return costs

@@ -213,9 +213,46 @@ class BacktestExecutionService:
             "--import-equity-mode",
             str(payload.get("equity_mode") or "traded_daily"),
         ]
+        command.extend(self._config_args(payload))
         if stock_pool_path:
             command.extend(["--import-stock-pool", stock_pool_path])
         return command, output_dir
+
+    def _config_args(self, payload: dict[str, Any]) -> list[str]:
+        config = payload.get("config") if isinstance(payload.get("config"), dict) else {}
+        args: list[str] = []
+
+        def append_float_arg(flag: str, value: Any) -> None:
+            parsed = self._float_or_none(value)
+            if parsed is not None:
+                args.extend([flag, str(parsed)])
+
+        append_float_arg("--commission-bps", self._first_number(config, "commission_bps", "commissionBps"))
+        if "--commission-bps" not in args:
+            rate = self._first_number(config, "commission_rate", "commissionRate")
+            if rate is not None:
+                append_float_arg("--commission-bps", float(rate) * 10000.0)
+
+        append_float_arg("--slippage-bps", self._first_number(config, "slippage_bps", "slippageBps"))
+        if "--slippage-bps" not in args:
+            rate = self._first_number(config, "slippage_rate", "slippageRate")
+            if rate is not None:
+                append_float_arg("--slippage-bps", float(rate) * 10000.0)
+
+        append_float_arg("--stamp-tax-bps", self._first_number(config, "stamp_tax_bps", "stampTaxBps"))
+        if "--stamp-tax-bps" not in args:
+            rate = self._first_number(config, "stamp_tax_rate", "stampTaxRate")
+            if rate is not None:
+                append_float_arg("--stamp-tax-bps", float(rate) * 10000.0)
+
+        append_float_arg("--transfer-fee-bps", self._first_number(config, "transfer_fee_bps", "transferFeeBps"))
+        if "--transfer-fee-bps" not in args:
+            rate = self._first_number(config, "transfer_fee_rate", "transferFeeRate")
+            if rate is not None:
+                append_float_arg("--transfer-fee-bps", float(rate) * 10000.0)
+
+        append_float_arg("--min-commission", self._first_number(config, "min_commission", "minCommission"))
+        return args
 
     def _resolve_stock_codes_arg(self, payload: dict[str, Any], job_id: str) -> tuple[str, Optional[str]]:
         stock_pool_path = payload.get("stock_pool_path")
@@ -259,7 +296,25 @@ class BacktestExecutionService:
             raise ValueError("endDate 不能为空")
         normalized["strategy"] = str(normalized.get("strategy") or "a_share_box")
         normalized["params"] = normalized.get("params") if isinstance(normalized.get("params"), dict) else {}
+        normalized["config"] = normalized.get("config") if isinstance(normalized.get("config"), dict) else {}
         return normalized
+
+    @staticmethod
+    def _first_number(payload: dict[str, Any], *keys: str) -> Optional[float]:
+        for key in keys:
+            parsed = BacktestExecutionService._float_or_none(payload.get(key))
+            if parsed is not None:
+                return parsed
+        return None
+
+    @staticmethod
+    def _float_or_none(value: Any) -> Optional[float]:
+        if value is None or value == "":
+            return None
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
 
     def _resolve_project_path(self, value: str) -> Path:
         path = Path(value).expanduser()

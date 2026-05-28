@@ -23,6 +23,7 @@ from theme_picker.strategy import STRATEGY_REGISTRY, StrategyParams, create_stra
 
 
 def parse_args() -> argparse.Namespace:
+    default_config = BacktestConfig()
     parser = argparse.ArgumentParser(description="Run minimal daily-bar backtest")
     parser.add_argument("--stock-code", required=True, help="Stock code such as 000001.SZ")
     parser.add_argument("--start-date", required=True, help="Start date in YYYY-MM-DD")
@@ -46,6 +47,11 @@ def parse_args() -> argparse.Namespace:
         choices=("legacy_pct", "daily_limits"),
         help="Constraint model for涨跌停/停牌, default legacy_pct",
     )
+    parser.add_argument("--commission-bps", type=float, default=default_config.commission_bps, help="Broker commission in basis points")
+    parser.add_argument("--slippage-bps", type=float, default=default_config.slippage_bps, help="Execution slippage in basis points")
+    parser.add_argument("--min-commission", type=float, default=default_config.min_commission, help="Minimum commission per order")
+    parser.add_argument("--stamp-tax-bps", type=float, default=default_config.stamp_tax_bps, help="Sell-side stamp tax in basis points")
+    parser.add_argument("--transfer-fee-bps", type=float, default=default_config.transfer_fee_bps, help="Two-sided transfer fee in basis points")
     parser.add_argument("--output", help="Optional output JSON path")
     return parser.parse_args()
 
@@ -70,6 +76,11 @@ def main() -> int:
 
     params = load_strategy_params(args.params_file)
     config = BacktestConfig(
+        commission_bps=args.commission_bps,
+        slippage_bps=args.slippage_bps,
+        min_commission=args.min_commission,
+        stamp_tax_bps=args.stamp_tax_bps,
+        transfer_fee_bps=args.transfer_fee_bps,
         price_adjustment=args.price_adjustment,
         trading_constraint_mode=args.trading_constraints,
     )

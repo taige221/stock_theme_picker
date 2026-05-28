@@ -26,6 +26,7 @@ from sqlalchemy.exc import OperationalError
 
 
 def parse_args() -> argparse.Namespace:
+    default_config = BacktestConfig()
     parser = argparse.ArgumentParser(description="Run batch daily-bar backtests")
     parser.add_argument(
         "--stock-codes",
@@ -53,6 +54,11 @@ def parse_args() -> argparse.Namespace:
         choices=("legacy_pct", "daily_limits"),
         help="Constraint model for涨跌停/停牌, default legacy_pct",
     )
+    parser.add_argument("--commission-bps", type=float, default=default_config.commission_bps, help="Broker commission in basis points")
+    parser.add_argument("--slippage-bps", type=float, default=default_config.slippage_bps, help="Execution slippage in basis points")
+    parser.add_argument("--min-commission", type=float, default=default_config.min_commission, help="Minimum commission per order")
+    parser.add_argument("--stamp-tax-bps", type=float, default=default_config.stamp_tax_bps, help="Sell-side stamp tax in basis points")
+    parser.add_argument("--transfer-fee-bps", type=float, default=default_config.transfer_fee_bps, help="Two-sided transfer fee in basis points")
     parser.add_argument("--output-dir", help="Optional batch output directory")
     parser.add_argument(
         "--fail-fast",
@@ -162,6 +168,11 @@ def main() -> int:
     stock_codes = parse_stock_codes(args.stock_codes)
     params = load_strategy_params(args.params_file)
     config = BacktestConfig(
+        commission_bps=args.commission_bps,
+        slippage_bps=args.slippage_bps,
+        min_commission=args.min_commission,
+        stamp_tax_bps=args.stamp_tax_bps,
+        transfer_fee_bps=args.transfer_fee_bps,
         price_adjustment=args.price_adjustment,
         trading_constraint_mode=args.trading_constraints,
     )
@@ -285,6 +296,7 @@ def main() -> int:
         "trading_constraints": config.trading_constraint_mode,
         "start_date": start_date.isoformat(),
         "end_date": end_date.isoformat(),
+        "config": config.to_dict(),
         "params": params.to_dict(),
         "aggregate": _build_aggregate_summary(summary_rows),
         "results": summary_rows,
@@ -339,6 +351,19 @@ def _write_summary_csv(path: Path, rows: list[dict[str, object]]) -> None:
         "win_rate_pct",
         "avg_win_pct",
         "avg_loss_pct",
+        "avg_return_pct",
+        "expectancy_pct",
+        "payoff_ratio",
+        "avg_holding_days",
+        "max_consecutive_losses",
+        "gross_profit",
+        "gross_loss",
+        "total_cost",
+        "cost_return_drag_pct",
+        "trade_days_held_total",
+        "exposure_days",
+        "recovery_factor",
+        "calmar_like",
         "profit_factor",
         "has_open_position",
         "open_position_market_value",

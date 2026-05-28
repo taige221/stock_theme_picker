@@ -24,6 +24,18 @@ class _PendingOrder:
     metadata: dict = field(default_factory=dict)
 
 
+@dataclass(frozen=True, slots=True)
+class _TradeCost:
+    turnover: float
+    commission: float
+    stamp_tax: float
+    transfer_fee: float
+
+    @property
+    def total(self) -> float:
+        return self.commission + self.stamp_tax + self.transfer_fee
+
+
 class BacktestEngine:
     """Run a single-symbol, single-position daily-bar backtest."""
 
@@ -96,7 +108,11 @@ class BacktestEngine:
                             config=runtime_config,
                         )
                         if position is not None:
-                            cost = self._trade_cost(position.entry_price, position.shares, runtime_config)
+                            cost = (
+                                float(position.entry_cost)
+                                if position.entry_cost is not None
+                                else self._trade_cost(position.entry_price, position.shares, runtime_config, side="buy")
+                            )
                             cash -= position.entry_price * position.shares + cost
                 elif order.action == "sell" and position is not None:
                     can_exit = not runtime_config.enforce_t_plus_one or trade_date > position.entry_date
@@ -117,7 +133,7 @@ class BacktestEngine:
                                 exit_reason=order.reason,
                                 config=runtime_config,
                             )
-                            cash += trade.exit_price * trade.shares - self._trade_cost(trade.exit_price, trade.shares, runtime_config)
+                            cash += trade.exit_price * trade.shares - trade.exit_cost
                             trades.append(trade)
                             symbol_loss_streak, symbol_loss_cooldown_until = self._update_symbol_loss_cooldown(
                                 trade=trade,
@@ -242,14 +258,13 @@ class BacktestEngine:
     ) -> Optional[Position]:
         budget = max(0.0, cash * float(params.position_size_pct))
         entry_price = execution_price * (1 + (config.slippage_bps / 10000.0))
-        commission_multiplier = 1 + (config.commission_bps / 10000.0)
-        gross_unit_cost = entry_price * commission_multiplier
-        if gross_unit_cost <= 0:
+        if entry_price <= 0:
             return None
-        raw_shares = int(budget // gross_unit_cost)
-        shares = (raw_shares // int(config.lot_size)) * int(config.lot_size)
+        shares = self._max_affordable_shares(entry_price=entry_price, budget=budget, config=config)
         if shares <= 0:
             return None
+        entry_cost = self._trade_cost_breakdown(entry_price, shares, config, side="buy")
+        entry_slippage = (entry_price - execution_price) * shares
         return Position(
             stock_code=stock_code,
             entry_date=trade_date,
@@ -257,6 +272,12 @@ class BacktestEngine:
             shares=shares,
             highest_price_seen=round(entry_price, 4),
             lowest_price_seen=round(entry_price, 4),
+            entry_execution_price=round(execution_price, 4),
+            entry_cost=round(entry_cost.total, 4),
+            entry_commission=round(entry_cost.commission, 4),
+            entry_stamp_tax=round(entry_cost.stamp_tax, 4),
+            entry_transfer_fee=round(entry_cost.transfer_fee, 4),
+            entry_slippage=round(entry_slippage, 4),
             entry_signal_reason=signal_reason,
             entry_signal_score=(round(float(signal_score), 4) if signal_score is not None else None),
             entry_signal_metadata=self._build_entry_signal_snapshot(signal_metadata),
@@ -273,9 +294,11 @@ class BacktestEngine:
     ) -> Trade:
         exit_price = execution_price * (1 - (config.slippage_bps / 10000.0))
         gross_pnl = (exit_price - position.entry_price) * position.shares
-        entry_cost = self._trade_cost(position.entry_price, position.shares, config)
-        exit_cost = self._trade_cost(exit_price, position.shares, config)
-        net_pnl = gross_pnl - entry_cost - exit_cost
+        entry_cost = self._position_entry_cost_breakdown(position, config)
+        exit_cost = self._trade_cost_breakdown(exit_price, position.shares, config, side="sell")
+        net_pnl = gross_pnl - entry_cost.total - exit_cost.total
+        entry_slippage = float(position.entry_slippage or 0.0)
+        exit_slippage = (execution_price - exit_price) * position.shares
         holding_days = max(0, (trade_date - position.entry_date).days)
         invested = position.entry_price * position.shares
         return_pct = (net_pnl / invested * 100.0) if invested else 0.0
@@ -302,16 +325,80 @@ class BacktestEngine:
             ),
             entry_signal_metadata=dict(position.entry_signal_metadata or {}),
             exit_reason=exit_reason,
+            entry_cost=round(entry_cost.total, 2),
+            exit_cost=round(exit_cost.total, 2),
+            total_cost=round(entry_cost.total + exit_cost.total, 2),
+            entry_commission=round(entry_cost.commission, 2),
+            exit_commission=round(exit_cost.commission, 2),
+            entry_stamp_tax=round(entry_cost.stamp_tax, 2),
+            exit_stamp_tax=round(exit_cost.stamp_tax, 2),
+            entry_transfer_fee=round(entry_cost.transfer_fee, 2),
+            exit_transfer_fee=round(exit_cost.transfer_fee, 2),
+            entry_slippage=round(entry_slippage, 2),
+            exit_slippage=round(exit_slippage, 2),
             highest_price_seen=round(highest_price_seen, 4),
             lowest_price_seen=round(lowest_price_seen, 4),
             max_favorable_excursion_pct=round(max_favorable_excursion_pct, 2),
             max_adverse_excursion_pct=round(max_adverse_excursion_pct, 2),
         )
 
-    @staticmethod
-    def _trade_cost(price: float, shares: int, config: BacktestConfig) -> float:
-        turnover = float(price) * int(shares)
-        return turnover * (float(config.commission_bps) / 10000.0)
+    @classmethod
+    def _max_affordable_shares(cls, *, entry_price: float, budget: float, config: BacktestConfig) -> int:
+        if entry_price <= 0 or budget <= 0:
+            return 0
+        lot_size = max(1, int(config.lot_size))
+        raw_shares = int(budget // entry_price)
+        shares = (raw_shares // lot_size) * lot_size
+        while shares > 0:
+            total_cash_needed = entry_price * shares + cls._trade_cost(entry_price, shares, config, side="buy")
+            if total_cash_needed <= budget + 1e-8:
+                return shares
+            shares -= lot_size
+        return 0
+
+    @classmethod
+    def _position_entry_cost_breakdown(cls, position: Position, config: BacktestConfig) -> _TradeCost:
+        has_stored_cost = (
+            position.entry_commission is not None
+            and position.entry_stamp_tax is not None
+            and position.entry_transfer_fee is not None
+        )
+        if has_stored_cost:
+            return _TradeCost(
+                turnover=float(position.entry_price) * int(position.shares),
+                commission=float(position.entry_commission or 0.0),
+                stamp_tax=float(position.entry_stamp_tax or 0.0),
+                transfer_fee=float(position.entry_transfer_fee or 0.0),
+            )
+        return cls._trade_cost_breakdown(position.entry_price, position.shares, config, side="buy")
+
+    @classmethod
+    def _trade_cost(cls, price: float, shares: int, config: BacktestConfig, *, side: str = "buy") -> float:
+        return cls._trade_cost_breakdown(price, shares, config, side=side).total
+
+    @classmethod
+    def _trade_cost_breakdown(cls, price: float, shares: int, config: BacktestConfig, *, side: str = "buy") -> _TradeCost:
+        turnover = max(0.0, float(price) * int(shares))
+        if turnover <= 0:
+            return _TradeCost(turnover=0.0, commission=0.0, stamp_tax=0.0, transfer_fee=0.0)
+
+        commission_bps = max(0.0, float(config.commission_bps))
+        commission = 0.0
+        if commission_bps > 0:
+            commission = max(turnover * (commission_bps / 10000.0), max(0.0, float(config.min_commission)))
+
+        side_name = str(side or "buy").strip().lower()
+        stamp_tax = 0.0
+        if side_name in {"sell", "exit"}:
+            stamp_tax = turnover * (max(0.0, float(config.stamp_tax_bps)) / 10000.0)
+
+        transfer_fee = turnover * (max(0.0, float(config.transfer_fee_bps)) / 10000.0)
+        return _TradeCost(
+            turnover=turnover,
+            commission=commission,
+            stamp_tax=stamp_tax,
+            transfer_fee=transfer_fee,
+        )
 
     @classmethod
     def _resolve_execution_price(cls, row: pd.Series) -> Optional[float]:
