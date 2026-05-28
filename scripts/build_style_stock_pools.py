@@ -10,15 +10,15 @@ from __future__ import annotations
 
 import argparse
 import csv
+import duckdb
 import json
 import math
-import sqlite3
 import sys
 from dataclasses import dataclass, asdict
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from statistics import median, pstdev
-from typing import Callable, Iterable
+from typing import Any, Callable, Iterable
 
 
 CURRENT_DIR = Path(__file__).resolve().parent
@@ -32,10 +32,11 @@ from theme_picker.data_provider.tushare_fetcher import TushareFetcher
 from theme_picker.infrastructure.stock_pool_service import infer_exchange_suffix
 
 
-DEFAULT_DATABASE_PATH = ROOT_DIR / "data" / "stock_analysis.db"
+DEFAULT_DATABASE_PATH = ROOT_DIR / "data" / "stock_analysis.duckdb"
 DEFAULT_OUTPUT_DIR = ROOT_DIR / "data" / "backtests" / "style_pools"
 DEFAULT_START_DATE = date(2020, 1, 1)
 DEFAULT_END_DATE = date(2026, 5, 26)
+SQLITE_FILE_HEADER = b"SQLite format 3\x00"
 WEB_SEED_CODES = {
     # AI / optical / semiconductor names seen in current public screens and
     # already present in the local warehouse are preferred by the tech pool.
@@ -87,7 +88,7 @@ class StockStyleMetrics:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Build style stock pools from local SQLite data")
+    parser = argparse.ArgumentParser(description="Build style stock pools from local DuckDB data")
     parser.add_argument("--database-path", default=str(DEFAULT_DATABASE_PATH))
     parser.add_argument("--output-dir", default=str(DEFAULT_OUTPUT_DIR))
     parser.add_argument("--start-date", default=DEFAULT_START_DATE.isoformat())
@@ -142,7 +143,7 @@ def main() -> int:
             "description": description,
             "generated_at": summary["generated_at"],
             "source": {
-                "type": "local_sqlite_metrics+tushare_stock_basic",
+                "type": "local_duckdb_metrics+tushare_stock_basic",
                 "database_path": str(database_path),
                 "start_date": start_date.isoformat(),
                 "end_date": end_date.isoformat(),
@@ -210,54 +211,93 @@ def load_metrics(
     end_date: date,
     names: dict[str, dict[str, str]],
 ) -> list[StockStyleMetrics]:
-    con = sqlite3.connect(database_path)
-    con.row_factory = sqlite3.Row
-    raw_codes = [
-        str(row["ts_code"]).upper()
-        for row in con.execute(
-            """
-            select ts_code
-            from stock_daily_raw
-            group by ts_code
-            having count(*) >= 180
-               and min(trade_date) <= ?
-               and max(trade_date) >= ?
-            order by ts_code
-            """,
-            ((start_date + timedelta(days=20)).isoformat(), end_date.isoformat()),
+    if _is_sqlite_database_file(database_path):
+        raise RuntimeError(
+            f"database path points to a SQLite database: {database_path}. "
+            "Run scripts/migrate_sqlite_to_duckdb.py and use data/stock_analysis.duckdb."
         )
-    ]
-    metrics: list[StockStyleMetrics] = []
-    for ts_code in raw_codes:
-        rows = con.execute(
-            """
-            select
-              r.trade_date,
-              coalesce(r.close_qfq, r.close) as close_price,
-              r.pre_close,
-              a.turnover_rate,
-              a.turnover_rate_median_20,
-              a.atr_pct_20,
-              a.circ_mv,
-              a.style_bucket
-            from stock_daily_raw r
-            left join stock_daily_aux a
-              on a.ts_code = r.ts_code and a.trade_date = r.trade_date
-            where r.ts_code = ?
-              and r.trade_date between ? and ?
-            order by r.trade_date
-            """,
-            (ts_code, start_date.isoformat(), end_date.isoformat()),
-        ).fetchall()
-        if len(rows) < 180:
-            continue
-        item = compute_metrics(ts_code, rows, names.get(ts_code) or {})
-        if item is not None:
-            metrics.append(item)
-    return metrics
+    try:
+        con = duckdb.connect(str(database_path), read_only=True)
+    except duckdb.Error as exc:
+        if _is_duckdb_lock_error(exc):
+            raise RuntimeError(
+                "DuckDB database is locked by another process. Stop the theme_picker server/import job "
+                "that has the database open, or rerun this command after it exits."
+            ) from exc
+        raise
+    try:
+        raw_codes = [
+            str(row[0]).upper()
+            for row in con.execute(
+                """
+                select ts_code
+                from stock_daily_raw
+                group by ts_code
+                having count(*) >= 180
+                   and min(trade_date) <= ?
+                   and max(trade_date) >= ?
+                order by ts_code
+                """,
+                ((start_date + timedelta(days=20)).isoformat(), end_date.isoformat()),
+            ).fetchall()
+        ]
+        metrics: list[StockStyleMetrics] = []
+        for ts_code in raw_codes:
+            rows = _fetchall_dict(
+                con,
+                """
+                select
+                  r.trade_date,
+                  coalesce(r.close_qfq, r.close) as close_price,
+                  r.pre_close,
+                  a.turnover_rate,
+                  a.turnover_rate_median_20,
+                  a.atr_pct_20,
+                  a.circ_mv,
+                  a.style_bucket
+                from stock_daily_raw r
+                left join stock_daily_aux a
+                  on a.ts_code = r.ts_code and a.trade_date = r.trade_date
+                where r.ts_code = ?
+                  and r.trade_date between ? and ?
+                order by r.trade_date
+                """,
+                (ts_code, start_date.isoformat(), end_date.isoformat()),
+            )
+            if len(rows) < 180:
+                continue
+            item = compute_metrics(ts_code, rows, names.get(ts_code) or {})
+            if item is not None:
+                metrics.append(item)
+        return metrics
+    finally:
+        con.close()
 
 
-def compute_metrics(ts_code: str, rows: list[sqlite3.Row], name_info: dict[str, str]) -> StockStyleMetrics | None:
+def _is_sqlite_database_file(path: Path) -> bool:
+    try:
+        with path.open("rb") as handle:
+            return handle.read(len(SQLITE_FILE_HEADER)) == SQLITE_FILE_HEADER
+    except OSError:
+        return False
+
+
+def _is_duckdb_lock_error(exc: BaseException) -> bool:
+    text = str(exc).lower()
+    return "could not set lock" in text or "conflicting lock" in text
+
+
+def _fetchall_dict(
+    con: duckdb.DuckDBPyConnection,
+    sql: str,
+    params: tuple[Any, ...],
+) -> list[dict[str, Any]]:
+    result = con.execute(sql, params)
+    columns = [column[0] for column in result.description]
+    return [dict(zip(columns, row)) for row in result.fetchall()]
+
+
+def compute_metrics(ts_code: str, rows: list[dict[str, Any]], name_info: dict[str, str]) -> StockStyleMetrics | None:
     closes = [_safe_float(row["close_price"]) for row in rows]
     valid_pairs = [(idx, value) for idx, value in enumerate(closes) if value and value > 0]
     if len(valid_pairs) < 180:

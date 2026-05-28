@@ -20,6 +20,7 @@ from sqlalchemy import (
     Float,
     Index,
     Integer,
+    Sequence,
     String,
     Text,
     UniqueConstraint,
@@ -31,7 +32,8 @@ from sqlalchemy import (
     or_,
     select,
 )
-from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+from sqlalchemy import inspect
+from sqlalchemy.dialects.postgresql import insert as duckdb_insert
 from sqlalchemy.orm import Session, declarative_base, sessionmaker
 
 from theme_picker.config import get_config
@@ -41,12 +43,27 @@ logger = logging.getLogger(__name__)
 Base = declarative_base()
 _UNSET = object()
 UNSET = _UNSET
+SQLITE_FILE_HEADER = b"SQLite format 3\x00"
+
+
+def _id_column(sequence_name: str) -> Column:
+    return Column(Integer, Sequence(sequence_name), primary_key=True)
+
+
+def _is_sqlite_database_file(path: Path) -> bool:
+    if not path.is_file():
+        return False
+    try:
+        with path.open("rb") as handle:
+            return handle.read(len(SQLITE_FILE_HEADER)) == SQLITE_FILE_HEADER
+    except OSError:
+        return False
 
 
 class StockDaily(Base):
     __tablename__ = "stock_daily"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
+    id = _id_column("stock_daily_id_seq")
     code = Column(String(16), nullable=False, index=True)
     date = Column(Date, nullable=False, index=True)
     open = Column(Float)
@@ -91,7 +108,7 @@ class StockDaily(Base):
 class StockDailyRaw(Base):
     __tablename__ = "stock_daily_raw"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
+    id = _id_column("stock_daily_raw_id_seq")
     ts_code = Column(String(16), nullable=False, index=True)
     trade_date = Column(Date, nullable=False, index=True)
     open = Column(Float, nullable=True)
@@ -142,7 +159,7 @@ class StockDailyRaw(Base):
 class StockDailyAux(Base):
     __tablename__ = "stock_daily_aux"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
+    id = _id_column("stock_daily_aux_id_seq")
     ts_code = Column(String(16), nullable=False, index=True)
     trade_date = Column(Date, nullable=False, index=True)
     turnover_rate = Column(Float, nullable=True)
@@ -199,7 +216,7 @@ class StockDailyAux(Base):
 class StockCorporateAction(Base):
     __tablename__ = "stock_corporate_action"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
+    id = _id_column("stock_corporate_action_id_seq")
     action_key = Column(String(128), nullable=False, unique=True, index=True)
     ts_code = Column(String(16), nullable=False, index=True)
     ann_date = Column(Date, nullable=True, index=True)
@@ -242,7 +259,7 @@ class StockCorporateAction(Base):
 class TradeCalendar(Base):
     __tablename__ = "trade_calendar"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
+    id = _id_column("trade_calendar_id_seq")
     exchange = Column(String(16), nullable=False, index=True)
     cal_date = Column(Date, nullable=False, index=True)
     is_open = Column(Integer, nullable=False, index=True)
@@ -273,7 +290,7 @@ class TradeCalendar(Base):
 class ThemePickerTaskHistory(Base):
     __tablename__ = "theme_picker_task_history"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
+    id = _id_column("theme_picker_task_history_id_seq")
     task_id = Column(String(64), nullable=False, unique=True, index=True)
     status = Column(String(20), nullable=False, index=True)
     progress = Column(Integer, nullable=False, default=0)
@@ -291,7 +308,7 @@ class ThemePickerTaskHistory(Base):
 class StockQueryHistory(Base):
     __tablename__ = "stock_query_history"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
+    id = _id_column("stock_query_history_id_seq")
     query_id = Column(String(64), nullable=False, unique=True, index=True)
     status = Column(String(20), nullable=False, index=True, default="completed")
     query_text = Column(String(128), nullable=True, index=True)
@@ -313,7 +330,7 @@ class StockQueryHistory(Base):
 class EtfQueryHistory(Base):
     __tablename__ = "etf_query_history"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
+    id = _id_column("etf_query_history_id_seq")
     query_id = Column(String(64), nullable=False, unique=True, index=True)
     status = Column(String(20), nullable=False, index=True, default="completed")
     query_text = Column(String(128), nullable=True, index=True)
@@ -334,7 +351,7 @@ class EtfQueryHistory(Base):
 class EtfDailyMetricsSnapshot(Base):
     __tablename__ = "etf_daily_metrics_snapshot"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
+    id = _id_column("etf_daily_metrics_snapshot_id_seq")
     stock_code = Column(String(16), nullable=False, index=True)
     trade_date = Column(Date, nullable=False, index=True)
     fund_shares = Column(Float, nullable=True)
@@ -366,7 +383,7 @@ class EtfDailyMetricsSnapshot(Base):
 class StockBelongBoardsCache(Base):
     __tablename__ = "stock_belong_boards_cache"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
+    id = _id_column("stock_belong_boards_cache_id_seq")
     stock_code = Column(String(16), nullable=False, unique=True, index=True)
     boards_payload = Column(Text, nullable=False)
     source = Column(String(64), nullable=True)
@@ -380,7 +397,7 @@ class StockBelongBoardsCache(Base):
 class StockWatchlist(Base):
     __tablename__ = "stock_watchlist"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
+    id = _id_column("stock_watchlist_id_seq")
     stock_code = Column(String(16), nullable=False, unique=True, index=True)
     stock_name = Column(String(64), nullable=False)
     group_name = Column(String(64), nullable=True, index=True)
@@ -400,7 +417,7 @@ class StockWatchlist(Base):
 class StockAlertRule(Base):
     __tablename__ = "stock_alert_rule"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
+    id = _id_column("stock_alert_rule_id_seq")
     stock_code = Column(String(16), nullable=False, index=True)
     stock_name = Column(String(64), nullable=False)
     rule_type = Column(String(32), nullable=False, index=True)
@@ -429,7 +446,7 @@ class StockAlertRule(Base):
 class StockAlertEvent(Base):
     __tablename__ = "stock_alert_event"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
+    id = _id_column("stock_alert_event_id_seq")
     stock_code = Column(String(16), nullable=False, index=True)
     stock_name = Column(String(64), nullable=False)
     rule_id = Column(Integer, nullable=False, index=True)
@@ -451,7 +468,7 @@ class StockAlertEvent(Base):
 class StockDeepAnalysisHistory(Base):
     __tablename__ = "stock_deep_analysis_history"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
+    id = _id_column("stock_deep_analysis_history_id_seq")
     analysis_id = Column(String(64), nullable=False, unique=True, index=True)
     stock_code = Column(String(16), nullable=False, index=True)
     stock_name = Column(String(64), nullable=False)
@@ -477,7 +494,7 @@ class StockDeepAnalysisHistory(Base):
 class StockDeepAnalysisMessage(Base):
     __tablename__ = "stock_deep_analysis_message"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
+    id = _id_column("stock_deep_analysis_message_id_seq")
     analysis_id = Column(String(64), nullable=False, index=True)
     role = Column(String(16), nullable=False)
     content = Column(Text, nullable=False)
@@ -491,7 +508,7 @@ class StockDeepAnalysisMessage(Base):
 class InformationWatchItem(Base):
     __tablename__ = "information_watch_item"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
+    id = _id_column("information_watch_item_id_seq")
     item_id = Column(String(64), nullable=False, unique=True, index=True)
     name = Column(String(128), nullable=False, index=True)
     enabled = Column(Integer, nullable=False, default=1, index=True)
@@ -515,7 +532,7 @@ class InformationWatchItem(Base):
 class OpenDiscoveryProfile(Base):
     __tablename__ = "open_discovery_profile"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
+    id = _id_column("open_discovery_profile_id_seq")
     profile_id = Column(String(64), nullable=False, unique=True, index=True)
     name = Column(String(128), nullable=False, index=True)
     enabled = Column(Integer, nullable=False, default=1, index=True)
@@ -538,7 +555,7 @@ class OpenDiscoveryProfile(Base):
 class InformationEvent(Base):
     __tablename__ = "information_event"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
+    id = _id_column("information_event_id_seq")
     event_id = Column(String(64), nullable=False, unique=True, index=True)
     watch_item_id = Column(String(64), nullable=True, index=True)
     title = Column(String(256), nullable=False)
@@ -576,7 +593,7 @@ class InformationEvent(Base):
 class ThemeFactorScanHistory(Base):
     __tablename__ = "theme_factor_scan_history"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
+    id = _id_column("theme_factor_scan_history_id_seq")
     scan_id = Column(String(64), nullable=False, unique=True, index=True)
     event_id = Column(String(64), nullable=False, index=True)
     theme_id = Column(String(64), nullable=True, index=True)
@@ -601,7 +618,7 @@ class ThemeFactorScanHistory(Base):
 class StrategyBacktestRun(Base):
     __tablename__ = "strategy_backtest_run"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
+    id = _id_column("strategy_backtest_run_id_seq")
     run_id = Column(String(64), nullable=False, unique=True, index=True)
     run_name = Column(String(160), nullable=True)
     status = Column(String(24), nullable=False, default="finished", index=True)
@@ -654,7 +671,7 @@ class StrategyBacktestRun(Base):
 class StrategyBacktestSymbolResult(Base):
     __tablename__ = "strategy_backtest_symbol_result"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
+    id = _id_column("strategy_backtest_symbol_result_id_seq")
     run_id = Column(String(64), nullable=False, index=True)
     stock_code = Column(String(16), nullable=False, index=True)
     stock_name = Column(String(64), nullable=True)
@@ -700,7 +717,7 @@ class StrategyBacktestSymbolResult(Base):
 class StrategyBacktestTrade(Base):
     __tablename__ = "strategy_backtest_trade"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
+    id = _id_column("strategy_backtest_trade_id_seq")
     trade_id = Column(String(96), nullable=False, unique=True, index=True)
     run_id = Column(String(64), nullable=False, index=True)
     stock_code = Column(String(16), nullable=False, index=True)
@@ -738,7 +755,7 @@ class StrategyBacktestTrade(Base):
 class StrategyBacktestEquityPoint(Base):
     __tablename__ = "strategy_backtest_equity_point"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
+    id = _id_column("strategy_backtest_equity_point_id_seq")
     run_id = Column(String(64), nullable=False, index=True)
     scope = Column(String(24), nullable=False, index=True)
     stock_code = Column(String(16), nullable=True, index=True)
@@ -768,7 +785,7 @@ class StrategyBacktestEquityPoint(Base):
 class StrategyBacktestStockPool(Base):
     __tablename__ = "strategy_backtest_stock_pool"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
+    id = _id_column("strategy_backtest_stock_pool_id_seq")
     pool_id = Column(String(64), nullable=False, unique=True, index=True)
     name = Column(String(160), nullable=True)
     source_type = Column(String(32), nullable=False, default="json_file", index=True)
@@ -784,7 +801,7 @@ class StrategyBacktestStockPool(Base):
 class StrategyBacktestStockPoolMember(Base):
     __tablename__ = "strategy_backtest_stock_pool_member"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
+    id = _id_column("strategy_backtest_stock_pool_member_id_seq")
     pool_id = Column(String(64), nullable=False, index=True)
     stock_code = Column(String(16), nullable=False, index=True)
     stock_name = Column(String(64), nullable=True)
@@ -802,7 +819,7 @@ class StrategyBacktestStockPoolMember(Base):
 class StrategyBacktestImportBatch(Base):
     __tablename__ = "strategy_backtest_import_batch"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
+    id = _id_column("strategy_backtest_import_batch_id_seq")
     import_id = Column(String(64), nullable=False, unique=True, index=True)
     status = Column(String(24), nullable=False, index=True)
     source_path = Column(Text, nullable=False)
@@ -820,10 +837,8 @@ class StrategyBacktestImportBatch(Base):
 
 
 @dataclass
-class _SqliteSettings:
+class _DatabaseSettings:
     database_path: Path
-    wal_enabled: bool
-    busy_timeout_ms: int
 
 
 class DatabaseManager:
@@ -837,16 +852,17 @@ class DatabaseManager:
         if not db_path.is_absolute():
             db_path = Path.cwd() / db_path
         db_path.parent.mkdir(parents=True, exist_ok=True)
+        if _is_sqlite_database_file(db_path):
+            raise RuntimeError(
+                f"DATABASE_PATH points to a SQLite database: {db_path}. "
+                "Run scripts/migrate_sqlite_to_duckdb.py and set DATABASE_PATH "
+                "to ./data/stock_analysis.duckdb."
+            )
 
-        self._settings = _SqliteSettings(
-            database_path=db_path,
-            wal_enabled=bool(getattr(cfg, "sqlite_wal_enabled", True)),
-            busy_timeout_ms=int(getattr(cfg, "sqlite_busy_timeout_ms", 5000) or 5000),
-        )
+        self._settings = _DatabaseSettings(database_path=db_path)
         self.engine = create_engine(
-            f"sqlite:///{db_path}",
+            f"duckdb:///{db_path}",
             future=True,
-            connect_args={"check_same_thread": False},
         )
         self._SessionLocal = sessionmaker(
             autocommit=False,
@@ -855,7 +871,7 @@ class DatabaseManager:
             bind=self.engine,
             future=True,
         )
-        self._is_sqlite_engine = True
+        self._dialect_name = self.engine.dialect.name
         self._init_database()
         atexit.register(self.close)
 
@@ -868,107 +884,103 @@ class DatabaseManager:
     def _init_database(self) -> None:
         Base.metadata.create_all(bind=self.engine)
         self._run_post_create_migrations()
-        if self._settings.wal_enabled:
-            with self.engine.begin() as conn:
-                conn.exec_driver_sql("PRAGMA journal_mode=WAL;")
-                conn.exec_driver_sql(f"PRAGMA busy_timeout={self._settings.busy_timeout_ms};")
 
     def _run_post_create_migrations(self) -> None:
-        self._ensure_sqlite_column(
+        self._ensure_column(
             table_name="stock_alert_rule",
             column_name="scan_interval_minutes",
             alter_sql="ALTER TABLE stock_alert_rule ADD COLUMN scan_interval_minutes INTEGER NOT NULL DEFAULT 5",
         )
-        self._ensure_sqlite_column(
+        self._ensure_column(
             table_name="stock_alert_rule",
             column_name="last_evaluated_at",
             alter_sql="ALTER TABLE stock_alert_rule ADD COLUMN last_evaluated_at DATETIME NULL",
         )
-        self._ensure_sqlite_column(
+        self._ensure_column(
             table_name="stock_alert_rule",
             column_name="last_triggered_at",
             alter_sql="ALTER TABLE stock_alert_rule ADD COLUMN last_triggered_at DATETIME NULL",
         )
-        self._ensure_sqlite_column(
+        self._ensure_column(
             table_name="information_event",
             column_name="source_mode",
             alter_sql="ALTER TABLE information_event ADD COLUMN source_mode VARCHAR(20) NOT NULL DEFAULT 'watch'",
         )
-        self._ensure_sqlite_index(
+        self._ensure_index(
             index_name="ix_information_event_source_mode_created",
             create_sql="CREATE INDEX IF NOT EXISTS ix_information_event_source_mode_created ON information_event (source_mode, created_at)",
         )
-        self._ensure_sqlite_column(
+        self._ensure_column(
             table_name="stock_alert_rule",
             column_name="last_trigger_key",
             alter_sql="ALTER TABLE stock_alert_rule ADD COLUMN last_trigger_key VARCHAR(128) NULL",
         )
-        self._ensure_sqlite_column(
+        self._ensure_column(
             table_name="stock_daily_raw",
             column_name="open_qfq",
             alter_sql="ALTER TABLE stock_daily_raw ADD COLUMN open_qfq FLOAT NULL",
         )
-        self._ensure_sqlite_column(
+        self._ensure_column(
             table_name="stock_daily_raw",
             column_name="high_qfq",
             alter_sql="ALTER TABLE stock_daily_raw ADD COLUMN high_qfq FLOAT NULL",
         )
-        self._ensure_sqlite_column(
+        self._ensure_column(
             table_name="stock_daily_raw",
             column_name="low_qfq",
             alter_sql="ALTER TABLE stock_daily_raw ADD COLUMN low_qfq FLOAT NULL",
         )
-        self._ensure_sqlite_column(
+        self._ensure_column(
             table_name="stock_daily_raw",
             column_name="close_qfq",
             alter_sql="ALTER TABLE stock_daily_raw ADD COLUMN close_qfq FLOAT NULL",
         )
-        self._ensure_sqlite_column(
+        self._ensure_column(
             table_name="stock_daily_aux",
             column_name="turnover_rate_median_20",
             alter_sql="ALTER TABLE stock_daily_aux ADD COLUMN turnover_rate_median_20 FLOAT NULL",
         )
-        self._ensure_sqlite_column(
+        self._ensure_column(
             table_name="stock_daily_aux",
             column_name="atr_pct_20",
             alter_sql="ALTER TABLE stock_daily_aux ADD COLUMN atr_pct_20 FLOAT NULL",
         )
-        self._ensure_sqlite_column(
+        self._ensure_column(
             table_name="stock_daily_aux",
             column_name="style_bucket",
             alter_sql="ALTER TABLE stock_daily_aux ADD COLUMN style_bucket VARCHAR(32) NULL",
         )
-        self._ensure_sqlite_column(
+        self._ensure_column(
             table_name="stock_alert_rule",
             column_name="last_scan_status",
             alter_sql="ALTER TABLE stock_alert_rule ADD COLUMN last_scan_status VARCHAR(32) NULL",
         )
-        self._ensure_sqlite_column(
+        self._ensure_column(
             table_name="stock_alert_rule",
             column_name="last_scan_reason",
             alter_sql="ALTER TABLE stock_alert_rule ADD COLUMN last_scan_reason TEXT NULL",
         )
-        self._ensure_sqlite_column(
+        self._ensure_column(
             table_name="stock_alert_rule",
             column_name="last_quote_source",
             alter_sql="ALTER TABLE stock_alert_rule ADD COLUMN last_quote_source VARCHAR(64) NULL",
         )
-        self._ensure_sqlite_column(
+        self._ensure_column(
             table_name="stock_alert_rule",
             column_name="last_quote_price",
             alter_sql="ALTER TABLE stock_alert_rule ADD COLUMN last_quote_price FLOAT NULL",
         )
-        self._ensure_sqlite_column(
+        self._ensure_column(
             table_name="stock_alert_rule",
             column_name="last_scan_payload_json",
             alter_sql="ALTER TABLE stock_alert_rule ADD COLUMN last_scan_payload_json TEXT NULL",
         )
-        self._ensure_sqlite_column(
+        self._ensure_column(
             table_name="strategy_backtest_trade",
             column_name="entry_signal_type",
             alter_sql="ALTER TABLE strategy_backtest_trade ADD COLUMN entry_signal_type VARCHAR(96) NULL",
         )
-        self._ensure_sqlite_index(
+        self._ensure_index(
             index_name="ix_strategy_backtest_trade_signal_type",
             create_sql=(
                 "CREATE INDEX IF NOT EXISTS ix_strategy_backtest_trade_signal_type "
@@ -976,21 +988,16 @@ class DatabaseManager:
             ),
         )
 
-    def _ensure_sqlite_column(self, *, table_name: str, column_name: str, alter_sql: str) -> None:
+    def _ensure_column(self, *, table_name: str, column_name: str, alter_sql: str) -> None:
+        existing = {column["name"] for column in inspect(self.engine).get_columns(table_name)}
+        if column_name in existing:
+            return
         with self.engine.begin() as conn:
-            rows = conn.exec_driver_sql(f"PRAGMA table_info({table_name});").fetchall()
-            existing = {str(row[1]) for row in rows if len(row) > 1}
-            if column_name not in existing:
-                conn.exec_driver_sql(alter_sql)
+            conn.exec_driver_sql(alter_sql)
 
-    def _ensure_sqlite_index(self, *, index_name: str, create_sql: str) -> None:
+    def _ensure_index(self, *, index_name: str, create_sql: str) -> None:
         with self.engine.begin() as conn:
-            rows = conn.exec_driver_sql(
-                "SELECT name FROM sqlite_master WHERE type='index' AND name = :index_name",
-                {"index_name": index_name},
-            ).fetchall()
-            if not rows:
-                conn.exec_driver_sql(create_sql)
+            conn.exec_driver_sql(create_sql)
 
     def close(self) -> None:
         try:
@@ -1106,7 +1113,7 @@ class DatabaseManager:
 
         with self.session_scope() as session:
             for item in records:
-                stmt = sqlite_insert(StockDaily).values(item)
+                stmt = duckdb_insert(StockDaily).values(item)
                 excluded = stmt.excluded
                 session.execute(
                     stmt.on_conflict_do_update(
@@ -1160,7 +1167,7 @@ class DatabaseManager:
 
         with self.session_scope() as session:
             for item in prepared:
-                stmt = sqlite_insert(StockDailyRaw).values(item)
+                stmt = duckdb_insert(StockDailyRaw).values(item)
                 excluded = stmt.excluded
                 session.execute(
                     stmt.on_conflict_do_update(
@@ -1295,7 +1302,7 @@ class DatabaseManager:
 
         with self.session_scope() as session:
             for item in prepared:
-                stmt = sqlite_insert(StockDailyAux).values(item)
+                stmt = duckdb_insert(StockDailyAux).values(item)
                 excluded = stmt.excluded
                 session.execute(
                     stmt.on_conflict_do_update(
@@ -1487,7 +1494,7 @@ class DatabaseManager:
 
         with self.session_scope() as session:
             for item in prepared:
-                stmt = sqlite_insert(StockCorporateAction).values(item)
+                stmt = duckdb_insert(StockCorporateAction).values(item)
                 excluded = stmt.excluded
                 session.execute(
                     stmt.on_conflict_do_update(
@@ -1553,7 +1560,7 @@ class DatabaseManager:
 
         with self.session_scope() as session:
             for item in prepared:
-                stmt = sqlite_insert(TradeCalendar).values(item)
+                stmt = duckdb_insert(TradeCalendar).values(item)
                 excluded = stmt.excluded
                 session.execute(
                     stmt.on_conflict_do_update(
@@ -1623,7 +1630,7 @@ class DatabaseManager:
             "completed_at": completed_at,
         }
         with self.session_scope() as session:
-            stmt = sqlite_insert(ThemePickerTaskHistory).values(values)
+            stmt = duckdb_insert(ThemePickerTaskHistory).values(values)
             excluded = stmt.excluded
             session.execute(
                 stmt.on_conflict_do_update(
@@ -1749,7 +1756,7 @@ class DatabaseManager:
             "completed_at": completed_at,
         }
         with self.session_scope() as session:
-            stmt = sqlite_insert(StockQueryHistory).values(values)
+            stmt = duckdb_insert(StockQueryHistory).values(values)
             excluded = stmt.excluded
             session.execute(
                 stmt.on_conflict_do_update(
@@ -1818,7 +1825,7 @@ class DatabaseManager:
             "completed_at": completed_at,
         }
         with self.session_scope() as session:
-            stmt = sqlite_insert(EtfQueryHistory).values(values)
+            stmt = duckdb_insert(EtfQueryHistory).values(values)
             excluded = stmt.excluded
             session.execute(
                 stmt.on_conflict_do_update(
@@ -1866,7 +1873,7 @@ class DatabaseManager:
 
         with self.session_scope() as session:
             for item in normalized_rows:
-                stmt = sqlite_insert(EtfDailyMetricsSnapshot).values(item)
+                stmt = duckdb_insert(EtfDailyMetricsSnapshot).values(item)
                 excluded = stmt.excluded
                 session.execute(
                     stmt.on_conflict_do_update(
@@ -1928,7 +1935,7 @@ class DatabaseManager:
             "updated_at": updated_at or datetime.now(),
         }
         with self.session_scope() as session:
-            stmt = sqlite_insert(StockBelongBoardsCache).values(values)
+            stmt = duckdb_insert(StockBelongBoardsCache).values(values)
             excluded = stmt.excluded
             session.execute(
                 stmt.on_conflict_do_update(
@@ -1974,7 +1981,7 @@ class DatabaseManager:
             "updated_at": datetime.now(),
         }
         with self.session_scope() as session:
-            stmt = sqlite_insert(StockWatchlist).values(
+            stmt = duckdb_insert(StockWatchlist).values(
                 {
                     **values,
                     "created_at": datetime.now(),
@@ -2041,7 +2048,7 @@ class DatabaseManager:
         normalized_scan_interval = max(5, int(scan_interval_minutes or 5))
         now = datetime.now()
         with self.session_scope() as session:
-            stmt = sqlite_insert(StockAlertRule).values(
+            stmt = duckdb_insert(StockAlertRule).values(
                 {
                     "stock_code": stock_code,
                     "stock_name": stock_name,
@@ -2267,7 +2274,7 @@ class DatabaseManager:
             "updated_at": now,
         }
         with self.session_scope() as session:
-            stmt = sqlite_insert(StockDeepAnalysisHistory).values(values)
+            stmt = duckdb_insert(StockDeepAnalysisHistory).values(values)
             excluded = stmt.excluded
             session.execute(
                 stmt.on_conflict_do_update(
@@ -2386,7 +2393,7 @@ class DatabaseManager:
             "updated_at": now,
         }
         with self.session_scope() as session:
-            stmt = sqlite_insert(InformationWatchItem).values(values)
+            stmt = duckdb_insert(InformationWatchItem).values(values)
             excluded = stmt.excluded
             session.execute(
                 stmt.on_conflict_do_update(
@@ -2443,7 +2450,7 @@ class DatabaseManager:
             "updated_at": now,
         }
         with self.session_scope() as session:
-            stmt = sqlite_insert(OpenDiscoveryProfile).values(values)
+            stmt = duckdb_insert(OpenDiscoveryProfile).values(values)
             excluded = stmt.excluded
             session.execute(
                 stmt.on_conflict_do_update(
@@ -2558,7 +2565,7 @@ class DatabaseManager:
             "updated_at": now,
         }
         with self.session_scope() as session:
-            stmt = sqlite_insert(InformationEvent).values(values)
+            stmt = duckdb_insert(InformationEvent).values(values)
             excluded = stmt.excluded
             session.execute(
                 stmt.on_conflict_do_update(
@@ -2666,7 +2673,7 @@ class DatabaseManager:
             "updated_at": now,
         }
         with self.session_scope() as session:
-            stmt = sqlite_insert(ThemeFactorScanHistory).values(values)
+            stmt = duckdb_insert(ThemeFactorScanHistory).values(values)
             excluded = stmt.excluded
             session.execute(
                 stmt.on_conflict_do_update(

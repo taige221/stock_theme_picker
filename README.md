@@ -4,7 +4,7 @@
 
 仓库当前由两部分组成：
 
-- 根目录 Python 服务：FastAPI 接口、主题选股核心逻辑、SQLite 持久化、行情与新闻数据适配层
+- 根目录 Python 服务：FastAPI 接口、主题选股核心逻辑、DuckDB 持久化、行情与新闻数据适配层
 - `web/` 前端子项目：Vite + React 页面，负责发起扫描、轮询任务、查看历史、恢复结果和重新筛选
 
 ## 主要能力
@@ -15,7 +15,7 @@
   - 板块代码
   - 板块名称
 - 异步执行主题扫描任务，并提供状态轮询
-- 持久化任务历史到 SQLite
+- 持久化任务历史到 DuckDB
 - 服务重启后自动恢复 `pending` / `processing` 任务
 - 支持历史任务“恢复查看”和“重新筛选”
 - 支持主题事件热度、板块映射路径、候选股列表、单票详情、支撑压力位、数据来源说明等结果展示
@@ -27,7 +27,7 @@
 .
 ├── main.py                    # 本地启动入口，支持后端 / 前端 / 同时启动
 ├── server.py                  # FastAPI 应用入口
-├── data/                      # SQLite、主题注册表、板块映射、缓存
+├── data/                      # DuckDB、主题注册表、板块映射、缓存
 ├── src/
 │   ├── api/                   # 请求/响应 schema 与路由
 │   ├── application/           # 主题选股聚合、任务服务、主题注册
@@ -98,9 +98,17 @@ cp .env.example .env
 
 这些配置建议优先确认：
 
-- `DATABASE_PATH`：本地 SQLite 路径，默认 `./data/stock_analysis.db`
+- `DATABASE_PATH`：本地 DuckDB 路径，默认 `./data/stock_analysis.duckdb`
 - `THEME_PICKER_TASK_HISTORY_RETENTION_DAYS`：历史保留天数
 - `ENABLE_REALTIME_QUOTE`：是否启用实时行情增强
+
+如需沿用旧 SQLite 历史库，可先转换：
+
+```bash
+python scripts/migrate_sqlite_to_duckdb.py \
+  --sqlite-path data/stock_analysis.db \
+  --duckdb-path data/stock_analysis.duckdb
+```
 
 ### 4. 可选配置项
 
@@ -188,7 +196,6 @@ cp .env.example .env
 - `AIHUBMIX_KEY=...`
 
 这组配置走仓库现有 LiteLLM / 多 channel 模型配置，不额外引入另一套 provider 配置。
-- `SQLITE_WAL_ENABLED` / `SQLITE_BUSY_TIMEOUT_MS`：SQLite 运行参数
 - `THEME_PICKER_TASK_HISTORY_CLEANUP_BATCH_SIZE`：历史清理批量大小
 
 ### 5. 启动服务

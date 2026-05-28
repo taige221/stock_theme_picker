@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Import strategy backtest JSON artifacts into SQLite-backed history."""
+"""Import strategy backtest JSON artifacts into DuckDB-backed history."""
 
 from __future__ import annotations
 
@@ -178,9 +178,10 @@ class BacktestImportService:
                     )
                 )
         except OperationalError as exc:
-            if "database is locked" in str(exc).lower():
+            text = str(exc).lower()
+            if "database is locked" in text or "single-writer" in text or "conflicting lock" in text:
                 raise RuntimeError(
-                    "SQLite database is locked. Backtest import is a single-writer operation; "
+                    "DuckDB database is locked. Backtest import is a single-writer operation; "
                     "stop other theme_picker servers/import jobs or retry after the current write finishes."
                 ) from exc
             raise

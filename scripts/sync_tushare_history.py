@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Sync 2000-point Tushare historical warehouse tables into the local SQLite DB."""
+"""Sync 2000-point Tushare historical warehouse tables into the local DuckDB DB."""
 
 from __future__ import annotations
 

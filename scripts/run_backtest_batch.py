@@ -6,7 +6,6 @@ from __future__ import annotations
 import argparse
 import csv
 import json
-import sqlite3
 import sys
 from datetime import date, datetime
 from pathlib import Path
@@ -23,6 +22,7 @@ from theme_picker.backtest.data_feed import DailyBarDataFeed
 from theme_picker.backtest.engine import BacktestEngine
 from theme_picker.backtest.models import BacktestConfig
 from theme_picker.strategy import STRATEGY_REGISTRY, StrategyParams, create_strategy
+from sqlalchemy.exc import OperationalError
 
 
 def parse_args() -> argparse.Namespace:
@@ -62,7 +62,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--import-db",
         action="store_true",
-        help="Import the generated summary.json and per-stock details into SQLite after the batch finishes",
+        help="Import the generated summary.json and per-stock details into DuckDB after the batch finishes",
     )
     parser.add_argument(
         "--import-stock-pool",
@@ -305,9 +305,9 @@ def main() -> int:
                 dry_run=args.import_dry_run,
                 equity_mode=args.import_equity_mode,
             )
-        except (RuntimeError, sqlite3.OperationalError) as exc:
+        except (RuntimeError, OperationalError) as exc:
             text = str(exc)
-            if "database is locked" in text.lower() or "single-writer" in text.lower():
+            if "database is locked" in text.lower() or "single-writer" in text.lower() or "conflicting lock" in text.lower():
                 print(
                     "import_failed=database_locked "
                     "Backtest import writes must run one at a time; stop other theme_picker writers and retry.",

@@ -1,11 +1,10 @@
 # -*- coding: utf-8 -*-
-"""Import strategy backtest JSON artifacts into the local SQLite database."""
+"""Import strategy backtest JSON artifacts into the local DuckDB database."""
 
 from __future__ import annotations
 
 import argparse
 import json
-import sqlite3
 import sys
 from pathlib import Path
 
@@ -17,6 +16,7 @@ if str(PARENT_DIR) not in sys.path:
     sys.path.insert(0, str(PARENT_DIR))
 
 from theme_picker.application.backtest_import_service import BacktestImportService  # noqa: E402
+from sqlalchemy.exc import OperationalError  # noqa: E402
 
 
 def parse_args() -> argparse.Namespace:
@@ -72,8 +72,8 @@ def confirm_recursive_import(sources: list[Path], *, assume_yes: bool) -> None:
     if assume_yes or len(sources) <= 1:
         return
     print(
-        f"Recursive import will write {len(sources)} backtest summaries into SQLite. "
-        "SQLite allows one writer at a time; close other import/server writers if you see a lock.",
+        f"Recursive import will write {len(sources)} backtest summaries into DuckDB. "
+        "Close other import/server writers if you see a lock.",
         file=sys.stderr,
     )
     if not sys.stdin.isatty():
@@ -104,11 +104,11 @@ def main() -> int:
                 dry_run=args.dry_run,
                 equity_mode=args.equity_mode,
             )
-        except (RuntimeError, sqlite3.OperationalError) as exc:
+        except (RuntimeError, OperationalError) as exc:
             text = str(exc)
-            if "database is locked" in text.lower() or "single-writer" in text.lower():
+            if "database is locked" in text.lower() or "single-writer" in text.lower() or "conflicting lock" in text.lower():
                 print(
-                    "Import failed: SQLite database is locked. Backtest import writes must run one at a time; "
+                    "Import failed: DuckDB database is locked. Backtest import writes must run one at a time; "
                     "stop other theme_picker servers/import jobs or retry after the current write finishes.",
                     file=sys.stderr,
                 )

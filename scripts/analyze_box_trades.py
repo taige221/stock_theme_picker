@@ -59,11 +59,11 @@ def parse_args() -> argparse.Namespace:
         "--db-run-id",
         action="append",
         default=[],
-        help="Imported SQLite backtest run_id. Can be supplied multiple times.",
+        help="Imported DuckDB backtest run_id. Can be supplied multiple times.",
     )
     parser.add_argument(
         "--database-path",
-        help="SQLite database path for --db-run-id. Defaults to DATABASE_PATH or data/stock_analysis.db.",
+        help="DuckDB database path for --db-run-id. Defaults to DATABASE_PATH or data/stock_analysis.duckdb.",
     )
     parser.add_argument(
         "--output-dir",

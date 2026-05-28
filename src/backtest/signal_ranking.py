@@ -5,14 +5,16 @@ from __future__ import annotations
 
 import json
 import os
-import sqlite3
 from collections import defaultdict
 from dataclasses import asdict, dataclass
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Literal
 
+import duckdb
+
 RankMode = Literal["signal_score", "cohort_ev", "cohort_ev_walk_forward"]
+SQLITE_FILE_HEADER = b"SQLite format 3\x00"
 
 
 @dataclass(slots=True)
@@ -62,22 +64,28 @@ def load_db_backtest_runs(
     database_path: str | Path | None = None,
     root_dir: Path | None = None,
 ) -> list[LoadedBacktestRun]:
-    """Load imported backtest trades from SQLite without touching backend services."""
+    """Load imported backtest trades from DuckDB without touching backend services."""
 
     if not run_ids:
         return []
     db_path = resolve_backtest_database_path(database_path, root_dir=root_dir)
     try:
-        with _connect_readonly_sqlite(db_path) as conn:
+        with _connect_readonly_duckdb(db_path) as conn:
             return [
                 _load_db_backtest_run(conn, run_id=str(run_id).strip(), database_path=db_path)
                 for run_id in run_ids
             ]
-    except sqlite3.OperationalError as exc:
-        if "no such table" in str(exc).lower():
+    except duckdb.Error as exc:
+        text = str(exc).lower()
+        if "no such table" in text or "does not exist" in text:
             raise RuntimeError(
-                "SQLite database does not contain imported backtest tables. "
+                "DuckDB database does not contain imported backtest tables. "
                 "Run scripts/import_backtest_json.py first, or use --run with JSON artifacts."
+            ) from exc
+        if _is_duckdb_lock_error(exc):
+            raise RuntimeError(
+                "DuckDB database is locked by another process. Stop the theme_picker server/import job "
+                "that has the database open, or rerun this command after it exits."
             ) from exc
         raise
 
@@ -87,7 +95,7 @@ def resolve_backtest_database_path(
     *,
     root_dir: Path | None = None,
 ) -> Path:
-    raw_value = database_path or os.getenv("DATABASE_PATH") or "data/stock_analysis.db"
+    raw_value = database_path or os.getenv("DATABASE_PATH") or "data/stock_analysis.duckdb"
     path = Path(raw_value).expanduser()
     if not path.is_absolute():
         path = (root_dir or Path.cwd()) / path
@@ -529,23 +537,55 @@ def _value(value: Any) -> Any:
     return value
 
 
-def _connect_readonly_sqlite(path: Path) -> sqlite3.Connection:
+def _connect_readonly_duckdb(path: Path) -> duckdb.DuckDBPyConnection:
     if not path.exists():
         raise FileNotFoundError(f"backtest database not found: {path}")
-    conn = sqlite3.connect(f"{path.as_uri()}?mode=ro", uri=True)
-    conn.row_factory = sqlite3.Row
-    return conn
+    if _is_sqlite_database_file(path):
+        raise RuntimeError(
+            f"backtest database path points to a SQLite database: {path}. "
+            "Run scripts/migrate_sqlite_to_duckdb.py and use data/stock_analysis.duckdb."
+        )
+    return duckdb.connect(str(path), read_only=True)
+
+
+def _is_sqlite_database_file(path: Path) -> bool:
+    try:
+        with path.open("rb") as handle:
+            return handle.read(len(SQLITE_FILE_HEADER)) == SQLITE_FILE_HEADER
+    except OSError:
+        return False
+
+
+def _is_duckdb_lock_error(exc: BaseException) -> bool:
+    text = str(exc).lower()
+    return "could not set lock" in text or "conflicting lock" in text
+
+
+def _fetchone_dict(conn: duckdb.DuckDBPyConnection, sql: str, params: tuple[Any, ...]) -> dict[str, Any] | None:
+    result = conn.execute(sql, params)
+    row = result.fetchone()
+    if row is None:
+        return None
+    columns = [column[0] for column in result.description]
+    return dict(zip(columns, row))
+
+
+def _fetchall_dict(conn: duckdb.DuckDBPyConnection, sql: str, params: tuple[Any, ...]) -> list[dict[str, Any]]:
+    result = conn.execute(sql, params)
+    columns = [column[0] for column in result.description]
+    return [dict(zip(columns, row)) for row in result.fetchall()]
 
 
 def _load_db_backtest_run(
-    conn: sqlite3.Connection,
+    conn: duckdb.DuckDBPyConnection,
     *,
     run_id: str,
     database_path: Path,
 ) -> LoadedBacktestRun:
     if not run_id:
         raise ValueError("db run id is required")
-    run_row = conn.execute(
+    run_row = _fetchone_dict(
+        conn,
         """
         select
           run_id,
@@ -565,11 +605,12 @@ def _load_db_backtest_run(
         where run_id = ?
         """,
         (run_id,),
-    ).fetchone()
+    )
     if run_row is None:
         raise FileNotFoundError(f"backtest run not found in DB: {run_id}")
 
-    trade_rows = conn.execute(
+    trade_rows = _fetchall_dict(
+        conn,
         """
         select
           trade_id,
@@ -598,7 +639,7 @@ def _load_db_backtest_run(
         order by entry_date asc, id asc
         """,
         (run_id,),
-    ).fetchall()
+    )
 
     aggregate = _loads_json_object(run_row["aggregate_payload"])
     aggregate.update(
@@ -617,7 +658,7 @@ def _load_db_backtest_run(
     )
     run_name = str(run_row["run_name"] or run_row["source_path"] or run_row["run_id"])
     return LoadedBacktestRun(
-        input_source="sqlite_db",
+        input_source="duckdb",
         run_id=str(run_row["run_id"]),
         run_name=run_name,
         database_path=str(database_path),
@@ -630,7 +671,7 @@ def _load_db_backtest_run(
     )
 
 
-def _db_trade_row_to_payload(row: sqlite3.Row) -> dict[str, Any]:
+def _db_trade_row_to_payload(row: dict[str, Any]) -> dict[str, Any]:
     raw_payload = _loads_json_object(row["raw_trade_payload"])
     metadata = _loads_json_object(row["entry_signal_metadata_payload"])
     if not metadata and isinstance(raw_payload.get("entry_signal_metadata"), dict):

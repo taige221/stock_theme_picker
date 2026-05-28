@@ -9,7 +9,7 @@ Standalone theme-based stock picker: Python FastAPI backend at root + Vite React
 - `data_provider/` — market/news source adapters (akshare, efinance, yfinance, baostock, pytdx, longbridge, tushare, tickflow)
 - `domain/` — domain models
 
-SQLite databases live in `data/`. State management on frontend uses Zustand; routing via react-router-dom; charts via Recharts.
+DuckDB databases live in `data/`. State management on frontend uses Zustand; routing via react-router-dom; charts via Recharts.
 
 ## Build, Test, and Development Commands
 ```bash

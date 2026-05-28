@@ -81,16 +81,16 @@ rtk python3 scripts/analyze_box_trades.py \
 - `cohorts.csv`：按版本、信号类型、分数段、风格桶、信号序号、退出原因聚合后的统计
 - `trades.csv`：展开后的逐笔交易明细，带入场分数、MAE/MFE、箱体和回踩/突破特征
 
-如果回测结果已经通过 `scripts/import_backtest_json.py` 导入 SQLite，也可以直接按 DB `run_id` 读取，不要求原始 `result_path` JSON 仍然存在：
+如果回测结果已经通过 `scripts/import_backtest_json.py` 导入 DuckDB，也可以直接按 DB `run_id` 读取，不要求原始 `result_path` JSON 仍然存在：
 
 ```bash
 rtk python3 scripts/analyze_box_trades.py \
   --db-run-id bt_d2c840a083f0 \
-  --database-path data/stock_analysis.db \
+  --database-path data/stock_analysis.duckdb \
   --output-dir data/backtests/diagnostics/db_box_quality_bt_d2c840a083f0
 ```
 
-DB 模式使用只读 SQLite 连接。导入表 `strategy_backtest_trade` 已保留逐笔交易的标准列、`entry_signal_metadata_payload` 和 `raw_trade_payload`，足够重建当前 cohort 诊断；`--database-path` 不传时默认使用 `DATABASE_PATH` 或 `data/stock_analysis.db`。
+DB 模式使用只读 DuckDB 连接。导入表 `strategy_backtest_trade` 已保留逐笔交易的标准列、`entry_signal_metadata_payload` 和 `raw_trade_payload`，足够重建当前 cohort 诊断；`--database-path` 不传时默认使用 `DATABASE_PATH` 或 `data/stock_analysis.duckdb`。如果后端或导入任务正在持有 DuckDB 写连接，先停止对应进程再运行这些只读诊断脚本。
 
 导入回测 JSON 时，权益曲线明细可以按三档落库，默认是 `traded_daily`：
 
@@ -138,7 +138,7 @@ rtk python3 scripts/rank_box_signals.py \
 ```bash
 rtk python3 scripts/rank_box_signals.py \
   --db-run-id bt_d2c840a083f0 \
-  --database-path data/stock_analysis.db \
+  --database-path data/stock_analysis.duckdb \
   --rank-mode cohort_ev_walk_forward \
   --max-per-day 3 \
   --pullback-quota 2 \
@@ -151,7 +151,7 @@ rtk python3 scripts/rank_box_signals.py \
 - `selection_summary.json` / `selection_summary.csv`：分层排序后的交易数、胜率、平均单笔收益、pullback/breakout 选中数
 - `ranked_candidates.csv`：每个候选的每日排名、是否通过 `min_rank_score`、是否被选中、选中来源
 
-排序核心在 `src/backtest/signal_ranking.py`，脚本可以读取已有回测 JSON 或已导入 SQLite 的 DB run，并落 CSV/JSON。`cohort_ev` 是样本内排序诊断，不能直接当成默认实盘规则；`cohort_ev_walk_forward` 只用当天之前已平仓交易来降前视偏差，但仍应作为研究 overlay 验证，而不是默认 live rule。
+排序核心在 `src/backtest/signal_ranking.py`，脚本可以读取已有回测 JSON 或已导入 DuckDB 的 DB run，并落 CSV/JSON。`cohort_ev` 是样本内排序诊断，不能直接当成默认实盘规则；`cohort_ev_walk_forward` 只用当天之前已平仓交易来降前视偏差，但仍应作为研究 overlay 验证，而不是默认 live rule。
 
 ### 5. 风格股票池实验
 
