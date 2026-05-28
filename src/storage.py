@@ -31,6 +31,7 @@ from sqlalchemy import (
     func,
     or_,
     select,
+    text,
 )
 from sqlalchemy import inspect
 from sqlalchemy.dialects.postgresql import insert as duckdb_insert
@@ -1068,6 +1069,37 @@ class DatabaseManager:
         finally:
             session.close()
 
+    def _bulk_upsert_rows(
+        self,
+        model: Any,
+        rows: List[Dict[str, Any]],
+        *,
+        conflict_columns: Iterable[str],
+        update_columns: Iterable[str],
+    ) -> int:
+        if not rows:
+            return 0
+        conflict_keys = list(conflict_columns)
+        rows_by_key: Dict[tuple[Any, ...], Dict[str, Any]] = {}
+        ordered_keys: List[tuple[Any, ...]] = []
+        for row in rows:
+            item = dict(row)
+            key = tuple(item.get(column) for column in conflict_keys)
+            if key not in rows_by_key:
+                ordered_keys.append(key)
+            rows_by_key[key] = item
+        payload = [rows_by_key[key] for key in ordered_keys]
+        stmt = duckdb_insert(model).values(payload)
+        excluded = stmt.excluded
+        with self.session_scope() as session:
+            session.execute(
+                stmt.on_conflict_do_update(
+                    index_elements=conflict_keys,
+                    set_={column: getattr(excluded, column) for column in update_columns},
+                )
+            )
+        return len(rows)
+
     def get_data_range(self, code: str, start_date, end_date) -> List[StockDaily]:
         normalized_start = self._normalize_daily_date(start_date)
         normalized_end = self._normalize_daily_date(end_date)
@@ -1111,31 +1143,26 @@ class DatabaseManager:
             }
             records.append(item)
 
-        with self.session_scope() as session:
-            for item in records:
-                stmt = duckdb_insert(StockDaily).values(item)
-                excluded = stmt.excluded
-                session.execute(
-                    stmt.on_conflict_do_update(
-                        index_elements=["code", "date"],
-                        set_={
-                            "open": excluded.open,
-                            "high": excluded.high,
-                            "low": excluded.low,
-                            "close": excluded.close,
-                            "volume": excluded.volume,
-                            "amount": excluded.amount,
-                            "pct_chg": excluded.pct_chg,
-                            "ma5": excluded.ma5,
-                            "ma10": excluded.ma10,
-                            "ma20": excluded.ma20,
-                            "volume_ratio": excluded.volume_ratio,
-                            "data_source": excluded.data_source,
-                            "updated_at": excluded.updated_at,
-                        },
-                    )
-                )
-        return len(records)
+        return self._bulk_upsert_rows(
+            StockDaily,
+            records,
+            conflict_columns=["code", "date"],
+            update_columns=[
+                "open",
+                "high",
+                "low",
+                "close",
+                "volume",
+                "amount",
+                "pct_chg",
+                "ma5",
+                "ma10",
+                "ma20",
+                "volume_ratio",
+                "data_source",
+                "updated_at",
+            ],
+        )
 
     def save_stock_daily_raw_rows(self, rows: List[Dict[str, Any]]) -> int:
         if not rows:
@@ -1165,34 +1192,29 @@ class DatabaseManager:
                 }
             )
 
-        with self.session_scope() as session:
-            for item in prepared:
-                stmt = duckdb_insert(StockDailyRaw).values(item)
-                excluded = stmt.excluded
-                session.execute(
-                    stmt.on_conflict_do_update(
-                        index_elements=["ts_code", "trade_date"],
-                        set_={
-                            "open": excluded.open,
-                            "high": excluded.high,
-                            "low": excluded.low,
-                            "close": excluded.close,
-                            "pre_close": excluded.pre_close,
-                            "vol": excluded.vol,
-                            "amount": excluded.amount,
-                            "adj_factor": excluded.adj_factor,
-                            "open_qfq": excluded.open_qfq,
-                            "high_qfq": excluded.high_qfq,
-                            "low_qfq": excluded.low_qfq,
-                            "close_qfq": excluded.close_qfq,
-                            "sync_batch_id": excluded.sync_batch_id,
-                            "data_source": excluded.data_source,
-                            "ingested_at": excluded.ingested_at,
-                            "updated_at": excluded.updated_at,
-                        },
-                    )
-                )
-        return len(prepared)
+        return self._bulk_upsert_rows(
+            StockDailyRaw,
+            prepared,
+            conflict_columns=["ts_code", "trade_date"],
+            update_columns=[
+                "open",
+                "high",
+                "low",
+                "close",
+                "pre_close",
+                "vol",
+                "amount",
+                "adj_factor",
+                "open_qfq",
+                "high_qfq",
+                "low_qfq",
+                "close_qfq",
+                "sync_batch_id",
+                "data_source",
+                "ingested_at",
+                "updated_at",
+            ],
+        )
 
     def get_stock_daily_raw_range(self, ts_code: str, start_date, end_date) -> List[StockDailyRaw]:
         normalized_start = self._normalize_daily_date(start_date)
@@ -1236,38 +1258,72 @@ class DatabaseManager:
             return 0
 
         with self.session_scope() as session:
-            rows = list(
-                session.execute(
-                    select(StockDailyRaw)
-                    .where(StockDailyRaw.ts_code == normalized_code)
-                    .order_by(StockDailyRaw.trade_date.asc())
-                ).scalars().all()
+            latest_adj = session.execute(
+                text(
+                    """
+                    SELECT adj_factor
+                    FROM stock_daily_raw
+                    WHERE ts_code = :ts_code
+                      AND adj_factor IS NOT NULL
+                      AND adj_factor > 0
+                    ORDER BY trade_date DESC
+                    LIMIT 1
+                    """
+                ),
+                {"ts_code": normalized_code},
+            ).scalar()
+            if latest_adj is None or float(latest_adj) <= 0:
+                return 0
+
+            updated = session.execute(
+                text(
+                    """
+                    SELECT COUNT(*)
+                    FROM stock_daily_raw
+                    WHERE ts_code = :ts_code
+                      AND adj_factor IS NOT NULL
+                      AND adj_factor > 0
+                    """
+                ),
+                {"ts_code": normalized_code},
+            ).scalar()
+            if not updated:
+                return 0
+
+            session.execute(
+                text(
+                    """
+                    UPDATE stock_daily_raw
+                    SET
+                        open_qfq = CASE
+                            WHEN open IS NULL THEN NULL
+                            ELSE ROUND(open * (adj_factor / :latest_adj), 4)
+                        END,
+                        high_qfq = CASE
+                            WHEN high IS NULL THEN NULL
+                            ELSE ROUND(high * (adj_factor / :latest_adj), 4)
+                        END,
+                        low_qfq = CASE
+                            WHEN low IS NULL THEN NULL
+                            ELSE ROUND(low * (adj_factor / :latest_adj), 4)
+                        END,
+                        close_qfq = CASE
+                            WHEN close IS NULL THEN NULL
+                            ELSE ROUND(close * (adj_factor / :latest_adj), 4)
+                        END,
+                        updated_at = :updated_at
+                    WHERE ts_code = :ts_code
+                      AND adj_factor IS NOT NULL
+                      AND adj_factor > 0
+                    """
+                ),
+                {
+                    "ts_code": normalized_code,
+                    "latest_adj": float(latest_adj),
+                    "updated_at": datetime.now(),
+                },
             )
-            if not rows:
-                return 0
-
-            latest_adj = None
-            for row in reversed(rows):
-                adj_factor = self._normalize_sql_value(row.adj_factor)
-                if adj_factor is not None and float(adj_factor) > 0:
-                    latest_adj = float(adj_factor)
-                    break
-            if latest_adj is None or latest_adj <= 0:
-                return 0
-
-            updated = 0
-            for row in rows:
-                adj_factor = self._normalize_sql_value(row.adj_factor)
-                if adj_factor is None or float(adj_factor) <= 0:
-                    continue
-                ratio = float(adj_factor) / latest_adj
-                row.open_qfq = round(float(row.open) * ratio, 4) if row.open is not None else None
-                row.high_qfq = round(float(row.high) * ratio, 4) if row.high is not None else None
-                row.low_qfq = round(float(row.low) * ratio, 4) if row.low is not None else None
-                row.close_qfq = round(float(row.close) * ratio, 4) if row.close is not None else None
-                row.updated_at = datetime.now()
-                updated += 1
-            return updated
+            return int(updated)
 
     def save_stock_daily_aux_rows(self, rows: List[Dict[str, Any]]) -> int:
         if not rows:
@@ -1300,37 +1356,32 @@ class DatabaseManager:
                 }
             )
 
-        with self.session_scope() as session:
-            for item in prepared:
-                stmt = duckdb_insert(StockDailyAux).values(item)
-                excluded = stmt.excluded
-                session.execute(
-                    stmt.on_conflict_do_update(
-                        index_elements=["ts_code", "trade_date"],
-                        set_={
-                            "turnover_rate": excluded.turnover_rate,
-                            "turnover_rate_f": excluded.turnover_rate_f,
-                            "volume_ratio": excluded.volume_ratio,
-                            "float_share": excluded.float_share,
-                            "free_share": excluded.free_share,
-                            "total_share": excluded.total_share,
-                            "circ_mv": excluded.circ_mv,
-                            "total_mv": excluded.total_mv,
-                            "up_limit": excluded.up_limit,
-                            "down_limit": excluded.down_limit,
-                            "turnover_rate_median_20": excluded.turnover_rate_median_20,
-                            "atr_pct_20": excluded.atr_pct_20,
-                            "style_bucket": excluded.style_bucket,
-                            "is_suspended": excluded.is_suspended,
-                            "suspend_type": excluded.suspend_type,
-                            "sync_batch_id": excluded.sync_batch_id,
-                            "data_source": excluded.data_source,
-                            "ingested_at": excluded.ingested_at,
-                            "updated_at": excluded.updated_at,
-                        },
-                    )
-                )
-        return len(prepared)
+        return self._bulk_upsert_rows(
+            StockDailyAux,
+            prepared,
+            conflict_columns=["ts_code", "trade_date"],
+            update_columns=[
+                "turnover_rate",
+                "turnover_rate_f",
+                "volume_ratio",
+                "float_share",
+                "free_share",
+                "total_share",
+                "circ_mv",
+                "total_mv",
+                "up_limit",
+                "down_limit",
+                "turnover_rate_median_20",
+                "atr_pct_20",
+                "style_bucket",
+                "is_suspended",
+                "suspend_type",
+                "sync_batch_id",
+                "data_source",
+                "ingested_at",
+                "updated_at",
+            ],
+        )
 
     def get_stock_daily_aux_range(self, ts_code: str, start_date, end_date) -> List[StockDailyAux]:
         normalized_start = self._normalize_daily_date(start_date)
@@ -1374,99 +1425,150 @@ class DatabaseManager:
             return 0
 
         with self.session_scope() as session:
-            raw_rows = list(
+            matched_count = session.execute(
+                text(
+                    """
+                    SELECT COUNT(*)
+                    FROM stock_daily_raw AS r
+                    JOIN stock_daily_aux AS a
+                      ON a.ts_code = r.ts_code
+                     AND a.trade_date = r.trade_date
+                    WHERE r.ts_code = :ts_code
+                    """
+                ),
+                {"ts_code": normalized_code},
+            ).scalar()
+            if not matched_count:
+                return 0
+
+            qfq_ready = bool(
                 session.execute(
-                    select(StockDailyRaw)
-                    .where(StockDailyRaw.ts_code == normalized_code)
-                    .order_by(StockDailyRaw.trade_date.asc())
-                ).scalars().all()
+                    text(
+                        """
+                        SELECT COUNT(*)
+                        FROM stock_daily_raw AS r
+                        JOIN stock_daily_aux AS a
+                          ON a.ts_code = r.ts_code
+                         AND a.trade_date = r.trade_date
+                        WHERE r.ts_code = :ts_code
+                          AND r.high_qfq IS NOT NULL
+                          AND r.low_qfq IS NOT NULL
+                          AND r.close_qfq IS NOT NULL
+                        """
+                    ),
+                    {"ts_code": normalized_code},
+                ).scalar()
             )
-            aux_rows = list(
-                session.execute(
-                    select(StockDailyAux)
-                    .where(StockDailyAux.ts_code == normalized_code)
-                    .order_by(StockDailyAux.trade_date.asc())
-                ).scalars().all()
+            high_expr = "r.high_qfq" if qfq_ready else "r.high"
+            low_expr = "r.low_qfq" if qfq_ready else "r.low"
+            close_expr = "r.close_qfq" if qfq_ready else "r.close"
+            normalized_batch_id = str(sync_batch_id).strip() if sync_batch_id is not None else None
+
+            session.execute(
+                text(
+                    f"""
+                    WITH source AS (
+                        SELECT
+                            r.ts_code,
+                            r.trade_date,
+                            {high_expr} AS feature_high,
+                            {low_expr} AS feature_low,
+                            {close_expr} AS feature_close,
+                            a.turnover_rate AS turnover_rate
+                        FROM stock_daily_raw AS r
+                        JOIN stock_daily_aux AS a
+                          ON a.ts_code = r.ts_code
+                         AND a.trade_date = r.trade_date
+                        WHERE r.ts_code = :ts_code
+                    ),
+                    lagged AS (
+                        SELECT
+                            ts_code,
+                            trade_date,
+                            feature_high,
+                            feature_low,
+                            feature_close,
+                            turnover_rate,
+                            LAG(feature_close) OVER (ORDER BY trade_date) AS previous_close
+                        FROM source
+                    ),
+                    ranged AS (
+                        SELECT
+                            ts_code,
+                            trade_date,
+                            feature_close,
+                            turnover_rate,
+                            CASE
+                                WHEN feature_high - feature_low IS NULL
+                                 AND ABS(feature_high - previous_close) IS NULL
+                                 AND ABS(feature_low - previous_close) IS NULL
+                                THEN NULL
+                                ELSE GREATEST(
+                                    COALESCE(feature_high - feature_low, -1.7976931348623157e308),
+                                    COALESCE(ABS(feature_high - previous_close), -1.7976931348623157e308),
+                                    COALESCE(ABS(feature_low - previous_close), -1.7976931348623157e308)
+                                )
+                            END AS true_range
+                        FROM lagged
+                    ),
+                    rolled AS (
+                        SELECT
+                            ts_code,
+                            trade_date,
+                            CASE
+                                WHEN COUNT(turnover_rate) OVER rolling_window >= 5
+                                THEN ROUND(MEDIAN(turnover_rate) OVER rolling_window, 4)
+                                ELSE NULL
+                            END AS turnover_rate_median_20,
+                            CASE
+                                WHEN COUNT(true_range) OVER rolling_window >= 5
+                                 AND feature_close IS NOT NULL
+                                 AND feature_close <> 0
+                                THEN ROUND((AVG(true_range) OVER rolling_window / feature_close) * 100.0, 4)
+                                ELSE NULL
+                            END AS atr_pct_20
+                        FROM ranged
+                        WINDOW rolling_window AS (
+                            ORDER BY trade_date
+                            ROWS BETWEEN 19 PRECEDING AND CURRENT ROW
+                        )
+                    ),
+                    computed AS (
+                        SELECT
+                            ts_code,
+                            trade_date,
+                            turnover_rate_median_20,
+                            atr_pct_20,
+                            CASE
+                                WHEN turnover_rate_median_20 IS NULL OR atr_pct_20 IS NULL THEN NULL
+                                WHEN atr_pct_20 >= 5.5 THEN 'high_beta'
+                                WHEN turnover_rate_median_20 >= 5.0 THEN 'high_beta'
+                                WHEN atr_pct_20 >= 4.5 AND turnover_rate_median_20 >= 2.0 THEN 'high_beta'
+                                WHEN turnover_rate_median_20 < 1.5 AND atr_pct_20 < 3.5 THEN 'slow_large'
+                                ELSE 'balanced_trend'
+                            END AS style_bucket
+                        FROM rolled
+                    )
+                    UPDATE stock_daily_aux AS a
+                    SET
+                        turnover_rate_median_20 = c.turnover_rate_median_20,
+                        atr_pct_20 = c.atr_pct_20,
+                        style_bucket = c.style_bucket,
+                        sync_batch_id = COALESCE(:sync_batch_id, a.sync_batch_id),
+                        updated_at = :updated_at
+                    FROM computed AS c
+                    WHERE a.ts_code = c.ts_code
+                      AND a.trade_date = c.trade_date
+                      AND a.ts_code = :ts_code
+                    """
+                ),
+                {
+                    "ts_code": normalized_code,
+                    "sync_batch_id": normalized_batch_id or None,
+                    "updated_at": datetime.now(),
+                },
             )
-            if not raw_rows or not aux_rows:
-                return 0
-
-            raw_frame = pd.DataFrame(
-                [
-                    {
-                        "trade_date": row.trade_date,
-                        "high": row.high,
-                        "low": row.low,
-                        "close": row.close,
-                        "high_qfq": row.high_qfq,
-                        "low_qfq": row.low_qfq,
-                        "close_qfq": row.close_qfq,
-                    }
-                    for row in raw_rows
-                ]
-            )
-            aux_frame = pd.DataFrame(
-                [
-                    {
-                        "trade_date": row.trade_date,
-                        "turnover_rate": row.turnover_rate,
-                    }
-                    for row in aux_rows
-                ]
-            )
-            if raw_frame.empty or aux_frame.empty:
-                return 0
-
-            frame = raw_frame.merge(aux_frame, on="trade_date", how="inner").sort_values("trade_date").reset_index(drop=True)
-            if frame.empty:
-                return 0
-
-            qfq_ready = frame[["high_qfq", "low_qfq", "close_qfq"]].notna().all(axis=1).any()
-            high_col = "high_qfq" if qfq_ready else "high"
-            low_col = "low_qfq" if qfq_ready else "low"
-            close_col = "close_qfq" if qfq_ready else "close"
-            frame["feature_close"] = pd.to_numeric(frame.get(close_col), errors="coerce")
-            frame["feature_high"] = pd.to_numeric(frame.get(high_col), errors="coerce")
-            frame["feature_low"] = pd.to_numeric(frame.get(low_col), errors="coerce")
-            frame["turnover_rate"] = pd.to_numeric(frame.get("turnover_rate"), errors="coerce")
-
-            previous_close = frame["feature_close"].shift(1)
-            tr_components = pd.concat(
-                [
-                    frame["feature_high"] - frame["feature_low"],
-                    (frame["feature_high"] - previous_close).abs(),
-                    (frame["feature_low"] - previous_close).abs(),
-                ],
-                axis=1,
-            )
-            frame["true_range"] = tr_components.max(axis=1, skipna=True)
-            frame["turnover_rate_median_20"] = frame["turnover_rate"].rolling(window=20, min_periods=5).median()
-            frame["atr_20"] = frame["true_range"].rolling(window=20, min_periods=5).mean()
-            frame["atr_pct_20"] = (frame["atr_20"] / frame["feature_close"] * 100.0).replace([float("inf"), float("-inf")], pd.NA)
-            frame["style_bucket"] = frame.apply(self._classify_style_bucket_from_row, axis=1)
-
-            aux_by_date = {row.trade_date: row for row in aux_rows}
-            updated = 0
-            current_time = datetime.now()
-            for record in frame.to_dict(orient="records"):
-                trade_date = record.get("trade_date")
-                aux_row = aux_by_date.get(trade_date)
-                if aux_row is None:
-                    continue
-                turnover_median = record.get("turnover_rate_median_20")
-                aux_row.turnover_rate_median_20 = self._normalize_sql_value(
-                    round(float(turnover_median), 4) if turnover_median is not None and pd.notna(turnover_median) else None
-                )
-                aux_row.atr_pct_20 = self._normalize_sql_value(
-                    round(float(record["atr_pct_20"]), 4) if record.get("atr_pct_20") is not None and pd.notna(record.get("atr_pct_20")) else None
-                )
-                style_bucket = record.get("style_bucket")
-                aux_row.style_bucket = None if style_bucket is None or pd.isna(style_bucket) else str(style_bucket).strip() or None
-                if sync_batch_id is not None:
-                    aux_row.sync_batch_id = str(sync_batch_id).strip() or aux_row.sync_batch_id
-                aux_row.updated_at = current_time
-                updated += 1
-            return updated
+            return int(matched_count)
 
     def save_stock_corporate_action_rows(self, rows: List[Dict[str, Any]]) -> int:
         if not rows:
@@ -1492,30 +1594,25 @@ class DatabaseManager:
                 }
             )
 
-        with self.session_scope() as session:
-            for item in prepared:
-                stmt = duckdb_insert(StockCorporateAction).values(item)
-                excluded = stmt.excluded
-                session.execute(
-                    stmt.on_conflict_do_update(
-                        index_elements=["action_key"],
-                        set_={
-                            "ann_date": excluded.ann_date,
-                            "record_date": excluded.record_date,
-                            "ex_date": excluded.ex_date,
-                            "pay_date": excluded.pay_date,
-                            "div_proc": excluded.div_proc,
-                            "stk_div": excluded.stk_div,
-                            "cash_div": excluded.cash_div,
-                            "cash_div_tax": excluded.cash_div_tax,
-                            "sync_batch_id": excluded.sync_batch_id,
-                            "data_source": excluded.data_source,
-                            "ingested_at": excluded.ingested_at,
-                            "updated_at": excluded.updated_at,
-                        },
-                    )
-                )
-        return len(prepared)
+        return self._bulk_upsert_rows(
+            StockCorporateAction,
+            prepared,
+            conflict_columns=["action_key"],
+            update_columns=[
+                "ann_date",
+                "record_date",
+                "ex_date",
+                "pay_date",
+                "div_proc",
+                "stk_div",
+                "cash_div",
+                "cash_div_tax",
+                "sync_batch_id",
+                "data_source",
+                "ingested_at",
+                "updated_at",
+            ],
+        )
 
     def list_stock_corporate_actions(
         self,
@@ -1558,24 +1655,19 @@ class DatabaseManager:
                 }
             )
 
-        with self.session_scope() as session:
-            for item in prepared:
-                stmt = duckdb_insert(TradeCalendar).values(item)
-                excluded = stmt.excluded
-                session.execute(
-                    stmt.on_conflict_do_update(
-                        index_elements=["exchange", "cal_date"],
-                        set_={
-                            "is_open": excluded.is_open,
-                            "pretrade_date": excluded.pretrade_date,
-                            "sync_batch_id": excluded.sync_batch_id,
-                            "data_source": excluded.data_source,
-                            "ingested_at": excluded.ingested_at,
-                            "updated_at": excluded.updated_at,
-                        },
-                    )
-                )
-        return len(prepared)
+        return self._bulk_upsert_rows(
+            TradeCalendar,
+            prepared,
+            conflict_columns=["exchange", "cal_date"],
+            update_columns=[
+                "is_open",
+                "pretrade_date",
+                "sync_batch_id",
+                "data_source",
+                "ingested_at",
+                "updated_at",
+            ],
+        )
 
     def list_trade_calendar(
         self,
@@ -1871,24 +1963,19 @@ class DatabaseManager:
         if not normalized_rows:
             return 0
 
-        with self.session_scope() as session:
-            for item in normalized_rows:
-                stmt = duckdb_insert(EtfDailyMetricsSnapshot).values(item)
-                excluded = stmt.excluded
-                session.execute(
-                    stmt.on_conflict_do_update(
-                        index_elements=["stock_code", "trade_date"],
-                        set_={
-                            "fund_shares": excluded.fund_shares,
-                            "nav": excluded.nav,
-                            "derived_fund_size_yi": excluded.derived_fund_size_yi,
-                            "exchange": excluded.exchange,
-                            "data_source": excluded.data_source,
-                            "updated_at": excluded.updated_at,
-                        },
-                    )
-                )
-        return len(normalized_rows)
+        return self._bulk_upsert_rows(
+            EtfDailyMetricsSnapshot,
+            normalized_rows,
+            conflict_columns=["stock_code", "trade_date"],
+            update_columns=[
+                "fund_shares",
+                "nav",
+                "derived_fund_size_yi",
+                "exchange",
+                "data_source",
+                "updated_at",
+            ],
+        )
 
     def get_latest_etf_daily_metrics_snapshot(self, stock_code: str) -> Optional[EtfDailyMetricsSnapshot]:
         with self.session_scope() as session:
