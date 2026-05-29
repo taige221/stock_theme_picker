@@ -845,3 +845,45 @@ python3 scripts/run_backtest.py \
 
 - `preferred_turnover_rate_high`
   偏好的换手率上限（%）
+
+## P3 真实资金账户级回测
+
+`scripts/run_real_capital_backtest.py` 会从已导入 DuckDB 的单票回测交易中重新做 P2.5 排序，然后用同一个账户现金池执行：
+
+- 多信号按 entry date 竞争资金
+- 单票仓位按账户权益比例计算
+- 按整手买入
+- 限制最大同时持仓数
+- 使用 `stock_daily_raw` 日线收盘价生成组合权益曲线和回撤
+- 输出账户交易、跳过信号、年度/月度收益和权益曲线
+- 输出 `account_diagnostics.json`，记录持仓估值是否使用入场价兜底；一旦触发，summary 会带 warning，提示权益曲线/回撤可能过于平滑
+
+主线 P3 命令：
+
+```bash
+rtk uv run --extra dev python scripts/run_real_capital_backtest.py \
+  --db-run-id bt_4008f88677a1 \
+  --rank-mode signal_score \
+  --max-per-day 3 \
+  --pullback-quota 2 \
+  --breakout-quota 1 \
+  --ranking-max-open-positions 8 \
+  --initial-cash 1000000 \
+  --position-size-pct 0.08 \
+  --account-max-positions 8 \
+  --price-adjustment qfq \
+  --output-dir data/backtests/diagnostics/p3_real_capital_bt_4008f88677a1_pos08_cap8
+```
+
+2026-05-29 首轮结果：
+
+| 仓位/上限 | 总收益 | 最大回撤 | PF | 胜率 | 交易数 | 最长连亏 | 平均/最高暴露 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `5% / 8仓` | 16.6353% | 9.7780% | 1.2346 | 40.7666% | 574 | 11 | 10.3166% / 40.0415% |
+| `8% / 8仓` | 30.7175% | 15.4847% | 1.2530 | 40.9012% | 577 | 11 | 16.9506% / 63.9657% |
+| `10% / 8仓` | 38.6397% | 19.3838% | 1.2477 | 40.9012% | 577 | 11 | 21.3048% / 80.1718% |
+| `12.5% / 8仓` | 50.4366% | 24.2480% | 1.2477 | 40.9012% | 577 | 11 | 26.8407% / 99.8208% |
+| `10% / 4仓` | 25.8429% | 16.2531% | 1.2445 | 40.0966% | 414 | 13 | 15.4506% / 43.1490% |
+| `10% / 6仓` | 24.1263% | 17.8824% | 1.1812 | 40.1942% | 515 | 16 | 19.0304% / 62.0792% |
+
+当前建议先把 `8% / 8仓` 作为 P3 默认观察口径：收益/回撤比比 `10% / 8仓` 更温和，且没有 `4仓/6仓` 的重新排序损耗。
