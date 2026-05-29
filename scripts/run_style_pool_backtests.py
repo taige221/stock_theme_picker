@@ -23,6 +23,17 @@ DEFAULT_PROFILES = {
     "v57": ROOT_DIR / "data" / "backtests" / "params_turnover_loose_v57.json",
     "v60": ROOT_DIR / "data" / "backtests" / "params_turnover_loose_v60.json",
     "v64": ROOT_DIR / "data" / "backtests" / "params_turnover_loose_v64.json",
+    "balanced_v1": ROOT_DIR / "src" / "backtest" / "profiles" / "a_share_box_balanced_v1.json",
+    "pullback_dominant_v1": ROOT_DIR
+    / "src"
+    / "backtest"
+    / "profiles"
+    / "a_share_box_pullback_dominant_v1.json",
+    "breakout_selective_v1": ROOT_DIR
+    / "src"
+    / "backtest"
+    / "profiles"
+    / "a_share_box_breakout_selective_v1.json",
 }
 
 
@@ -172,10 +183,13 @@ def summarize_run(pool_id: str, profile_id: str, pool_path: Path, params_path: P
     trades = []
     signal_stats: dict[str, dict[str, float]] = {}
     for item in summary.get("results") or []:
-        result_path = Path(str(item.get("result_path") or ""))
+        raw_result_path = str(item.get("result_path") or "").strip()
+        if not raw_result_path:
+            continue
+        result_path = Path(raw_result_path)
         if not result_path.is_absolute():
             result_path = ROOT_DIR / result_path
-        if not result_path.exists():
+        if not result_path.is_file():
             continue
         detail = json.loads(result_path.read_text(encoding="utf-8"))
         for trade in detail.get("trades") or []:

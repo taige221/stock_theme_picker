@@ -1,0 +1,49 @@
+{
+  "version": "2026-05-28-p25-v1",
+  "baseline_params": "data/backtests/params_turnover_loose_v64.json",
+  "profiles": [
+    {
+      "profile_id": "balanced_v1",
+      "name": "均衡控交易",
+      "params_file": "src/backtest/profiles/a_share_box_balanced_v1.json",
+      "intent": "保留 breakout + pullback 双形态，以换手上限、低激活 trailing、保本和 pullback stall 控制回撤与回吐。",
+      "portfolio_schedule": {
+        "rank_mode": "signal_score",
+        "max_per_day": 3,
+        "pullback_quota": 2,
+        "breakout_quota": 1,
+        "max_open_positions": 8,
+        "fill_unused_slots": true
+      }
+    },
+    {
+      "profile_id": "pullback_dominant_v1",
+      "name": "回踩主导",
+      "params_file": "src/backtest/profiles/a_share_box_pullback_dominant_v1.json",
+      "intent": "把 pullback 作为主赚钱模式，强化早期失败退出、保本、回吐保护，并对过热回踩做评分惩罚。",
+      "portfolio_schedule": {
+        "rank_mode": "signal_score",
+        "max_per_day": 2,
+        "pullback_quota": 2,
+        "breakout_quota": 0,
+        "max_open_positions": 8,
+        "fill_unused_slots": false
+      }
+    },
+    {
+      "profile_id": "breakout_selective_v1",
+      "name": "精选突破",
+      "params_file": "src/backtest/profiles/a_share_box_breakout_selective_v1.json",
+      "intent": "只保留更高质量突破，控制追高、箱体过高和高换手，同时给突破更长持仓与更早利润保护。",
+      "portfolio_schedule": {
+        "rank_mode": "signal_score",
+        "min_rank_score": 80.0,
+        "max_per_day": 2,
+        "pullback_quota": 0,
+        "breakout_quota": 1,
+        "max_open_positions": 6,
+        "fill_unused_slots": false
+      }
+    }
+  ]
+}
