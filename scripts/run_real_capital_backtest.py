@@ -58,13 +58,19 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--database-path", help="DuckDB path. Defaults to DATABASE_PATH or data/stock_analysis.duckdb")
     parser.add_argument("--output-dir", help="Output directory")
 
-    parser.add_argument("--rank-mode", choices=("signal_score", "cohort_ev", "cohort_ev_walk_forward"), default="signal_score")
+    parser.add_argument(
+        "--rank-mode",
+        choices=("signal_score", "cohort_ev", "cohort_ev_walk_forward", "stock_quality", "stock_quality_walk_forward"),
+        default="signal_score",
+    )
     parser.add_argument("--max-per-day", type=int, default=3)
     parser.add_argument("--pullback-quota", type=int, default=2)
     parser.add_argument("--breakout-quota", type=int, default=1)
     parser.add_argument("--ranking-max-open-positions", type=int, default=8)
     parser.add_argument("--min-cohort-trades", type=int, default=8)
     parser.add_argument("--min-rank-score", type=float)
+    parser.add_argument("--heat-score-cap", type=float)
+    parser.add_argument("--max-heat-score", dest="legacy_max_heat_score", type=float, help=argparse.SUPPRESS)
     parser.add_argument("--no-fill", action="store_true")
 
     parser.add_argument("--initial-cash", type=float, default=1_000_000.0)
@@ -94,6 +100,7 @@ def main() -> int:
         max_open_positions=args.ranking_max_open_positions,
         min_cohort_trades=args.min_cohort_trades,
         min_rank_score=args.min_rank_score,
+        heat_score_cap=_resolve_heat_score_cap(args),
         fill_unused_slots=not args.no_fill,
     ).normalized()
     account_config = RealCapitalConfig(
@@ -215,6 +222,14 @@ def _selected_date_range(
     return start, end
 
 
+def _resolve_heat_score_cap(args: argparse.Namespace) -> float | None:
+    if args.heat_score_cap is not None:
+        return float(args.heat_score_cap)
+    if getattr(args, "legacy_max_heat_score", None) is not None:
+        return float(args.legacy_max_heat_score)
+    return None
+
+
 def _write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
     fieldnames = _fieldnames(rows)
     with path.open("w", encoding="utf-8", newline="") as handle:
@@ -240,6 +255,7 @@ def _fieldnames(rows: list[dict[str, Any]]) -> list[str]:
         "entry_price",
         "exit_price",
         "shares",
+        "position_size_pct",
         "entry_value",
         "exit_value",
         "entry_cash_out",

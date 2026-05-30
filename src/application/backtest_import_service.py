@@ -206,7 +206,12 @@ class BacktestImportService:
             stmt = stmt.where(StrategyBacktestRun.status == status)
         stmt = stmt.order_by(desc(StrategyBacktestRun.generated_at), desc(StrategyBacktestRun.id)).limit(max(1, limit))
         with self.db.session_scope() as session:
-            items = [self._run_to_list_item(row) for row in session.execute(stmt).scalars().all()]
+            rows = session.execute(stmt).scalars().all()
+            schedule_counts = self._portfolio_schedule_counts(session, [row.run_id for row in rows])
+            items = [
+                self._run_to_list_item(row, schedule_summary=schedule_counts.get(row.run_id))
+                for row in rows
+            ]
         return {"items": items, "next_cursor": None}
 
     def list_presets(self) -> dict[str, Any]:
@@ -446,7 +451,8 @@ class BacktestImportService:
         result_filter: str = "all",
         sort: str = "total_return_pct",
         order: str = "desc",
-        limit: int = 200,
+        limit: int | None = 200,
+        offset: int = 0,
     ) -> dict[str, Any]:
         sort_columns = {
             "total_return_pct": StrategyBacktestSymbolResult.total_return_pct,
@@ -465,11 +471,29 @@ class BacktestImportService:
         elif result_filter == "error":
             stmt = stmt.where(StrategyBacktestSymbolResult.status == "error")
         column = sort_columns.get(sort, StrategyBacktestSymbolResult.total_return_pct)
-        stmt = stmt.order_by(column.asc() if order == "asc" else desc(column)).limit(max(1, limit))
+        stmt = stmt.order_by(column.asc() if order == "asc" else desc(column), StrategyBacktestSymbolResult.stock_code.asc())
+        page_offset = max(0, int(offset or 0))
+        if limit is not None:
+            stmt = stmt.limit(max(1, int(limit)))
+        if page_offset:
+            stmt = stmt.offset(page_offset)
         with self.db.session_scope() as session:
             rows = session.execute(stmt).scalars().all()
             counts = self._stock_counts(session, run_id)
-        return {"items": [self._symbol_to_dict(row) for row in rows], "counts": counts}
+        result_total = int(counts.get(result_filter, counts.get("all", 0)) or 0)
+        returned = len(rows)
+        next_offset = page_offset + returned if limit is not None and page_offset + returned < result_total else None
+        return {
+            "items": [self._symbol_to_dict(row) for row in rows],
+            "counts": counts,
+            "page": {
+                "limit": limit,
+                "offset": page_offset,
+                "returned": returned,
+                "total": result_total,
+                "next_offset": next_offset,
+            },
+        }
 
     def get_stock_detail(self, run_id: str, stock_code: str) -> Optional[dict[str, Any]]:
         stock_candidates = self._stock_code_candidates(stock_code)
@@ -554,6 +578,9 @@ class BacktestImportService:
             source = "stock_daily"
         bars = self._with_moving_averages(bars)
         markers = self._trade_markers(trades)
+        params = self._loads(run.params_payload) or {}
+        box_lookback_days = self._int(params.get("box_lookback_days")) or 30
+        boxes = self._trade_box_overlays(trades, bars, box_lookback_days=box_lookback_days)
         return {
             "run_id": run_id,
             "stock_code": symbol.stock_code,
@@ -564,6 +591,7 @@ class BacktestImportService:
             "data_source": source if bars else None,
             "bars": bars,
             "markers": markers,
+            "boxes": boxes,
             "trades": [self._trade_to_dict(item) for item in trades],
             "latest_signal_metadata": self._loads(symbol.latest_signal_metadata_payload),
             "read_only": True,
@@ -1203,7 +1231,13 @@ class BacktestImportService:
             for point in points
         ]
 
-    def _run_to_list_item(self, row: StrategyBacktestRun) -> dict[str, Any]:
+    def _run_to_list_item(
+        self,
+        row: StrategyBacktestRun,
+        *,
+        schedule_summary: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        schedule_summary = schedule_summary or {}
         return {
             "run_id": row.run_id,
             "name": row.run_name,
@@ -1220,6 +1254,29 @@ class BacktestImportService:
             "max_drawdown_pct": row.max_drawdown_pct,
             "win_rate_pct": row.win_rate_pct,
             "generated_at": self._datetime_to_str(row.generated_at),
+            "portfolio_schedule_count": schedule_summary.get("count") or 0,
+            "latest_portfolio_schedule_at": self._datetime_to_str(schedule_summary.get("latest_created_at")),
+        }
+
+    def _portfolio_schedule_counts(self, session, run_ids: list[str]) -> dict[str, dict[str, Any]]:
+        clean_run_ids = [run_id for run_id in run_ids if run_id]
+        if not clean_run_ids:
+            return {}
+        rows = session.execute(
+            select(
+                StrategyBacktestPortfolioSchedule.run_id,
+                func.count(StrategyBacktestPortfolioSchedule.id),
+                func.max(StrategyBacktestPortfolioSchedule.created_at),
+            )
+            .where(StrategyBacktestPortfolioSchedule.run_id.in_(clean_run_ids))
+            .group_by(StrategyBacktestPortfolioSchedule.run_id)
+        ).all()
+        return {
+            str(run_id): {
+                "count": int(count or 0),
+                "latest_created_at": latest_created_at,
+            }
+            for run_id, count, latest_created_at in rows
         }
 
     def _run_to_detail(self, session, row: StrategyBacktestRun) -> dict[str, Any]:
@@ -1718,6 +1775,54 @@ class BacktestImportService:
                     }
                 )
         return sorted(markers, key=lambda item: (str(item.get("trade_date") or ""), str(item.get("type") or "")))
+
+    def _trade_box_overlays(
+        self,
+        trades: list[StrategyBacktestTrade],
+        bars: list[dict[str, Any]],
+        *,
+        box_lookback_days: int,
+    ) -> list[dict[str, Any]]:
+        if not trades or not bars:
+            return []
+        date_index = {
+            str(bar.get("trade_date")): index
+            for index, bar in enumerate(bars)
+            if bar.get("trade_date")
+        }
+        lookback = max(5, int(box_lookback_days or 30))
+        boxes: list[dict[str, Any]] = []
+        for trade in trades:
+            entry_date = self._date_to_str(trade.entry_date)
+            entry_index = date_index.get(entry_date)
+            if entry_index is None:
+                continue
+            metadata = self._loads(trade.entry_signal_metadata_payload) or {}
+            support = self._float(metadata.get("box_support"))
+            resistance = self._float(metadata.get("box_resistance"))
+            if support is None or resistance is None or support <= 0 or resistance <= support:
+                continue
+            start_index = max(0, entry_index - lookback)
+            end_index = max(start_index, entry_index)
+            boxes.append(
+                {
+                    "type": "entry_box",
+                    "trade_id": trade.trade_id,
+                    "signal_type": metadata.get("signal_type") or trade.entry_signal_reason,
+                    "start_date": bars[start_index].get("trade_date"),
+                    "end_date": bars[end_index].get("trade_date"),
+                    "entry_date": entry_date,
+                    "exit_date": self._date_to_str(trade.exit_date),
+                    "support": support,
+                    "resistance": resistance,
+                    "height_pct": self._float(metadata.get("box_height_pct")),
+                    "support_touches": self._int(metadata.get("support_touches")),
+                    "resistance_touches": self._int(metadata.get("resistance_touches")),
+                    "score": trade.entry_signal_score,
+                    "reason": trade.entry_signal_reason,
+                }
+            )
+        return boxes
 
     def _ts_code_candidates(self, stock_code: str) -> list[str]:
         code = str(stock_code or "").strip().upper()

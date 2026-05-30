@@ -419,28 +419,27 @@ class StockAlertRule(Base):
     __tablename__ = "stock_alert_rule"
 
     id = _id_column("stock_alert_rule_id_seq")
-    stock_code = Column(String(16), nullable=False, index=True)
+    stock_code = Column(String(16), nullable=False)
     stock_name = Column(String(64), nullable=False)
-    rule_type = Column(String(32), nullable=False, index=True)
+    rule_type = Column(String(32), nullable=False)
     threshold_value = Column(Float, nullable=True)
     scan_interval_minutes = Column(Integer, nullable=False, default=5)
     enabled = Column(Integer, nullable=False, default=1)
     note = Column(Text, nullable=True)
     source_query_id = Column(String(64), nullable=True)
-    last_evaluated_at = Column(DateTime, nullable=True, index=True)
-    last_triggered_at = Column(DateTime, nullable=True, index=True)
+    last_evaluated_at = Column(DateTime, nullable=True)
+    last_triggered_at = Column(DateTime, nullable=True)
     last_trigger_key = Column(String(128), nullable=True)
     last_scan_status = Column(String(32), nullable=True)
     last_scan_reason = Column(Text, nullable=True)
     last_quote_source = Column(String(64), nullable=True)
     last_quote_price = Column(Float, nullable=True)
     last_scan_payload_json = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.now, index=True)
-    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, index=True)
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
 
     __table_args__ = (
         UniqueConstraint("stock_code", "rule_type", name="uix_stock_alert_rule_code_type"),
-        Index("ix_stock_alert_rule_code_updated", "stock_code", "updated_at"),
     )
 
 
@@ -945,6 +944,17 @@ class DatabaseManager:
         self._run_post_create_migrations()
 
     def _run_post_create_migrations(self) -> None:
+        for index_name in (
+            "ix_stock_alert_rule_code_updated",
+            "ix_stock_alert_rule_created_at",
+            "ix_stock_alert_rule_last_evaluated_at",
+            "ix_stock_alert_rule_last_triggered_at",
+            "ix_stock_alert_rule_rule_type",
+            "ix_stock_alert_rule_stock_code",
+            "ix_stock_alert_rule_updated_at",
+        ):
+            self._drop_index_if_exists(index_name)
+
         self._ensure_column(
             table_name="stock_alert_rule",
             column_name="scan_interval_minutes",
@@ -1057,6 +1067,10 @@ class DatabaseManager:
     def _ensure_index(self, *, index_name: str, create_sql: str) -> None:
         with self.engine.begin() as conn:
             conn.exec_driver_sql(create_sql)
+
+    def _drop_index_if_exists(self, index_name: str) -> None:
+        with self.engine.begin() as conn:
+            conn.exec_driver_sql(f"DROP INDEX IF EXISTS {index_name}")
 
     def close(self) -> None:
         try:

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 from collections import defaultdict
 from dataclasses import asdict, dataclass
@@ -13,7 +14,14 @@ from typing import Any, Literal
 
 import duckdb
 
-RankMode = Literal["signal_score", "cohort_ev", "cohort_ev_walk_forward"]
+RankMode = Literal["signal_score", "cohort_ev", "cohort_ev_walk_forward", "stock_quality", "stock_quality_walk_forward"]
+SUPPORTED_RANK_MODES = {
+    "signal_score",
+    "cohort_ev",
+    "cohort_ev_walk_forward",
+    "stock_quality",
+    "stock_quality_walk_forward",
+}
 SQLITE_FILE_HEADER = b"SQLite format 3\x00"
 
 
@@ -26,17 +34,22 @@ class LayeredRankingConfig:
     max_open_positions: int = 0
     min_cohort_trades: int = 8
     min_rank_score: float | None = None
+    heat_score_cap: float | None = None
     fill_unused_slots: bool = True
 
     def normalized(self) -> "LayeredRankingConfig":
+        rank_mode = str(self.rank_mode)
+        if rank_mode not in SUPPORTED_RANK_MODES:
+            raise ValueError(f"unsupported rank_mode: {rank_mode}")
         return LayeredRankingConfig(
-            rank_mode=self.rank_mode,
+            rank_mode=rank_mode,  # type: ignore[arg-type]
             max_per_day=max(1, int(self.max_per_day)),
             pullback_quota=max(0, int(self.pullback_quota)),
             breakout_quota=max(0, int(self.breakout_quota)),
             max_open_positions=max(0, int(self.max_open_positions)),
             min_cohort_trades=max(1, int(self.min_cohort_trades)),
             min_rank_score=self.min_rank_score,
+            heat_score_cap=self.heat_score_cap,
             fill_unused_slots=bool(self.fill_unused_slots),
         )
 
@@ -168,7 +181,7 @@ def rank_trade_candidates(
 ) -> list[dict[str, Any]]:
     runtime_config = config.normalized()
     scorer = None
-    if runtime_config.rank_mode != "cohort_ev_walk_forward":
+    if not _is_walk_forward_rank_mode(runtime_config.rank_mode):
         scorer = _build_scorer(
             trades,
             rank_mode=runtime_config.rank_mode,
@@ -183,13 +196,18 @@ def rank_trade_candidates(
         row["entry_day"] = parse_iso_date(row.get("entry_date"))
         row["exit_day"] = parse_iso_date(row.get("exit_date"))
         row["rank_mode"] = runtime_config.rank_mode
+        row["heat_score"] = None
         row["rank_score"] = round(scorer(row), 6) if scorer is not None else 0.0
         row["selected"] = False
         row["selected_order"] = None
         row["selected_layer"] = None
         row["daily_candidate_rank"] = None
+        row["raw_daily_rank"] = None
+        row["eligible_daily_rank"] = None
         row["daily_candidate_count"] = None
+        row["eligible_candidate_count"] = None
         row["rank_filter_passed"] = False
+        row["rank_filter_reason"] = None
         if row["entry_day"] is not None:
             by_date[row["entry_day"]].append(row)
             rows.append(row)
@@ -202,7 +220,7 @@ def rank_trade_candidates(
     )
 
     for entry_day in sorted(by_date):
-        if runtime_config.rank_mode == "cohort_ev_walk_forward":
+        if _is_walk_forward_rank_mode(runtime_config.rank_mode):
             closed_history = [
                 row
                 for row in rows
@@ -213,7 +231,7 @@ def rank_trade_candidates(
             ]
             day_scorer = _build_scorer(
                 closed_history,
-                rank_mode="cohort_ev",
+                rank_mode=_base_rank_mode(runtime_config.rank_mode),
                 min_cohort_trades=runtime_config.min_cohort_trades,
             )
             for row in by_date[entry_day]:
@@ -223,14 +241,18 @@ def rank_trade_candidates(
         candidates = [
             row
             for row in all_day_candidates
-            if runtime_config.min_rank_score is None
-            or to_float(row.get("rank_score"), default=0.0) >= runtime_config.min_rank_score
+            if _rank_filter_passes(row, runtime_config)
         ]
         candidate_ids = {row["candidate_id"] for row in candidates}
         for daily_rank, row in enumerate(all_day_candidates, start=1):
             row["daily_candidate_rank"] = daily_rank
+            row["raw_daily_rank"] = daily_rank
             row["daily_candidate_count"] = len(all_day_candidates)
+            row["eligible_candidate_count"] = len(candidates)
             row["rank_filter_passed"] = row["candidate_id"] in candidate_ids
+            row["rank_filter_reason"] = _rank_filter_reason(row, runtime_config) or "passed"
+        for eligible_rank, row in enumerate(candidates, start=1):
+            row["eligible_daily_rank"] = eligible_rank
 
         open_rows = [
             row for row in open_rows if row.get("exit_day") is not None and row["exit_day"] >= entry_day
@@ -356,9 +378,32 @@ def candidate_fieldnames() -> list[str]:
         "score_bin",
         "rank_mode",
         "rank_score",
+        "heat_score",
+        "raw_daily_rank",
+        "eligible_daily_rank",
+        "signal_quality_trade_count",
+        "signal_quality_win_rate_pct",
+        "signal_quality_avg_return_pct",
+        "signal_quality_profit_factor",
+        "quality_signal_confidence",
+        "stock_quality_trade_count",
+        "stock_quality_win_rate_pct",
+        "stock_quality_avg_return_pct",
+        "stock_quality_profit_factor",
+        "quality_stock_confidence",
+        "stock_signal_quality_trade_count",
+        "stock_signal_quality_win_rate_pct",
+        "stock_signal_quality_avg_return_pct",
+        "stock_signal_quality_profit_factor",
+        "quality_stock_signal_confidence",
+        "quality_signal_score",
+        "quality_stock_score",
+        "quality_stock_signal_score",
         "rank_filter_passed",
+        "rank_filter_reason",
         "daily_candidate_rank",
         "daily_candidate_count",
+        "eligible_candidate_count",
         "selected",
         "selected_order",
         "selected_layer",
@@ -398,6 +443,7 @@ def summary_fieldnames() -> list[str]:
         "max_open_positions",
         "min_cohort_trades",
         "min_rank_score",
+        "heat_score_cap",
         "fill_unused_slots",
         "candidate_trade_count",
         "selected_trade_count",
@@ -473,10 +519,61 @@ def round_float(value: float | None) -> float | None:
 
 
 def _build_scorer(trades: list[dict[str, Any]], *, rank_mode: RankMode, min_cohort_trades: int):
+    rank_mode = _base_rank_mode(rank_mode)
     if rank_mode == "signal_score":
         return lambda row: to_float(row.get("entry_signal_score"), default=0.0) or 0.0
 
     signal_stats = _stats_by(trades, ("signal_type",))
+    if rank_mode == "stock_quality":
+        global_stats = trade_stats(trades)
+        stock_stats = _stats_by(trades, ("stock_code",))
+        stock_signal_stats = _stats_by(trades, ("stock_code", "signal_type"))
+
+        def stock_quality_score(row: dict[str, Any]) -> float:
+            signal_key = (_value(row.get("signal_type")),)
+            stock_key = (_value(row.get("stock_code")),)
+            stock_signal_key = (_value(row.get("stock_code")), _value(row.get("signal_type")))
+            signal_stat = signal_stats.get(signal_key)
+            stock_stat = stock_stats.get(stock_key)
+            stock_signal_stat = stock_signal_stats.get(stock_signal_key)
+            signal_quality = _quality_score_from_stats(
+                signal_stat,
+                fallback=_quality_score_from_stats(global_stats, fallback=50.0, min_cohort_trades=min_cohort_trades),
+                min_cohort_trades=min_cohort_trades,
+            )
+            stock_quality = _quality_score_from_stats(
+                stock_stat,
+                fallback=signal_quality,
+                min_cohort_trades=min_cohort_trades,
+            )
+            stock_signal_quality = _quality_score_from_stats(
+                stock_signal_stat,
+                fallback=stock_quality,
+                min_cohort_trades=min_cohort_trades,
+            )
+            raw_score = _bounded(to_float(row.get("entry_signal_score"), default=50.0) or 50.0, 0.0, 100.0)
+            score = (
+                stock_signal_quality * 0.35
+                + stock_quality * 0.20
+                + signal_quality * 0.35
+                + raw_score * 0.10
+            )
+            heat_score = (stock_signal_quality * 0.70) + (stock_quality * 0.30)
+            row["heat_score"] = round(heat_score, 6)
+            _attach_stock_quality_diagnostics(
+                row,
+                signal_stats=signal_stat,
+                stock_stats=stock_stat,
+                stock_signal_stats=stock_signal_stat,
+                min_cohort_trades=min_cohort_trades,
+                signal_quality=signal_quality,
+                stock_quality=stock_quality,
+                stock_signal_quality=stock_signal_quality,
+            )
+            return score
+
+        return stock_quality_score
+
     signal_score_stats = _stats_by(trades, ("signal_type", "score_bin"))
     style_number_stats = _stats_by(trades, ("signal_type", "style_bucket", "signal_number"))
 
@@ -505,6 +602,14 @@ def _build_scorer(trades: list[dict[str, Any]], *, rank_mode: RankMode, min_coho
     return cohort_ev_score
 
 
+def _is_walk_forward_rank_mode(rank_mode: str) -> bool:
+    return str(rank_mode).endswith("_walk_forward")
+
+
+def _base_rank_mode(rank_mode: str) -> str:
+    return str(rank_mode).removesuffix("_walk_forward")
+
+
 def _stats_by(trades: list[dict[str, Any]], fields: tuple[str, ...]) -> dict[tuple[Any, ...], dict[str, Any]]:
     buckets: dict[tuple[Any, ...], list[dict[str, Any]]] = defaultdict(list)
     for trade in trades:
@@ -524,12 +629,105 @@ def _shrunk_avg(stats: dict[str, Any] | None, *, fallback: float, min_cohort_tra
     return ((avg_return * count) + (fallback * min_cohort_trades)) / (count + min_cohort_trades)
 
 
+def _quality_score_from_stats(
+    stats: dict[str, Any] | None,
+    *,
+    fallback: float,
+    min_cohort_trades: int,
+) -> float:
+    if not stats:
+        return fallback
+    count = int(stats.get("trade_count") or 0)
+    if count <= 0:
+        return fallback
+
+    win_rate = to_float(stats.get("win_rate_pct"), default=50.0) or 50.0
+    avg_return = to_float(stats.get("avg_return_pct"), default=0.0) or 0.0
+    profit_factor = _quality_profit_factor(stats)
+    raw_quality = (
+        _bounded(win_rate, 0.0, 100.0) * 0.45
+        + _bounded(50.0 + avg_return * 5.0, 0.0, 100.0) * 0.35
+        + _bounded(50.0 + math.log(max(profit_factor, 0.05)) * 20.0, 0.0, 100.0) * 0.20
+    )
+    confidence = count / (count + max(1, min_cohort_trades))
+    return (raw_quality * confidence) + (fallback * (1.0 - confidence))
+
+
+def _quality_profit_factor(stats: dict[str, Any]) -> float:
+    profit_factor = to_float(stats.get("profit_factor"), default=None)
+    if profit_factor is not None and profit_factor > 0:
+        return profit_factor
+    win_rate = to_float(stats.get("win_rate_pct"), default=0.0) or 0.0
+    avg_return = to_float(stats.get("avg_return_pct"), default=0.0) or 0.0
+    if win_rate >= 50.0 and avg_return > 0:
+        return 3.0
+    return 1.0
+
+
+def _attach_stock_quality_diagnostics(
+    row: dict[str, Any],
+    *,
+    signal_stats: dict[str, Any] | None,
+    stock_stats: dict[str, Any] | None,
+    stock_signal_stats: dict[str, Any] | None,
+    min_cohort_trades: int,
+    signal_quality: float,
+    stock_quality: float,
+    stock_signal_quality: float,
+) -> None:
+    row["signal_quality_trade_count"] = int((signal_stats or {}).get("trade_count") or 0)
+    row["signal_quality_win_rate_pct"] = (signal_stats or {}).get("win_rate_pct")
+    row["signal_quality_avg_return_pct"] = (signal_stats or {}).get("avg_return_pct")
+    row["signal_quality_profit_factor"] = (signal_stats or {}).get("profit_factor")
+    row["stock_quality_trade_count"] = int((stock_stats or {}).get("trade_count") or 0)
+    row["stock_quality_win_rate_pct"] = (stock_stats or {}).get("win_rate_pct")
+    row["stock_quality_avg_return_pct"] = (stock_stats or {}).get("avg_return_pct")
+    row["stock_quality_profit_factor"] = (stock_stats or {}).get("profit_factor")
+    row["stock_signal_quality_trade_count"] = int((stock_signal_stats or {}).get("trade_count") or 0)
+    row["stock_signal_quality_win_rate_pct"] = (stock_signal_stats or {}).get("win_rate_pct")
+    row["stock_signal_quality_avg_return_pct"] = (stock_signal_stats or {}).get("avg_return_pct")
+    row["stock_signal_quality_profit_factor"] = (stock_signal_stats or {}).get("profit_factor")
+    row["quality_signal_confidence"] = round_float(_quality_confidence(signal_stats, min_cohort_trades=min_cohort_trades))
+    row["quality_stock_confidence"] = round_float(_quality_confidence(stock_stats, min_cohort_trades=min_cohort_trades))
+    row["quality_stock_signal_confidence"] = round_float(
+        _quality_confidence(stock_signal_stats, min_cohort_trades=min_cohort_trades)
+    )
+    row["quality_signal_score"] = round_float(signal_quality)
+    row["quality_stock_score"] = round_float(stock_quality)
+    row["quality_stock_signal_score"] = round_float(stock_signal_quality)
+
+
+def _quality_confidence(stats: dict[str, Any] | None, *, min_cohort_trades: int) -> float:
+    count = int((stats or {}).get("trade_count") or 0)
+    if count <= 0:
+        return 0.0
+    return count / (count + max(1, min_cohort_trades))
+
+
+def _bounded(value: float, lower: float, upper: float) -> float:
+    return max(lower, min(upper, float(value)))
+
+
 def _rank_sort_key(row: dict[str, Any]) -> tuple[float, float, str]:
     return (
         -(to_float(row.get("rank_score"), default=0.0) or 0.0),
         -(to_float(row.get("entry_signal_score"), default=0.0) or 0.0),
         str(row.get("stock_code") or ""),
     )
+
+
+def _rank_filter_passes(row: dict[str, Any], config: LayeredRankingConfig) -> bool:
+    return _rank_filter_reason(row, config) is None
+
+
+def _rank_filter_reason(row: dict[str, Any], config: LayeredRankingConfig) -> str | None:
+    score = to_float(row.get("rank_score"), default=0.0) or 0.0
+    if config.min_rank_score is not None and score < config.min_rank_score:
+        return "below_min_rank_score"
+    heat_score = to_float(row.get("heat_score"), default=score) or score
+    if config.heat_score_cap is not None and heat_score > config.heat_score_cap:
+        return "above_heat_score_cap"
+    return None
 
 
 def _select_row(

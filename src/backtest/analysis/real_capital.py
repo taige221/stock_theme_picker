@@ -63,6 +63,7 @@ class _AccountPosition:
     entry_value: float
     entry_cost: float
     entry_cash_out: float
+    position_size_pct: float
     signal_type: str | None
     rank_score: float | None
     selected_order: int | None
@@ -196,7 +197,8 @@ def simulate_real_capital_portfolio(
                 skipped.append(_skip_row(row, "missing_entry_or_exit_price"))
                 continue
 
-            budget = min(cash, equity_for_sizing * runtime_config.position_size_pct)
+            position_size_pct = _row_position_size_pct(row, runtime_config)
+            budget = min(cash, equity_for_sizing * position_size_pct)
             shares = _max_affordable_shares(
                 entry_price=entry_price,
                 budget=budget,
@@ -226,6 +228,7 @@ def simulate_real_capital_portfolio(
                 entry_value=entry_value,
                 entry_cost=entry_cost,
                 entry_cash_out=entry_cash_out,
+                position_size_pct=position_size_pct,
                 signal_type=row.get("signal_type"),
                 rank_score=to_float(row.get("rank_score"), default=None),
                 selected_order=to_int(row.get("selected_order")),
@@ -491,6 +494,7 @@ def _close_position(position: _AccountPosition, *, current_day: date, config: Re
         "entry_price": round(position.entry_price, 4),
         "exit_price": round(position.exit_price, 4),
         "shares": position.shares,
+        "position_size_pct": round_float(position.position_size_pct),
         "entry_value": round(position.entry_value, 2),
         "exit_value": round(exit_value, 2),
         "entry_cost": round(position.entry_cost, 2),
@@ -523,6 +527,7 @@ def _open_payload(position: _AccountPosition) -> dict[str, Any]:
         "entry_price": round(position.entry_price, 4),
         "exit_price": round(position.exit_price, 4),
         "shares": position.shares,
+        "position_size_pct": round_float(position.position_size_pct),
         "entry_value": round(position.entry_value, 2),
         "entry_cost": round(position.entry_cost, 2),
         "entry_cash_out": round(position.entry_cash_out, 2),
@@ -569,6 +574,7 @@ def _skip_row(row: dict[str, Any], reason: str) -> dict[str, Any]:
         "rank_score": row.get("rank_score"),
         "selected_order": row.get("selected_order"),
         "daily_candidate_rank": row.get("daily_candidate_rank"),
+        "position_size_pct": row.get("position_size_pct"),
         "return_pct": row.get("return_pct"),
     }
 
@@ -641,6 +647,13 @@ def _max_affordable_shares(*, entry_price: float, budget: float, config: RealCap
             return shares
         shares -= lot_size
     return 0
+
+
+def _row_position_size_pct(row: dict[str, Any], config: RealCapitalConfig) -> float:
+    value = to_float(row.get("position_size_pct"), default=config.position_size_pct)
+    if value is None:
+        value = config.position_size_pct
+    return max(0.0, min(1.0, float(value)))
 
 
 def _trade_cost(price: float, shares: int, config: RealCapitalConfig, *, side: str) -> float:

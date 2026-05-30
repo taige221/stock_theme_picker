@@ -1041,29 +1041,32 @@ class AShareBoxStrategy(Strategy):
         pullback_max_break_below_resistance_pct: float,
     ) -> Optional[dict]:
         retest_window = max(2, int(params.breakout_retest_window))
-        recent = working.iloc[-retest_window:]
-        if recent.empty:
+        breakout_reference = self._find_prior_breakout_reference(
+            working=working,
+            params=params,
+            retest_window=retest_window,
+        )
+        if breakout_reference is None:
             return None
 
-        recent_high_close = pd.to_numeric(recent["close"], errors="coerce").max()
-        had_breakout = self._to_float(recent_high_close) is not None and recent_high_close > current_box.resistance
-        touched_zone = low_price <= current_box.resistance * (1 + float(params.box_tolerance_pct))
+        reference_resistance = float(breakout_reference["resistance"])
+        reference_touches = int(breakout_reference["resistance_touches"])
+        touched_zone = low_price <= reference_resistance * (1 + float(params.box_tolerance_pct))
         break_below_resistance_pct = (
-            max(0.0, (current_box.resistance - low_price) / current_box.resistance)
-            if current_box.resistance > 0
+            max(0.0, (reference_resistance - low_price) / reference_resistance)
+            if reference_resistance > 0
             else 0.0
         )
         depth_ok = (
             pullback_max_break_below_resistance_pct <= 0
             or break_below_resistance_pct <= pullback_max_break_below_resistance_pct
         )
-        reclaimed = close_price >= current_box.resistance * (1 + pullback_reclaim_pct)
+        reclaimed = close_price >= reference_resistance * (1 + pullback_reclaim_pct)
         rebound_bar = open_price is None or close_price >= open_price
         enough_volume = volume_ratio >= max(1.0, pullback_min_volume_ratio * 0.8)
-        enough_touches = current_box.resistance_touches >= pullback_min_box_touches
+        enough_touches = reference_touches >= pullback_min_box_touches
         is_valid = bool(
-            had_breakout
-            and touched_zone
+            touched_zone
             and depth_ok
             and reclaimed
             and rebound_bar
@@ -1073,7 +1076,13 @@ class AShareBoxStrategy(Strategy):
         if not is_valid:
             return None
         return {
-            "had_breakout": had_breakout,
+            "had_breakout": True,
+            "prior_breakout_required": True,
+            "prior_breakout_date": breakout_reference["breakout_date"],
+            "prior_breakout_close": round(float(breakout_reference["breakout_close"]), 4),
+            "pullback_reference_resistance": round(reference_resistance, 4),
+            "pullback_reference_support": round(float(breakout_reference["support"]), 4),
+            "pullback_reference_resistance_touches": reference_touches,
             "touched_zone": touched_zone,
             "pullback_depth_ok": depth_ok,
             "reclaimed": reclaimed,
@@ -1081,9 +1090,45 @@ class AShareBoxStrategy(Strategy):
             "enough_volume": enough_volume,
             "enough_touches": enough_touches,
             "pullback_break_below_resistance_pct": round(break_below_resistance_pct, 4),
-            "pullback_low_vs_resistance_pct": round((low_price - current_box.resistance) / current_box.resistance, 4),
-            "pullback_close_above_resistance_pct": round((close_price - current_box.resistance) / current_box.resistance, 4),
+            "pullback_low_vs_resistance_pct": round((low_price - reference_resistance) / reference_resistance, 4),
+            "pullback_close_above_resistance_pct": round((close_price - reference_resistance) / reference_resistance, 4),
         }
+
+    def _find_prior_breakout_reference(
+        self,
+        *,
+        working: pd.DataFrame,
+        params: StrategyParams,
+        retest_window: int,
+    ) -> Optional[dict[str, object]]:
+        if working is None or len(working) < max(6, int(params.box_lookback_days) // 2 + 2):
+            return None
+
+        latest_index = len(working) - 1
+        first_candidate_index = max(1, latest_index - max(1, int(retest_window)))
+        for candidate_index in range(latest_index - 1, first_candidate_index - 1, -1):
+            box_start = max(0, candidate_index - int(params.box_lookback_days))
+            box_window = working.iloc[box_start:candidate_index]
+            if len(box_window) < max(5, int(params.box_lookback_days) // 2):
+                continue
+            reference_box = self._build_box_snapshot(box_window, params)
+            if reference_box.resistance <= 0:
+                continue
+
+            prior_close = self._to_float(working.iloc[candidate_index - 1].get("close"))
+            breakout_close = self._to_float(working.iloc[candidate_index].get("close"))
+            if prior_close is None or breakout_close is None:
+                continue
+            if prior_close <= reference_box.resistance and breakout_close > reference_box.resistance:
+                return {
+                    "breakout_date": self._date_to_iso(working.iloc[candidate_index].get("date")),
+                    "breakout_close": breakout_close,
+                    "support": reference_box.support,
+                    "resistance": reference_box.resistance,
+                    "support_touches": reference_box.support_touches,
+                    "resistance_touches": reference_box.resistance_touches,
+                }
+        return None
 
     def _detect_pullback_failure_exit(
         self,

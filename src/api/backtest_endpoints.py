@@ -6,7 +6,7 @@ from __future__ import annotations
 from typing import Any, Callable, Literal, Optional, TypeVar
 
 from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 from sqlalchemy.exc import SQLAlchemyError
 
 from theme_picker.application.backtest_execution_service import BacktestExecutionService
@@ -78,7 +78,13 @@ class BacktestPortfolioScheduleRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True, str_strip_whitespace=True)
 
     schedule_name: Optional[str] = Field(default=None, alias="scheduleName", max_length=160)
-    rank_mode: Literal["signal_score", "cohort_ev", "cohort_ev_walk_forward"] = Field(
+    rank_mode: Literal[
+        "signal_score",
+        "cohort_ev",
+        "cohort_ev_walk_forward",
+        "stock_quality",
+        "stock_quality_walk_forward",
+    ] = Field(
         default="signal_score",
         alias="rankMode",
     )
@@ -88,6 +94,11 @@ class BacktestPortfolioScheduleRequest(BaseModel):
     max_open_positions: int = Field(default=0, alias="maxOpenPositions", ge=0, le=200)
     min_cohort_trades: int = Field(default=8, alias="minCohortTrades", ge=1, le=1000)
     min_rank_score: Optional[float] = Field(default=None, alias="minRankScore")
+    heat_score_cap: Optional[float] = Field(
+        default=None,
+        alias="heatScoreCap",
+        validation_alias=AliasChoices("heatScoreCap", "heat_score_cap", "maxHeatScore", "max_heat_score"),
+    )
     fill_unused_slots: bool = Field(default=True, alias="fillUnusedSlots")
     candidate_limit: int = Field(default=500, alias="candidateLimit", ge=1, le=5000)
 
@@ -262,7 +273,8 @@ def list_backtest_stocks(
         pattern="^(total_return_pct|trade_count|win_rate_pct|final_equity|stock_code)$",
     ),
     order: str = Query(default="desc", pattern="^(asc|desc)$"),
-    limit: int = Query(default=200, ge=1, le=1000),
+    limit: Optional[int] = Query(default=200, ge=1, le=1000),
+    offset: int = Query(default=0, ge=0),
 ) -> dict:
     effective_filter = legacy_filter or result_filter
 
@@ -274,6 +286,7 @@ def list_backtest_stocks(
             sort=sort,
             order=order,
             limit=limit,
+            offset=offset,
         )
 
     return _run_service(action)

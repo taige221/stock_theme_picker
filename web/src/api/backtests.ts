@@ -38,6 +38,8 @@ export interface BacktestRunListItem {
   maxDrawdownPct?: number | null;
   winRatePct?: number | null;
   generatedAt?: string | null;
+  portfolioScheduleCount?: number | null;
+  latestPortfolioScheduleAt?: string | null;
 }
 
 export interface BacktestRunListResponse {
@@ -252,6 +254,23 @@ export interface BacktestStockChartMarker {
   metadata?: Record<string, unknown> | null;
 }
 
+export interface BacktestStockChartBox {
+  type?: 'entry_box' | string | null;
+  tradeId?: string | null;
+  signalType?: string | null;
+  startDate?: string | null;
+  endDate?: string | null;
+  entryDate?: string | null;
+  exitDate?: string | null;
+  support?: number | null;
+  resistance?: number | null;
+  heightPct?: number | null;
+  supportTouches?: number | null;
+  resistanceTouches?: number | null;
+  score?: number | null;
+  reason?: string | null;
+}
+
 export interface BacktestStockChartResponse {
   runId: string;
   stockCode: string;
@@ -262,6 +281,7 @@ export interface BacktestStockChartResponse {
   dataSource?: string | null;
   bars: BacktestStockChartBar[];
   markers: BacktestStockChartMarker[];
+  boxes?: BacktestStockChartBox[];
   trades?: BacktestTrade[];
   latestSignalMetadata?: Record<string, unknown> | null;
   readOnly?: boolean | null;
@@ -275,6 +295,13 @@ export interface BacktestStockListResponse {
     losing?: number | null;
     flat?: number | null;
     error?: number | null;
+  } | null;
+  page?: {
+    limit?: number | null;
+    offset?: number | null;
+    returned?: number | null;
+    total?: number | null;
+    nextOffset?: number | null;
   } | null;
 }
 
@@ -301,6 +328,73 @@ export interface BacktestTrade {
 export interface BacktestTradeListResponse {
   items: BacktestTrade[];
   nextCursor?: string | null;
+}
+
+export interface BacktestPortfolioScheduleListItem {
+  scheduleId: string;
+  runId: string;
+  scheduleName?: string | null;
+  rankMode?: string | null;
+  status?: string | null;
+  candidateCount?: number | null;
+  selectedCount?: number | null;
+  firstEntryDate?: string | null;
+  lastEntryDate?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+}
+
+export interface BacktestPortfolioScheduleListResponse {
+  items: BacktestPortfolioScheduleListItem[];
+}
+
+export interface BacktestPortfolioCandidate {
+  candidateId?: string | null;
+  storedCandidateId?: string | null;
+  scheduleId?: string | null;
+  runId?: string | null;
+  tradeId?: string | null;
+  stockCode?: string | null;
+  stockName?: string | null;
+  entryDate?: string | null;
+  exitDate?: string | null;
+  entryPrice?: number | null;
+  exitPrice?: number | null;
+  signalType?: string | null;
+  entrySignalScore?: number | null;
+  rankMode?: string | null;
+  rankScore?: number | null;
+  heatScore?: number | null;
+  rawDailyRank?: number | null;
+  eligibleDailyRank?: number | null;
+  dailyCandidateRank?: number | null;
+  dailyCandidateCount?: number | null;
+  eligibleCandidateCount?: number | null;
+  rankFilterPassed?: boolean | null;
+  rankFilterReason?: string | null;
+  selected?: boolean | null;
+  selectedOrder?: number | null;
+  selectedLayer?: string | null;
+  returnPct?: number | null;
+  netPnl?: number | null;
+  holdingDays?: number | null;
+  exitReason?: string | null;
+  maxFavorableExcursionPct?: number | null;
+  maxAdverseExcursionPct?: number | null;
+  metadata?: Record<string, unknown> | null;
+}
+
+export interface BacktestPortfolioScheduleDetailResponse {
+  schedule: BacktestPortfolioScheduleListItem;
+  config?: Record<string, unknown> | null;
+  summary?: Record<string, unknown> | null;
+  candidates: BacktestPortfolioCandidate[];
+  candidatePage?: {
+    limit?: number | null;
+    offset?: number | null;
+    returned?: number | null;
+    total?: number | null;
+  } | null;
 }
 
 export interface BacktestPresetSaveRequest {
@@ -397,9 +491,20 @@ export const backtestsApi = {
     return toCamelCase<BacktestEquityCurveResponse>(response.data);
   },
 
-  async listStocks(runId: string, limit = 50): Promise<BacktestStockListResponse> {
+  async listStocks(
+    runId: string,
+    options: {
+      limit?: number;
+      offset?: number;
+      resultFilter?: 'all' | 'profitable' | 'losing' | 'flat' | 'error';
+    } = {},
+  ): Promise<BacktestStockListResponse> {
+    const params: Record<string, unknown> = { sort: 'total_return_pct', order: 'desc' };
+    if (typeof options.limit === 'number') params.limit = options.limit;
+    if (typeof options.offset === 'number') params.offset = options.offset;
+    if (options.resultFilter) params.resultFilter = options.resultFilter;
     const response = await apiClient.get<Record<string, unknown>>(`/api/v1/backtests/runs/${runId}/stocks`, {
-      params: { limit, sort: 'total_return_pct', order: 'desc' },
+      params,
     });
     return toCamelCase<BacktestStockListResponse>(response.data);
   },
@@ -423,5 +528,25 @@ export const backtestsApi = {
       params: { limit },
     });
     return toCamelCase<BacktestTradeListResponse>(response.data);
+  },
+
+  async listPortfolioSchedules(runId: string, limit = 20): Promise<BacktestPortfolioScheduleListResponse> {
+    const response = await apiClient.get<Record<string, unknown>>(
+      `/api/v1/backtests/runs/${runId}/portfolio-schedules`,
+      { params: { limit } },
+    );
+    return toCamelCase<BacktestPortfolioScheduleListResponse>(response.data);
+  },
+
+  async getPortfolioSchedule(
+    scheduleId: string,
+    limit = 5000,
+    offset = 0,
+  ): Promise<BacktestPortfolioScheduleDetailResponse> {
+    const response = await apiClient.get<Record<string, unknown>>(
+      `/api/v1/backtests/portfolio-schedules/${encodeURIComponent(scheduleId)}`,
+      { params: { limit, offset } },
+    );
+    return toCamelCase<BacktestPortfolioScheduleDetailResponse>(response.data);
   },
 };

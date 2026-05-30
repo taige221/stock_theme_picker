@@ -120,3 +120,37 @@ def test_real_capital_simulation_reports_entry_price_mark_fallback() -> None:
     assert mark_price["entry_fallback_count"] == 2
     assert mark_price["missing_series_fallback_count"] == 2
     assert mark_price["fallback_symbols"] == {"000001": 2}
+
+
+def test_real_capital_simulation_uses_candidate_position_size_override() -> None:
+    candidate = _candidate(
+        "000001",
+        entry_date="2024-01-02",
+        exit_date="2024-01-04",
+        entry_price=10.0,
+        exit_price=11.0,
+        selected_order=1,
+    )
+    candidate["position_size_pct"] = 0.2
+    result = simulate_real_capital_portfolio(
+        [candidate],
+        config=RealCapitalConfig(
+            initial_cash=10_000.0,
+            position_size_pct=1.0,
+            max_positions=1,
+            lot_size=100,
+            commission_bps=0.0,
+            min_commission=0.0,
+            stamp_tax_bps=0.0,
+            transfer_fee_bps=0.0,
+        ),
+        price_series={
+            "000001": {date(2024, 1, 2): 10.0, date(2024, 1, 3): 10.5, date(2024, 1, 4): 11.0},
+        },
+        trading_days=[date(2024, 1, 2), date(2024, 1, 3), date(2024, 1, 4)],
+    )
+
+    assert result["opened_trades"][0]["position_size_pct"] == 0.2
+    assert result["opened_trades"][0]["shares"] == 200
+    assert result["opened_trades"][0]["entry_value"] == 2000.0
+    assert result["summary"]["final_equity"] == 10200.0

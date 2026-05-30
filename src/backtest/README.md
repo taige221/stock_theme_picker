@@ -181,7 +181,19 @@ rtk python3 scripts/rank_box_signals.py \
 - `--rank-mode signal_score`：每个信号池内按原始入场评分排序
 - `--rank-mode cohort_ev`：按 `signal_type + score_bin`、`signal_type + style_bucket + signal_number` 的历史 cohort 收益做收缩排序
 - `--rank-mode cohort_ev_walk_forward`：只用当天之前已平仓的历史 cohort 收益排序，降低样本内前视偏差
+- `--rank-mode stock_quality_walk_forward`：只用当天之前已平仓的同票/同票同信号历史，按胜率、平均收益、PF 做收缩排序；适合验证“当日候选里优先选更好的股票”
 - `--min-rank-score`：只允许分层排序分达到阈值的候选进入每日配额；这是组合层 EV 过滤，不等同于策略入场的全局高分阈值
+- `--heat-score-cap`：只允许过热分不超过阈值的候选进入每日配额；`rank_score` 只负责排序，`heat_score` 负责过滤历史过热/过拟合的高分票。旧 `--max-heat-score` 仍兼容输入，但输出统一记录为 `heat_score_cap`
+- `--bull-heat-score` / `--range-heat-score` / `--weak-heat-score` / `--unknown-heat-score`：覆盖对应市场环境的 heat cap；传 `none` 表示该环境不设 heat cap
+- `--bull-min-rank-score` / `--range-min-rank-score` / `--weak-min-rank-score` / `--bear-min-rank-score` / `--unknown-min-rank-score`：覆盖对应市场环境的 rank floor；用于实验分环境过滤，不建议未验证就全局套用
+- `--bull-position-size-pct` / `--range-position-size-pct` / `--weak-position-size-pct` / `--unknown-position-size-pct`：覆盖对应市场环境的账户仓位；候选仍由 rank/heat 决定，仓位只影响账户级回放
+- `--bear-regime-action soft`：把 `bear_pause` 从硬暂停改成 `bear_soft_max1_pullback_only` 实验 profile；默认仍是 `pause`
+- `--bear-heat-score` / `--bear-position-size-pct`：配合 soft bear 使用；默认熊市 soft 仓位是基础仓位的一半
+- `--market-regime-risk-override`：开启 bull/range 的二级风险降级实验；默认关闭，并在输出里保留 `raw_market_regime` 与 `market_regime_override_reason`
+- `--risk-override-target-regime`：风险降级后的目标环境，支持 `risk_pause` / `risk_defensive` / `weak_defensive` 等；`risk_pause` 会暂停新开仓
+- `--risk-euphoric-return-60d-pct` / `--risk-euphoric-breadth-ma60-pct`：识别“60 日收益极热 + MA60 广度极高”的顶部退潮风险
+- `--risk-breadth-ma60-pct` / `--risk-fragile-return-60d-pct` / `--risk-fragile-breadth-ma60-pct` / `--risk-cooling-breadth-ma20-pct` / `--risk-cooling-return-20d-pct`：用于更宽的假 bull/range 降级实验，需谨慎验证
+- `--risk-position-size-pct`：`risk_defensive` profile 的仓位；该 profile 每日最多 1 笔、只做 pullback
 - `--max-per-day`：单日最多选择几笔
 - `--pullback-quota` / `--breakout-quota`：单日两个信号池的基础配额
 - `--max-open-positions`：可选并发持仓上限，`0` 表示不限制
@@ -206,7 +218,7 @@ rtk python3 scripts/rank_box_signals.py \
 - `ranked_candidates.csv`：每个候选的每日排名、是否通过 `min_rank_score`、是否被选中、选中来源
 - `saved_portfolio_schedule_id=...`：DB run 模式下保存的组合调度 ID
 
-`cohort_ev` 是样本内排序诊断，不能直接当成默认实盘规则；`cohort_ev_walk_forward` 只用当天之前已平仓交易来降前视偏差，但仍应作为研究 overlay 验证，而不是默认 live rule。当前这一层仍是“候选交易调度 overlay”，不是完整资金账户级组合回测；资金占用、复利、仓位市值波动适合放到下一阶段组合引擎处理。
+`cohort_ev` 和 `stock_quality` 是样本内排序诊断，不能直接当成默认实盘规则；`cohort_ev_walk_forward` / `stock_quality_walk_forward` 只用当天之前已平仓交易来降前视偏差，但仍应作为研究 overlay 验证，而不是默认 live rule。当前这一层仍是“候选交易调度 overlay”，不是完整资金账户级组合回测；资金占用、复利、仓位市值波动适合放到下一阶段组合引擎处理。
 
 ### 5. 风格股票池实验
 
@@ -251,6 +263,94 @@ rtk python3 scripts/run_style_pool_backtests.py \
 - `data/backtests/style_profile_runs/style_profile_summary.csv`
 
 注意：静态风格池如果用最新快照选股、再回测历史，会有选股前视。该工具当前用于 profile selector 研究；正式规则需要改成按历史 `as-of` 滚动生成风格池。
+
+### 6. 稳健性与市场环境切换
+
+用于把组合调度从“单次结果好不好”升级成“不同环境下是否稳健”。脚本会在同一批已导入 DB 的逐笔交易上输出：
+
+- walk-forward：按年/季/月重置资金看稳定性
+- 参数敏感性：仓位、并发、每日候选数等单轴扰动
+- Monte Carlo：对每日账户收益做 block bootstrap，观察尾部亏损概率
+- 市场环境：按本地股票池价格广度和 20/60 日收益分成 `bull_active`、`range_neutral`、`weak_defensive`、`bear_pause`
+- regime-aware：在单条时间线上按入场日环境切换 profile，避免把不同环境分组结果事后相加
+
+当前保守默认映射是：
+
+- `bull_active`：每日最多 4 笔，`pullback=3`、`breakout=1`
+- `bear_pause`：暂停新开仓
+- `range_neutral`：每日最多 3 笔，`pullback=2`、`breakout=1`
+- `weak_defensive`：每日最多 2 笔，`pullback=1`、`breakout=1`
+- `unknown`：数据不足时每日最多 2 笔，`pullback=1`、`breakout=1`
+
+示例：
+
+```bash
+rtk uv run --extra dev python scripts/run_backtest_robustness.py \
+  --db-run-id bt_4008f88677a1 \
+  --rank-mode stock_quality_walk_forward \
+  --heat-score-cap 55 \
+  --max-per-day 3 \
+  --pullback-quota 2 \
+  --breakout-quota 1 \
+  --ranking-max-open-positions 8 \
+  --initial-cash 1000000 \
+  --position-size-pct 0.08 \
+  --account-max-positions 8 \
+  --price-adjustment qfq \
+  --monte-carlo-iterations 1000 \
+  --compare-max-per-day 4 \
+  --output-dir data/backtests/diagnostics/p3_regime_aware_bt_4008f88677a1_conservative_v1
+```
+
+如果要批量验证分环境 heat cap，可以用 grid：
+
+```bash
+rtk uv run --extra dev python scripts/run_backtest_robustness.py \
+  --db-run-id bt_4008f88677a1 \
+  --rank-mode stock_quality_walk_forward \
+  --heat-score-cap 55 \
+  --max-per-day 3 \
+  --pullback-quota 2 \
+  --breakout-quota 1 \
+  --ranking-max-open-positions 8 \
+  --initial-cash 1000000 \
+  --position-size-pct 0.08 \
+  --account-max-positions 8 \
+  --price-adjustment qfq \
+  --regime-heat-grid 'bull=55,60,65,none;range=55,60;weak=50,52,55;bear=pause,55;unknown=50,52,pause' \
+  --output-dir data/backtests/diagnostics/p3_regime_heat_grid_bt_4008f88677a1
+```
+
+关键输出：
+
+- `robustness_summary.json`：总览配置、baseline、profile、市场环境和 regime-aware 结果
+- `market_regime_profile_summary.csv`：不同 profile 在各市场环境下的拆分表现
+- `regime_aware_account_summary.json`：真正按时间线切换 profile 后的账户级结果
+- `regime_aware_candidates.csv`：每个候选所属环境、选中 profile、是否被暂停或入选
+- `regime_aware_selected_by_period_regime.csv`：按月/季/年 + 市场环境查看真正选中的交易结果
+- `regime_aware_rank_filter_summary.csv`：按时间段 + 市场环境 + 过滤原因 + 信号类型查看候选被保留/过滤后的表现
+- `regime_aware_daily_rank_filter.csv`：逐日查看候选数、可交易候选数、选中数和被 `above_heat_score_cap` / `paused_regime` 过滤的候选表现
+- `regime_aware_rank_score_bins.csv`：固定输出 `00-10` 到 `90-100` 的 `rank_score` 分箱，并按 `all_candidates` / `eligible_candidates` / `selected_candidates` / `filtered_candidates` 查看胜率、平均收益、PF、MAE、持有期和质量分样本置信度
+- `regime_heat_grid.csv`：分环境 heat cap grid 的账户级表现、胜率、PF、MAE、持有期
+- `regime_heat_grid_by_regime.csv`：每组 heat cap 在各市场环境下的选中交易表现
+
+候选明细里同时保留两个排名：
+
+- `raw_daily_rank`：过滤前按 `rank_score` 的原始排名，适合复盘高分票为什么被过滤
+- `eligible_daily_rank`：过滤后可交易候选里的排名，适合看当天真实可选顺序
+- `rank_filter_reason`：`passed`、`above_heat_score_cap`、`below_min_rank_score`、`paused_regime`
+
+2026-05-29 第二轮观察：在 regime-aware 的基础上使用 `stock_quality_walk_forward --heat-score-cap 55`，交易数从 `511` 收敛到 `445`，收益从 `40.1146%` 提升到 `42.5013%`，最大回撤从 `12.2042%` 降到 `9.2635%`，胜率从 `42.6614%` 到 `44.0449%`，PF 从 `1.3652` 到 `1.4281`。后续同类实验应固定检查 `regime_aware_rank_score_bins.csv`。
+
+2026-05-29 第三轮观察：分环境 heat cap 的 grid 没有证明优于全局 `55`；`range=60` 会明显变差，`weak=50/52` 也会误杀弱势环境里的高质量交易。分环境 rank floor 能小幅抬高胜率/PF，但收益大幅下降，说明 `40-50` 桶不能一刀切删除。更有效的是账户级环境仓位：在 `stock_quality_walk_forward --heat-score-cap 55` 基线上使用 `bull=10% / range=4% / weak=11% / unknown=8%`，收益从 `44.4847%` 提升到 `52.8737%`，最大回撤从 `9.5118%` 到 `9.7584%`，PF 从 `1.4532` 到 `1.5190`，Monte Carlo 5% 分位收益从 `11.7274%` 到 `15.1867%`，但最大暴露从 `63.0634%` 升到 `78.8739%`，应继续做仓位稳定性验证。
+
+2026-05-29 第四轮观察：宽口径假 bull/range 降级会误伤正收益修复段；`risk_pause` 收益降到 `42.4497%`，`risk_defensive` 收益 `42.5214%`，都不应作为默认。窄口径“顶部退潮暂停”有效：在第三轮仓位基线上加 `--market-regime-risk-override --risk-override-target-regime risk_pause --risk-euphoric-return-60d-pct 35 --risk-euphoric-breadth-ma60-pct 95`，只过滤 14 个候选，这批合计 `-72.84%`；账户收益提升到 `59.6851%`，最大回撤保持 `9.7584%`，PF 到 `1.6114`，Monte Carlo 5% 分位收益到 `22.5333%`，亏损概率降到 `0.3%`。当前最强候选基线是：`stock_quality_walk_forward + heat_score_cap=55 + bull/range/weak/unknown=10%/4%/11%/8% + euphoric risk_pause`。
+
+2026-05-29 候选配置池：
+
+- 保守版：`heat_score_cap=55`，`bull/range/weak/unknown=8%/3%/8%/6%`，开启宽口径 `risk_pause`。中心样本交易数 `328`，收益 `30.9686%`，最大回撤 `6.5957%`，PF `1.4919`。相邻 `7%/3%/7%/5%` 到 `9%/3%/9%/6%` 的回撤区间约 `5.86%~7.40%`，用于低回撤候选；它主要降低风险暴露，不代表原始选股 edge 明显增强
+- 均衡版：`heat_score_cap=55`，`bull/range/weak/unknown=10%/4%/11%/8%` 或 `11%/4%/12%/8%`，只开启窄口径 euphoric `risk_pause`。`10/4/11` 收益 `59.6851%`、最大回撤 `9.7584%`、PF `1.6114`、交易数 `435`；`11/4/12` 收益 `67.1360%`、最大回撤 `10.5423%`、PF `1.6266`，但最大暴露升到 `86.5881%`
+- 进攻版：`heat_score_cap=55`，`bull/range/weak/unknown=12%/4%/12%/8%`，只开启窄口径 euphoric `risk_pause`。收益 `70.2274%`，最大回撤 `11.2166%`，PF `1.6225`，交易数 `435`，最大暴露 `94.7821%`；暂时只能当候选，不能直接作为默认
 
 ## 历史数据同步
 
@@ -887,3 +987,80 @@ rtk uv run --extra dev python scripts/run_real_capital_backtest.py \
 | `10% / 6仓` | 24.1263% | 17.8824% | 1.1812 | 40.1942% | 515 | 16 | 19.0304% / 62.0792% |
 
 当前建议先把 `8% / 8仓` 作为 P3 默认观察口径：收益/回撤比比 `10% / 8仓` 更温和，且没有 `4仓/6仓` 的重新排序损耗。
+
+## P3 稳健性诊断
+
+`scripts/run_backtest_robustness.py` 把 P3 从“看单次账户收益”升级成三类稳健性检查：
+
+- walk-forward：按年/季/月把已选信号切片，每个窗口重置账户资金，观察收益、回撤、PF、胜率是否集中依赖某一段行情
+- 参数敏感性：围绕基准配置做单轴扰动，默认检查仓位比例、账户最大持仓、每日入场数量
+- Monte Carlo：对账户权益的日收益做 block bootstrap，估计随机路径下的亏损概率和回撤分布
+
+主线稳健性命令：
+
+```bash
+rtk uv run --extra dev python scripts/run_backtest_robustness.py \
+  --db-run-id bt_4008f88677a1 \
+  --rank-mode signal_score \
+  --max-per-day 3 \
+  --pullback-quota 2 \
+  --breakout-quota 1 \
+  --ranking-max-open-positions 8 \
+  --initial-cash 1000000 \
+  --position-size-pct 0.08 \
+  --account-max-positions 8 \
+  --price-adjustment qfq \
+  --compare-max-per-day 4 \
+  --output-dir data/backtests/diagnostics/p3_robustness_bt_4008f88677a1_pos08_cap8
+```
+
+输出文件：
+
+- `robustness_summary.json`：总入口，包含 baseline、walk-forward、敏感性、Monte Carlo 摘要
+- `walk_forward.csv`：分窗口账户级结果
+- `parameter_sensitivity.csv`：单轴参数扰动结果
+- `monte_carlo_summary.json` / `monte_carlo_paths.csv`：随机路径分布
+- `baseline_ranked_candidates.csv`：基准排序候选
+- `profile_comparison.csv` / `profile_walk_forward.csv` / `profile_monte_carlo.csv`：显式 profile 对照
+- `profile_incremental_trades.csv`：候选 profile 相对 baseline 的新增/删除交易
+- `market_regime_daily.csv`：基于本地股票池等权广度的逐日市场环境标签；默认使用入场日前一交易日数据，避免偷看入场日
+- `market_regime_profile_summary.csv` / `market_regime_trades.csv`：不同 profile 在不同市场环境下的表现与交易明细
+
+2026-05-29 烟测观察：
+
+- baseline 仍为 `30.7175%` 总收益、`15.4847%` 最大回撤、`40.9012%` 胜率、`PF=1.2530`
+- walk-forward 中 2022 明显失效：`-12.69%` 收益、`12.8856%` 回撤、`PF=0.3687`
+- 默认单轴敏感性里，`max_per_day=4,pullback=3,breakout=1` 临时更优：`33.37%` 收益、`14.3748%` 回撤；`max_per_day=2` 明显变差
+- Monte Carlo 1000 次、5 日 block：收益中位数 `29.8835%`，5 分位收益 `-0.96%`，亏损概率 `5.6%`，95 分位回撤 `19.5129%`
+
+2026-05-29 profile 对照：
+
+| profile | 收益 | 回撤 | 收益/回撤 | 胜率 | PF | MC 5分位收益 | MC 亏损概率 | MC 95分位回撤 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| baseline `3/day, 2P+1B` | 30.7175% | 15.4847% | 1.9837 | 40.9012% | 1.2530 | -0.9600% | 5.6% | 19.5129% |
+| candidate `4/day, 3P+1B` | 33.3700% | 14.3748% | 2.3214 | 40.7470% | 1.2628 | 0.1285% | 4.9% | 19.8534% |
+
+候选结论：`4/day, 3P+1B` 只能作为观察候选，不能升主线。原因是胜率没有提高，且分年看 2022、2025、2026 变差；它的收益改善主要来自新增/替换交易组合，仍需要继续确认不是少数年份或少数大赚交易贡献。
+
+P3.5 市场环境分层：
+
+第一版 regime 不依赖外部指数，而是用当前回测股票池的本地日线计算等权广度：
+
+- `breadth_ma20_pct` / `breadth_ma60_pct`：股票池内收盘价站上 MA20/MA60 的比例
+- `avg_return_20d_pct` / `avg_return_60d_pct`：股票池内 20/60 日平均收益
+- 默认 `lag_days=1`，即每笔交易按入场日前一交易日的环境打标签
+
+主线样本按 regime 分层后：
+
+| profile | regime | 交易数 | 收益 | 回撤 | 胜率 | PF | 原始平均收益 |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| baseline | bear_pause | 71 | -5.3944% | 7.5204% | 29.5775% | 0.6116 | -0.8462% |
+| baseline | bull_active | 168 | 16.9995% | 7.3779% | 45.2381% | 1.5299 | 1.4232% |
+| baseline | range_neutral | 172 | 3.5164% | 7.6498% | 38.9535% | 1.0976 | 0.5037% |
+| baseline | weak_defensive | 165 | 12.6574% | 5.7775% | 43.0303% | 1.3982 | 1.0970% |
+| candidate `4/day, 3P+1B` | bear_pause | 71 | -4.4192% | 6.5672% | 29.5775% | 0.6837 | -0.6582% |
+| candidate `4/day, 3P+1B` | bull_active | 170 | 18.3464% | 6.5212% | 45.2941% | 1.5810 | 1.4754% |
+| candidate `4/day, 3P+1B` | range_neutral | 175 | 3.8327% | 8.0255% | 38.2857% | 1.1022 | 0.5294% |
+| candidate `4/day, 3P+1B` | weak_defensive | 172 | 12.4119% | 5.4968% | 43.0233% | 1.3687 | 1.0448% |
+
+初步解释：`bear_pause` 是当前策略最该防守的环境；`bull_active` 明显适合放开 pullback 名额；`range_neutral` 与 `weak_defensive` 不应简单加交易数，需要继续做更细的入场质量过滤。

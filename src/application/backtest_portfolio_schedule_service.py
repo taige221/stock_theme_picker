@@ -209,7 +209,7 @@ class BacktestPortfolioScheduleService:
 
     def _ranking_config(self, payload: dict[str, Any]) -> LayeredRankingConfig:
         rank_mode = str(payload.get("rank_mode") or payload.get("rankMode") or "signal_score")
-        if rank_mode not in {"signal_score", "cohort_ev", "cohort_ev_walk_forward"}:
+        if rank_mode not in {"signal_score", "cohort_ev", "cohort_ev_walk_forward", "stock_quality", "stock_quality_walk_forward"}:
             raise ValueError(f"unsupported rankMode: {rank_mode}")
         return LayeredRankingConfig(
             rank_mode=rank_mode,  # type: ignore[arg-type]
@@ -225,6 +225,12 @@ class BacktestPortfolioScheduleService:
                 default=8,
             ),
             min_rank_score=self._optional_float(payload.get("min_rank_score", payload.get("minRankScore"))),
+            heat_score_cap=self._optional_float(
+                payload.get(
+                    "heat_score_cap",
+                    payload.get("heatScoreCap", payload.get("max_heat_score", payload.get("maxHeatScore"))),
+                )
+            ),
             fill_unused_slots=bool(payload.get("fill_unused_slots", payload.get("fillUnusedSlots", True))),
         ).normalized()
 

@@ -72,7 +72,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--rank-mode",
-        choices=("signal_score", "cohort_ev", "cohort_ev_walk_forward"),
+        choices=("signal_score", "cohort_ev", "cohort_ev_walk_forward", "stock_quality", "stock_quality_walk_forward"),
         default="signal_score",
         help="Ranking score inside each signal layer. Default signal_score.",
     )
@@ -97,6 +97,17 @@ def parse_args() -> argparse.Namespace:
         help="Optional minimum layered rank score before a candidate can be selected.",
     )
     parser.add_argument(
+        "--heat-score-cap",
+        type=float,
+        help="Optional heat score cap before a candidate is treated as overheated and skipped.",
+    )
+    parser.add_argument(
+        "--max-heat-score",
+        dest="legacy_max_heat_score",
+        type=float,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
         "--no-fill",
         action="store_true",
         help="Do not fill unused daily slots after signal quotas are applied.",
@@ -117,6 +128,7 @@ def main() -> int:
         max_open_positions=args.max_open_positions,
         min_cohort_trades=args.min_cohort_trades,
         min_rank_score=args.min_rank_score,
+        heat_score_cap=_resolve_heat_score_cap(args),
         fill_unused_slots=not args.no_fill,
     ).normalized()
     output_dir = Path(args.output_dir) if args.output_dir else _default_output_dir()
@@ -163,6 +175,8 @@ def main() -> int:
             "WARNING: cohort_ev is sample-internal and must not be promoted to a default live rule.",
             "Use cohort_ev only for diagnostics unless the input run is split into train/apply windows externally.",
             "cohort_ev_walk_forward only scores with prior closed trades to reduce look-ahead leakage, but it is still a research overlay.",
+            "stock_quality_walk_forward scores by prior closed same-stock and same-stock-signal history to prefer stronger symbols without using future trades.",
+            "stock_quality is sample-internal and should only be used for diagnostics.",
         ],
     }
     (output_dir / "selection_summary.json").write_text(
@@ -214,6 +228,14 @@ def _schedule_db_runs(
     finally:
         if db is not None:
             db.close()
+
+
+def _resolve_heat_score_cap(args: argparse.Namespace) -> float | None:
+    if args.heat_score_cap is not None:
+        return float(args.heat_score_cap)
+    if getattr(args, "legacy_max_heat_score", None) is not None:
+        return float(args.legacy_max_heat_score)
+    return None
 
 
 def _resolve_summary_path(path: Path) -> Path:

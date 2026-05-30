@@ -61,6 +61,19 @@ def _box_history(latest: dict) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def _box_history_with_prior_breakout(latest: dict) -> pd.DataFrame:
+    rows: list[dict] = []
+    for idx in range(30):
+        rows.append(_bar(idx, open_=9.6, high=10.5, low=8.5, close=9.7))
+    for idx in range(30, 40):
+        rows.append(_bar(idx, open_=10.0, high=11.0, low=9.0, close=10.4))
+    for idx in range(40, 48):
+        rows.append(_bar(idx, open_=11.2, high=12.0, low=10.0, close=11.7))
+    rows.append(_bar(48, open_=11.9, high=12.55, low=11.85, close=12.35, pct_chg=3.4))
+    rows.append(latest)
+    return pd.DataFrame(rows)
+
+
 def test_a_share_box_returns_history_not_ready_before_minimum_window() -> None:
     signal = AShareBoxStrategy().generate_signal(
         pd.DataFrame([_bar(idx, open_=10.0, high=10.5, low=9.5, close=10.1) for idx in range(12)]),
@@ -107,7 +120,9 @@ def test_a_share_box_rejects_overextended_breakout_golden_sample() -> None:
 
 def test_a_share_box_pullback_golden_sample_buys() -> None:
     signal = AShareBoxStrategy().generate_signal(
-        _box_history(_bar(49, open_=12.0, high=12.3, low=11.95, close=12.12, pct_chg=0.6)),
+        _box_history_with_prior_breakout(
+            _bar(49, open_=12.0, high=12.25, low=11.95, close=12.12, pct_chg=-1.8)
+        ),
         params=_golden_params(),
         price_adjustment="qfq",
         has_position=False,
@@ -120,6 +135,23 @@ def test_a_share_box_pullback_golden_sample_buys() -> None:
     assert signal.metadata["signal_type"] == "pullback_bounce"
     assert signal.metadata["touched_zone"] is True
     assert signal.metadata["reclaimed"] is True
+    assert signal.metadata["prior_breakout_required"] is True
+    assert signal.metadata["prior_breakout_date"] == "2024-02-18"
+    assert signal.metadata["pullback_reference_resistance"] == 12.0
+
+
+def test_a_share_box_rejects_same_bar_pullback_without_prior_breakout() -> None:
+    signal = AShareBoxStrategy().generate_signal(
+        _box_history(_bar(49, open_=12.0, high=12.3, low=11.95, close=12.12, pct_chg=0.6)),
+        params=_golden_params(),
+        price_adjustment="qfq",
+        has_position=False,
+        entry_price=None,
+        holding_days=0,
+    )
+
+    assert signal.action == "hold"
+    assert signal.reason == "entry_not_ready"
 
 
 def test_a_share_box_stop_loss_has_exit_priority() -> None:
