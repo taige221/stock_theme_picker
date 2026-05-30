@@ -7,6 +7,7 @@ import argparse
 import csv
 import json
 import sys
+import time
 from datetime import date, datetime
 from pathlib import Path
 import re
@@ -23,6 +24,10 @@ from theme_picker.backtest.core.models import BacktestConfig
 from theme_picker.backtest.data.data_feed import DailyBarDataFeed
 from theme_picker.strategy import STRATEGY_REGISTRY, StrategyParams, create_strategy
 from sqlalchemy.exc import OperationalError
+
+
+DETAIL_MODE_FULL = "full"
+DETAIL_MODE_TRADES_ONLY = "trades_only"
 
 
 def parse_args() -> argparse.Namespace:
@@ -87,6 +92,22 @@ def parse_args() -> argparse.Namespace:
             "DB import equity detail: portfolio_only, traded_daily "
             "(portfolio plus active symbol holding days), or all_daily"
         ),
+    )
+    parser.add_argument(
+        "--profile-timing",
+        action="store_true",
+        help="Print and save per-symbol load/run/write timing diagnostics",
+    )
+    parser.add_argument(
+        "--detail-mode",
+        default=DETAIL_MODE_FULL,
+        choices=(DETAIL_MODE_FULL, DETAIL_MODE_TRADES_ONLY),
+        help="Artifact detail level: full writes daily equity curves; trades_only omits them for faster research loops",
+    )
+    parser.add_argument(
+        "--fast-artifact",
+        action="store_true",
+        help="Alias for --detail-mode trades_only; cannot be combined with --import-db",
     )
     return parser.parse_args()
 
@@ -167,6 +188,9 @@ def main() -> int:
 
     stock_codes = parse_stock_codes(args.stock_codes)
     params = load_strategy_params(args.params_file)
+    detail_mode = DETAIL_MODE_TRADES_ONLY if args.fast_artifact else args.detail_mode
+    if args.import_db and detail_mode != DETAIL_MODE_FULL:
+        raise ValueError("--import-db 需要完整 artifact；请移除 --fast-artifact/--detail-mode trades_only 后再导入")
     config = BacktestConfig(
         commission_bps=args.commission_bps,
         slippage_bps=args.slippage_bps,
@@ -183,9 +207,16 @@ def main() -> int:
     data_feed = DailyBarDataFeed()
     strategy = create_strategy(args.strategy)
     summary_rows: list[dict[str, object]] = []
-    errors: list[dict[str, str]] = []
+    errors: list[dict[str, object]] = []
 
     for stock_code in stock_codes:
+        stock_started = time.perf_counter()
+        load_started = time.perf_counter()
+        load_elapsed: float | None = None
+        run_elapsed: float | None = None
+        write_elapsed: float | None = None
+        run_started: float | None = None
+        row_count: int | None = None
         try:
             effective_start_date = start_date
             bars = data_feed.load(
@@ -194,6 +225,8 @@ def main() -> int:
                 end_date=end_date,
                 price_adjustment=config.price_adjustment,
             )
+            load_elapsed = time.perf_counter() - load_started
+            row_count = len(bars)
         except ValueError as exc:
             adjusted_start_date = _resolve_adjusted_start_date(
                 data_feed=data_feed,
@@ -204,11 +237,22 @@ def main() -> int:
                 error=exc,
             )
             if adjusted_start_date is None:
+                load_elapsed = time.perf_counter() - load_started
                 error_row = {
                     "stock_code": stock_code,
                     "status": "error",
                     "error": str(exc),
                 }
+                if args.profile_timing:
+                    error_row.update(
+                        _timing_fields(
+                            load_elapsed=load_elapsed,
+                            run_elapsed=run_elapsed,
+                            write_elapsed=write_elapsed,
+                            total_elapsed=time.perf_counter() - stock_started,
+                            row_count=row_count,
+                        )
+                    )
                 errors.append(error_row)
                 summary_rows.append(error_row)
                 print(json.dumps(error_row, ensure_ascii=False))
@@ -223,12 +267,25 @@ def main() -> int:
                     end_date=end_date,
                     price_adjustment=config.price_adjustment,
                 )
+                load_elapsed = time.perf_counter() - load_started
+                row_count = len(bars)
             except Exception as retry_exc:
+                load_elapsed = time.perf_counter() - load_started
                 error_row = {
                     "stock_code": stock_code,
                     "status": "error",
                     "error": str(retry_exc),
                 }
+                if args.profile_timing:
+                    error_row.update(
+                        _timing_fields(
+                            load_elapsed=load_elapsed,
+                            run_elapsed=run_elapsed,
+                            write_elapsed=write_elapsed,
+                            total_elapsed=time.perf_counter() - stock_started,
+                            row_count=row_count,
+                        )
+                    )
                 errors.append(error_row)
                 summary_rows.append(error_row)
                 print(json.dumps(error_row, ensure_ascii=False))
@@ -237,6 +294,7 @@ def main() -> int:
                 continue
 
         try:
+            run_started = time.perf_counter()
             result = engine.run(
                 stock_code=stock_code,
                 bars=bars,
@@ -244,11 +302,15 @@ def main() -> int:
                 params=params,
                 config=config,
             )
+            run_elapsed = time.perf_counter() - run_started
             output_path = output_dir / f"{stock_code.replace('.', '_')}.json"
+            write_started = time.perf_counter()
+            output_payload = _result_to_artifact(result, detail_mode=detail_mode)
             output_path.write_text(
-                json.dumps(result.to_dict(), ensure_ascii=False, indent=2),
+                _json_dumps(output_payload, compact=detail_mode != DETAIL_MODE_FULL),
                 encoding="utf-8",
             )
+            write_elapsed = time.perf_counter() - write_started
             metrics = dict(result.metrics)
             row = {
                 "stock_code": stock_code,
@@ -259,29 +321,58 @@ def main() -> int:
                 "requested_start_date": start_date.isoformat(),
                 "effective_start_date": effective_start_date.isoformat(),
                 "result_path": str(output_path),
+                "artifact_detail_mode": detail_mode,
                 **metrics,
             }
-            summary_rows.append(row)
-            print(
-                json.dumps(
-                    {
-                        "stock_code": stock_code,
-                        "status": "ok",
-                        "effective_start_date": effective_start_date.isoformat(),
-                        "total_return_pct": metrics.get("total_return_pct"),
-                        "max_drawdown_pct": metrics.get("max_drawdown_pct"),
-                        "trade_count": metrics.get("trade_count"),
-                        "result_path": str(output_path),
-                    },
-                    ensure_ascii=False,
+            if args.profile_timing:
+                row.update(
+                    _timing_fields(
+                        load_elapsed=load_elapsed,
+                        run_elapsed=run_elapsed,
+                        write_elapsed=write_elapsed,
+                        total_elapsed=time.perf_counter() - stock_started,
+                        row_count=row_count,
+                    )
                 )
-            )
+            summary_rows.append(row)
+            progress_row = {
+                "stock_code": stock_code,
+                "status": "ok",
+                "effective_start_date": effective_start_date.isoformat(),
+                "total_return_pct": metrics.get("total_return_pct"),
+                "max_drawdown_pct": metrics.get("max_drawdown_pct"),
+                "trade_count": metrics.get("trade_count"),
+                "result_path": str(output_path),
+            }
+            if args.profile_timing:
+                progress_row.update(
+                    _timing_fields(
+                        load_elapsed=load_elapsed,
+                        run_elapsed=run_elapsed,
+                        write_elapsed=write_elapsed,
+                        total_elapsed=time.perf_counter() - stock_started,
+                        row_count=row_count,
+                    )
+                )
+            print(json.dumps(progress_row, ensure_ascii=False))
         except Exception as exc:
+            if run_started is not None and run_elapsed is None:
+                run_elapsed = time.perf_counter() - run_started
             error_row = {
                 "stock_code": stock_code,
                 "status": "error",
                 "error": str(exc),
             }
+            if args.profile_timing:
+                error_row.update(
+                    _timing_fields(
+                        load_elapsed=load_elapsed,
+                        run_elapsed=run_elapsed,
+                        write_elapsed=write_elapsed,
+                        total_elapsed=time.perf_counter() - stock_started,
+                        row_count=row_count,
+                    )
+                )
             errors.append(error_row)
             summary_rows.append(error_row)
             print(json.dumps(error_row, ensure_ascii=False))
@@ -294,6 +385,7 @@ def main() -> int:
         "strategy": args.strategy,
         "price_adjustment": config.price_adjustment,
         "trading_constraints": config.trading_constraint_mode,
+        "artifact_detail_mode": detail_mode,
         "start_date": start_date.isoformat(),
         "end_date": end_date.isoformat(),
         "config": config.to_dict(),
@@ -301,7 +393,12 @@ def main() -> int:
         "aggregate": _build_aggregate_summary(summary_rows),
         "results": summary_rows,
     }
-    summary_path.write_text(json.dumps(summary_payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    if args.profile_timing:
+        summary_payload["timing"] = _build_timing_summary(summary_rows)
+    summary_path.write_text(
+        _json_dumps(summary_payload, compact=detail_mode != DETAIL_MODE_FULL),
+        encoding="utf-8",
+    )
 
     summary_csv_path = output_dir / "summary.csv"
     _write_summary_csv(summary_csv_path, summary_rows)
@@ -343,6 +440,12 @@ def _write_summary_csv(path: Path, rows: list[dict[str, object]]) -> None:
         "trading_constraints",
         "requested_start_date",
         "effective_start_date",
+        "artifact_detail_mode",
+        "row_count",
+        "load_ms",
+        "run_ms",
+        "write_ms",
+        "total_ms",
         "initial_cash",
         "final_equity",
         "total_return_pct",
@@ -419,6 +522,66 @@ def _build_aggregate_summary(rows: list[dict[str, object]]) -> dict[str, object]
         "total_trade_count": total_trade_count,
         "total_final_unrealized_pnl": round(total_final_unrealized_pnl, 2),
         "open_position_symbols": open_position_symbols,
+    }
+
+
+def _result_to_artifact(result, *, detail_mode: str) -> dict[str, object]:
+    payload = result.to_dict()
+    payload["artifact_detail_mode"] = detail_mode
+    if detail_mode == DETAIL_MODE_TRADES_ONLY:
+        payload["equity_curve"] = []
+        payload["equity_curve_omitted"] = True
+    return payload
+
+
+def _json_dumps(payload: object, *, compact: bool) -> str:
+    if compact:
+        return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+    return json.dumps(payload, ensure_ascii=False, indent=2)
+
+
+def _timing_fields(
+    *,
+    load_elapsed: float | None,
+    run_elapsed: float | None,
+    write_elapsed: float | None,
+    total_elapsed: float | None,
+    row_count: int | None,
+) -> dict[str, object]:
+    return {
+        "row_count": row_count,
+        "load_ms": _elapsed_ms(load_elapsed),
+        "run_ms": _elapsed_ms(run_elapsed),
+        "write_ms": _elapsed_ms(write_elapsed),
+        "total_ms": _elapsed_ms(total_elapsed),
+    }
+
+
+def _elapsed_ms(value: float | None) -> float | None:
+    if value is None:
+        return None
+    return round(max(0.0, float(value)) * 1000.0, 2)
+
+
+def _build_timing_summary(rows: list[dict[str, object]]) -> dict[str, object]:
+    ok_rows = [row for row in rows if row.get("status") == "ok"]
+
+    def stats(field: str) -> dict[str, float | None]:
+        values = [float(row[field]) for row in ok_rows if row.get(field) is not None]
+        if not values:
+            return {"total_ms": None, "avg_ms": None, "max_ms": None}
+        return {
+            "total_ms": round(sum(values), 2),
+            "avg_ms": round(sum(values) / len(values), 2),
+            "max_ms": round(max(values), 2),
+        }
+
+    return {
+        "ok_symbols": len(ok_rows),
+        "load": stats("load_ms"),
+        "run": stats("run_ms"),
+        "write": stats("write_ms"),
+        "total": stats("total_ms"),
     }
 
 

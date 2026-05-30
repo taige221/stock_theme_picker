@@ -567,6 +567,32 @@ class AShareBoxStrategy(Strategy):
             **context.base_metadata,
             **breakout_trend_hold_extension,
         }
+        if pnl_pct <= -abs(context.exit_profile.stop_loss_pct):
+            return StrategySignal(action="sell", reason="stop_loss_hit", score=pnl_pct, metadata=exit_metadata)
+        breakout_retest_failure_signal = (
+            self._detect_pullback_failure_exit(
+                working=context.working,
+                params=params,
+                entry_signal_reason=entry_signal_reason,
+                entry_signal_metadata=entry_signal_metadata,
+                current_box=context.current_box,
+                close_price=close_price,
+                pnl_pct=pnl_pct,
+                holding_days=holding_days,
+            )
+            if self._is_breakout_retest_entry(entry_signal_metadata)
+            else None
+        )
+        if breakout_retest_failure_signal:
+            return StrategySignal(
+                action="sell",
+                reason="pullback_failure_exit",
+                score=pnl_pct,
+                metadata={
+                    **exit_metadata,
+                    **breakout_retest_failure_signal,
+                },
+            )
         breakeven_signal = self._detect_breakeven_stop(
             entry_signal_reason=entry_signal_reason,
             entry_price=entry_price,
@@ -584,8 +610,6 @@ class AShareBoxStrategy(Strategy):
                     **breakeven_signal,
                 },
             )
-        if pnl_pct <= -abs(context.exit_profile.stop_loss_pct):
-            return StrategySignal(action="sell", reason="stop_loss_hit", score=pnl_pct, metadata=exit_metadata)
         if pnl_pct >= abs(context.exit_profile.take_profit_pct):
             if not bool(breakout_trend_hold_extension.get("breakout_trend_hold_extension_active")):
                 return StrategySignal(action="sell", reason="take_profit_hit", score=pnl_pct, metadata=exit_metadata)
@@ -1046,12 +1070,65 @@ class AShareBoxStrategy(Strategy):
             params=params,
             retest_window=retest_window,
         )
-        if breakout_reference is None:
-            return None
+        if breakout_reference is not None:
+            return self._build_pullback_signal_from_reference(
+                reference_resistance=float(breakout_reference["resistance"]),
+                reference_support=float(breakout_reference["support"]),
+                reference_touches=int(breakout_reference["resistance_touches"]),
+                close_price=close_price,
+                low_price=low_price,
+                open_price=open_price,
+                volume_ratio=volume_ratio,
+                pullback_min_volume_ratio=pullback_min_volume_ratio,
+                pullback_min_box_touches=pullback_min_box_touches,
+                pullback_reclaim_pct=pullback_reclaim_pct,
+                pullback_max_break_below_resistance_pct=pullback_max_break_below_resistance_pct,
+                box_tolerance_pct=float(params.box_tolerance_pct),
+                pullback_pattern="breakout_retest",
+                prior_breakout_date=breakout_reference["breakout_date"],
+                prior_breakout_close=float(breakout_reference["breakout_close"]),
+            )
 
-        reference_resistance = float(breakout_reference["resistance"])
-        reference_touches = int(breakout_reference["resistance_touches"])
-        touched_zone = low_price <= reference_resistance * (1 + float(params.box_tolerance_pct))
+        return self._build_pullback_signal_from_reference(
+            reference_resistance=current_box.resistance,
+            reference_support=current_box.support,
+            reference_touches=current_box.resistance_touches,
+            close_price=close_price,
+            low_price=low_price,
+            open_price=open_price,
+            volume_ratio=volume_ratio,
+            pullback_min_volume_ratio=pullback_min_volume_ratio,
+            pullback_min_box_touches=pullback_min_box_touches,
+            pullback_reclaim_pct=pullback_reclaim_pct,
+            pullback_max_break_below_resistance_pct=pullback_max_break_below_resistance_pct,
+            box_tolerance_pct=float(params.box_tolerance_pct),
+            pullback_pattern="box_reclaim",
+            prior_breakout_date=None,
+            prior_breakout_close=None,
+        )
+
+    @staticmethod
+    def _build_pullback_signal_from_reference(
+        *,
+        reference_resistance: float,
+        reference_support: float,
+        reference_touches: int,
+        close_price: float,
+        low_price: float,
+        open_price: Optional[float],
+        volume_ratio: float,
+        pullback_min_volume_ratio: float,
+        pullback_min_box_touches: int,
+        pullback_reclaim_pct: float,
+        pullback_max_break_below_resistance_pct: float,
+        box_tolerance_pct: float,
+        pullback_pattern: str,
+        prior_breakout_date: Optional[str],
+        prior_breakout_close: Optional[float],
+    ) -> Optional[dict]:
+        if reference_resistance <= 0:
+            return None
+        touched_zone = low_price <= reference_resistance * (1 + box_tolerance_pct)
         break_below_resistance_pct = (
             max(0.0, (reference_resistance - low_price) / reference_resistance)
             if reference_resistance > 0
@@ -1076,12 +1153,18 @@ class AShareBoxStrategy(Strategy):
         if not is_valid:
             return None
         return {
-            "had_breakout": True,
-            "prior_breakout_required": True,
-            "prior_breakout_date": breakout_reference["breakout_date"],
-            "prior_breakout_close": round(float(breakout_reference["breakout_close"]), 4),
+            "had_breakout": pullback_pattern == "breakout_retest",
+            "prior_breakout_required": pullback_pattern == "breakout_retest",
+            "pullback_pattern": pullback_pattern,
+            "pullback_reference_source": pullback_pattern,
+            "prior_breakout_date": prior_breakout_date,
+            "prior_breakout_close": (
+                round(float(prior_breakout_close), 4)
+                if prior_breakout_close is not None
+                else None
+            ),
             "pullback_reference_resistance": round(reference_resistance, 4),
-            "pullback_reference_support": round(float(breakout_reference["support"]), 4),
+            "pullback_reference_support": round(reference_support, 4),
             "pullback_reference_resistance_touches": reference_touches,
             "touched_zone": touched_zone,
             "pullback_depth_ok": depth_ok,
@@ -1119,7 +1202,16 @@ class AShareBoxStrategy(Strategy):
             breakout_close = self._to_float(working.iloc[candidate_index].get("close"))
             if prior_close is None or breakout_close is None:
                 continue
-            if prior_close <= reference_box.resistance and breakout_close > reference_box.resistance:
+            if (
+                prior_close <= reference_box.resistance
+                and breakout_close > reference_box.resistance
+                and self._is_confirmed_breakout_reference(
+                    breakout_bar=working.iloc[candidate_index],
+                    breakout_close=breakout_close,
+                    reference_box=reference_box,
+                    params=params,
+                )
+            ):
                 return {
                     "breakout_date": self._date_to_iso(working.iloc[candidate_index].get("date")),
                     "breakout_close": breakout_close,
@@ -1129,6 +1221,62 @@ class AShareBoxStrategy(Strategy):
                     "resistance_touches": reference_box.resistance_touches,
                 }
         return None
+
+    def _is_confirmed_breakout_reference(
+        self,
+        *,
+        breakout_bar: pd.Series,
+        breakout_close: float,
+        reference_box: BoxSnapshot,
+        params: StrategyParams,
+    ) -> bool:
+        resistance = reference_box.resistance
+        if resistance <= 0:
+            return False
+
+        breakout_open = self._to_float(breakout_bar.get("open"))
+        breakout_high = self._to_float(breakout_bar.get("high"))
+        breakout_low = self._to_float(breakout_bar.get("low"))
+        pct_chg = self._to_float(breakout_bar.get("pct_chg"))
+        volume_ratio = self._to_float(breakout_bar.get("volume_ratio"))
+        if pct_chg is None or volume_ratio is None or breakout_low is None:
+            return False
+
+        breakout_extension_pct = (breakout_close - resistance) / resistance
+        reference_box_height_pct = self._calculate_box_height_pct(reference_box)
+        return bool(
+            pct_chg >= self._resolve_breakout_min_breakout_pct(params)
+            and volume_ratio >= self._resolve_breakout_min_volume_ratio(params)
+            and self._passes_breakout_body_filter(
+                open_price=breakout_open,
+                close_price=breakout_close,
+                breakout_min_body_pct=self._resolve_breakout_min_body_pct(params),
+            )
+            and self._passes_breakout_close_filter(
+                close_price=breakout_close,
+                resistance=resistance,
+                breakout_min_close_above_resistance_pct=(
+                    self._resolve_breakout_min_close_above_resistance_pct(params)
+                ),
+            )
+            and self._passes_breakout_upper_shadow_filter(
+                high_price=breakout_high,
+                low_price=breakout_low,
+                close_price=breakout_close,
+                breakout_max_upper_shadow_ratio=self._resolve_breakout_max_upper_shadow_ratio(params),
+            )
+            and reference_box.resistance_touches >= self._resolve_breakout_min_box_touches(params)
+            and breakout_extension_pct <= self._resolve_breakout_max_extension_pct(params)
+            and self._passes_max_box_height_filter(
+                box_height_pct=reference_box_height_pct,
+                max_box_height_pct=self._resolve_breakout_max_box_height_pct(params),
+            )
+            and self._passes_avoid_box_height_range_filter(
+                box_height_pct=reference_box_height_pct,
+                low_pct=float(params.breakout_avoid_box_height_low_pct),
+                high_pct=float(params.breakout_avoid_box_height_high_pct),
+            )
+        )
 
     def _detect_pullback_failure_exit(
         self,
@@ -1146,7 +1294,15 @@ class AShareBoxStrategy(Strategy):
             return None
         if self._normalize_entry_signal_reason(entry_signal_reason) != "pullback":
             return None
+        entry_metadata = entry_signal_metadata or {}
         failure_exit_days = max(0, int(params.pullback_failure_exit_days))
+        failure_window_source = "pullback_failure_exit_days"
+        if (
+            failure_exit_days > 0
+            and str(entry_metadata.get("pullback_pattern") or "").strip() == "breakout_retest"
+        ):
+            failure_exit_days = max(failure_exit_days, max(1, int(params.breakout_retest_window)))
+            failure_window_source = "breakout_retest_window"
         if failure_exit_days > 0 and holding_days > failure_exit_days:
             return None
         if pnl_pct > float(params.pullback_failure_max_profit_pct):
@@ -1156,7 +1312,11 @@ class AShareBoxStrategy(Strategy):
         if len(working) < confirm_days:
             return None
 
-        entry_box_resistance = self._to_float((entry_signal_metadata or {}).get("box_resistance"))
+        entry_box_resistance = self._to_float(
+            entry_metadata.get("pullback_reference_resistance")
+        )
+        if entry_box_resistance is None or entry_box_resistance <= 0:
+            entry_box_resistance = self._to_float(entry_metadata.get("box_resistance"))
         if entry_box_resistance is None or entry_box_resistance <= 0:
             entry_box_resistance = current_box.resistance
         if entry_box_resistance <= 0:
@@ -1173,10 +1333,16 @@ class AShareBoxStrategy(Strategy):
             "pullback_failure_line": round(failure_line, 4),
             "pullback_failure_confirm_days": confirm_days,
             "pullback_failure_exit_days": failure_exit_days,
+            "pullback_failure_exit_window_source": failure_window_source,
             "pullback_failure_buffer_pct": float(params.pullback_failure_buffer_pct),
             "pullback_failure_max_profit_pct": float(params.pullback_failure_max_profit_pct),
             "pullback_failure_close_price": round(close_price, 4),
         }
+
+    @staticmethod
+    def _is_breakout_retest_entry(entry_signal_metadata: Optional[dict]) -> bool:
+        entry_metadata = entry_signal_metadata or {}
+        return str(entry_metadata.get("pullback_pattern") or "").strip() == "breakout_retest"
 
     def _estimate_signal_number(
         self,
